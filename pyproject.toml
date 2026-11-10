@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "skillporter"
+version = "1.0.0"
+description = "Diagnose and fix Agent Skill installation across Claude Code, Codex, Cursor, Hermes and OpenClaw."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Shanmukh Dheekonda" }]
+keywords = ["agent-skills", "claude-code", "codex", "cursor", "hermes", "openclaw", "mcp", "developer-tools"]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Software Development :: Build Tools",
+  "Topic :: Software Development :: Quality Assurance",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "ruff>=0.6"]
+
+[project.scripts]
+skillporter = "skillporter.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/Shanmukh-l33t/skillporter"
+Issues = "https://github.com/Shanmukh-l33t/skillporter/issues"
+Changelog = "https://github.com/Shanmukh-l33t/skillporter/blob/main/CHANGELOG.md"
+
+[tool.setuptools]
+packages = ["skillporter"]
+
+[tool.setuptools.package-data]
+skillporter = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
