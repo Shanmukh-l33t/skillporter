@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [Semantic Versioning](https://semver.org/).
 
+## [2.0.2] - 2026-11-11
+
+### Fixed (Live Server E2E Verification)
+- **Version Probe Timeout Handling (`harnesses.py`)**: Catch `subprocess.SubprocessError` (`TimeoutExpired`) and pass `stdin=DEVNULL` during `skillporter detect --versions` so slow agent CLIs never crash detection.
+- **Compatibility Read Duplicate Filtering (`diagnose.py`)**: Only count primary/native paths (`is_compatibility=False`) toward `DUPLICATE` warnings so cross-harness repos containing both `.claude/skills` and `.agents/skills` do not false-positive on Cursor, Copilot, Cline, OpenCode, or Replit.
+- **Manifest-Aware Sync Drift Protection (`cli.py`)**: Check `diag.drifted` at the start of `skillporter sync` even when `skillporter.yaml` is present, refusing to overwrite drifted local edits without `--force` or `--prefer`.
+- **Rollback History Exclusion of Active Hash (`install.py`, `state.py`)**: Exclude `dest == skill_dir` and `cand.tree_hash == tree_hash` when recording backup snapshots during multi-target `sync --force`, ensuring `skillporter rollback` always restores the pre-sync version.
+
 ## [2.0.1] - 2026-11-11
 
 ### Security & Reliability Hardening (Multi-Agent Audit & Release Gate)
