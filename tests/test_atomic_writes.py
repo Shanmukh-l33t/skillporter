@@ -89,7 +89,10 @@ def test_atomic_write_cleans_temp_file_on_exception(tmp_path, monkeypatch):
     assert [p.name for p in tmp_path.iterdir()] == []
 
 
-@pytest.mark.skipif(os.name == "nt", reason="Windows has no POSIX permission bits; chmod is a no-op that only toggles the read-only flag")
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="Windows has no POSIX permission bits; chmod only toggles the read-only flag",
+)
 def test_atomic_write_preserves_mode(tmp_path):
     target = tmp_path / "run.sh"
     target.write_text("#!/bin/sh\n")
