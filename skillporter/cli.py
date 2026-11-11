@@ -818,8 +818,24 @@ def _cmd_sync(args: argparse.Namespace) -> int:
     force_flag = getattr(args, "force", False)
     prefer_path = getattr(args, "prefer", None)
 
+    diag = run_diagnose(root, scope=args.scope)
+    if diag.drifted and not force_flag and not prefer_path:
+        print(
+            "error: content drift detected across existing skill copies; refusing to overwrite without --force:",
+            file=sys.stderr,
+        )
+        for sname, phashes in sorted(diag.drifted.items()):
+            locs = ", ".join(f"{p} ({h[:8]})" for p, h in sorted(phashes.items()))
+            print(f"  - {sname}: {locs}", file=sys.stderr)
+        print(
+            "Re-run `skillporter sync --force` (or `--prefer <path>`) to synchronize "
+            "(existing copies are snapshotted to .skillporter/backups/ first).",
+            file=sys.stderr,
+        )
+        return EXIT_PROBLEM
+
     synced_results = []
-    if manifest and manifest.skills:
+    if manifest and manifest.skills and not prefer_path and not diag.drifted:
         for spec in manifest.skills:
             skill_targets = spec.harnesses or manifest.harnesses or targets
             strategy = spec.strategy or manifest.strategy or args.strategy
@@ -843,22 +859,6 @@ def _cmd_sync(args: argparse.Namespace) -> int:
             finally:
                 resolved.cleanup()
     else:
-        diag = run_diagnose(root, scope=args.scope)
-        if diag.drifted and not force_flag and not prefer_path:
-            print(
-                "error: content drift detected across existing skill copies; refusing to overwrite without --force:",
-                file=sys.stderr,
-            )
-            for sname, phashes in sorted(diag.drifted.items()):
-                locs = ", ".join(f"{p} ({h[:8]})" for p, h in sorted(phashes.items()))
-                print(f"  - {sname}: {locs}", file=sys.stderr)
-            print(
-                "Re-run `skillporter sync --force` (or `--prefer <path>`) to synchronize "
-                "(existing copies are snapshotted to .skillporter/backups/ first).",
-                file=sys.stderr,
-            )
-            return EXIT_PROBLEM
-
         canonical_by_name: dict[str, Path] = {}
         if prefer_path:
             pref = Path(prefer_path).expanduser()

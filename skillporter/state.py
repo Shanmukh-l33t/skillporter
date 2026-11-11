@@ -256,7 +256,7 @@ def record_installation(
         candidates.extend(backup_entries)
 
     for cand in candidates:
-        if all(b.tree_hash != cand.tree_hash for b in history):
+        if cand.tree_hash != tree_hash and all(b.tree_hash != cand.tree_hash for b in history):
             history.append(cand)
     history = history[-10:]  # keep most recent 10 snapshots
 

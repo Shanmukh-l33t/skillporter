@@ -386,7 +386,12 @@ def install(
                     )
                     continue
 
-                if record_state and dest.exists() and not dest.is_symlink():
+                if (
+                    record_state
+                    and dest.exists()
+                    and not dest.is_symlink()
+                    and dest.resolve() != skill_dir.resolve()
+                ):
                     bentry = snapshot_skill_for_rollback(
                         root, skill_name, dest, existing_record, scope=scope, home=home
                     )

@@ -294,7 +294,7 @@ def diagnose(
                 if sname in loc.duplicate_paths:
                     for sub_rel in loc.duplicate_paths[sname]:
                         seen_in_harness.setdefault(sname, []).append(f"{loc.raw_path}/{sub_rel}")
-                else:
+                elif not p.is_compatibility:
                     seen_in_harness.setdefault(sname, []).append(loc.raw_path)
 
         for sname, raw_paths in seen_in_harness.items():

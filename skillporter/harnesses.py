@@ -898,6 +898,7 @@ def detect_harnesses(
                     try:
                         proc = subprocess.run(
                             [found_bin, *det.version_args],
+                            stdin=subprocess.DEVNULL,
                             capture_output=True,
                             text=True,
                             timeout=2,
@@ -906,7 +907,7 @@ def detect_harnesses(
                         out = (proc.stdout or proc.stderr or "").strip().splitlines()
                         if out:
                             version = out[0][:80]
-                    except OSError:
+                    except (OSError, subprocess.SubprocessError):
                         pass
                 break
 
