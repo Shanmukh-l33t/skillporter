@@ -14,6 +14,7 @@ repositories or archives.
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -134,7 +135,7 @@ def _git_clone(url: str, ref: str = "", subpath: str = "", raw_spec: str = "", k
             text=True,
             timeout=120,
             check=False,
-            env={"GIT_TERMINAL_PROMPT": "0", "PATH": "/usr/local/bin:/usr/bin:/bin"},
+            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
         )
         if proc.returncode != 0:
             raise SourceError(f"git clone failed for {url!r}: {(proc.stderr or proc.stdout).strip()}")
@@ -202,7 +203,27 @@ def resolve_source(spec: str, *, base_dir: Path | None = None, ref_override: str
         reg_entry = resolve_registry_spec(spec[len("registry:"):])
         return resolve_source(reg_entry.source, base_dir=base, ref_override=ref_override or reg_entry.version)
 
-    # 1. Check if spec is an existing local path (directory, SKILL.md file, or archive)
+    # 1. Check GitHub tree URL: https://github.com/owner/repo/tree/ref/subpath
+    m_url = _GITHUB_TREE_URL_RE.match(spec)
+    if m_url:
+        owner = m_url.group("owner")
+        repo = m_url.group("repo")
+        if repo.endswith(".git"):
+            repo = repo[:-4]
+        ref = ref_override or (m_url.group("ref") or "")
+        subpath = m_url.group("subpath") or ""
+        git_url = f"https://github.com/{owner}/{repo}.git"
+        return _git_clone(git_url, ref=ref, subpath=subpath, raw_spec=spec, kind="github")
+
+    # 2. Check arbitrary git URL (https://, http://, git@, file://) before Path()
+    # so file:// URIs on Windows are never misinterpreted as relative drive paths.
+    if spec.startswith(("https://", "http://", "git@", "file://")):
+        url_part, _, frag_ref = spec.partition("@") if not spec.startswith("git@") else (spec, "", "")
+        if "#" in url_part:
+            url_part, _, frag_ref = url_part.partition("#")
+        return _git_clone(url_part, ref=ref_override or frag_ref, raw_spec=spec, kind="git")
+
+    # 3. Check if spec is an existing local path (directory, SKILL.md file, or archive)
     candidate = Path(spec).expanduser()
     if not candidate.is_absolute():
         candidate = (base / candidate).resolve()
@@ -238,32 +259,25 @@ def resolve_source(spec: str, *, base_dir: Path | None = None, ref_override: str
         skills = _find_skill_dirs(candidate)
         if not skills:
             raise SourceError(f"no SKILL.md found under local path {candidate}")
+        local_commit = ""
+        if (candidate / ".git").exists():
+            rev = subprocess.run(
+                ["git", "-C", str(candidate), "rev-parse", "HEAD"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+            if rev.returncode == 0:
+                local_commit = rev.stdout.strip()
         return ResolvedSource(
             raw_spec=spec,
             kind="local",
             canonical_source=str(candidate),
             root_dir=candidate,
             skill_dirs=skills,
+            resolved_commit=local_commit,
         )
-
-    # 2. Check GitHub tree URL: https://github.com/owner/repo/tree/ref/subpath
-    m_url = _GITHUB_TREE_URL_RE.match(spec)
-    if m_url:
-        owner = m_url.group("owner")
-        repo = m_url.group("repo")
-        if repo.endswith(".git"):
-            repo = repo[:-4]
-        ref = ref_override or (m_url.group("ref") or "")
-        subpath = m_url.group("subpath") or ""
-        git_url = f"https://github.com/{owner}/{repo}.git"
-        return _git_clone(git_url, ref=ref, subpath=subpath, raw_spec=spec, kind="github")
-
-    # 3. Check arbitrary git URL (https://, http://, git@, file://)
-    if spec.startswith(("https://", "http://", "git@", "file://")):
-        url_part, _, frag_ref = spec.partition("@") if not spec.startswith("git@") else (spec, "", "")
-        if "#" in url_part:
-            url_part, _, frag_ref = url_part.partition("#")
-        return _git_clone(url_part, ref=ref_override or frag_ref, raw_spec=spec, kind="git")
 
     # 4. Check GitHub shorthand: owner/repo, github:owner/repo, owner/repo/subpath@ref
     m_gh = _GITHUB_SHORTHAND_RE.match(spec)

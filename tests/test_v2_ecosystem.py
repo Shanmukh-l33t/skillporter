@@ -440,7 +440,7 @@ def test_cli_add_from_local_git_repository_with_commit_tracking(tmp_path, capsys
     rc = main(
         [
             "add",
-            f"file://{remote_repo}",
+            remote_repo.as_uri(),
             "--harness",
             "claude-code",
             "--harness",
