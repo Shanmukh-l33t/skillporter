@@ -18,7 +18,9 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .atomic import atomic_write_text
 from .frontmatter import parse_skill
+from .install import validate_skill_name_segment
 from .security import scan_skill
 
 
@@ -244,9 +246,11 @@ def pack_skill(skill_dir: Path, out_dir: Path) -> PackedRelease:
         raise ValueError(f"{skill_dir} does not contain SKILL.md")
 
     doc = parse_skill(skill_md)
-    name = doc.name or skill_dir.name
+    name = validate_skill_name_segment(doc.name or skill_dir.name)
     meta = doc.frontmatter.get("metadata")
-    version = str(meta.get("version", "1.0.0")) if isinstance(meta, dict) else "1.0.0"
+    version = validate_skill_name_segment(
+        str(meta.get("version", "1.0.0")) if isinstance(meta, dict) else "1.0.0"
+    )
 
     sec_report = scan_skill(skill_dir)
     out_dir = out_dir.resolve()
@@ -264,11 +268,18 @@ def pack_skill(skill_dir: Path, out_dir: Path) -> PackedRelease:
         return ti
 
     with tarfile.open(archive_path, "w:gz") as tf:
-        for fpath in sorted(skill_dir.rglob("*")):
-            if any(part in {".git", "__pycache__", ".DS_Store"} for part in fpath.parts):
-                continue
-            rel = fpath.relative_to(skill_dir).as_posix()
-            tf.add(fpath, arcname=f"{name}/{rel}", recursive=False, filter=_reset_tarinfo)
+        for dirpath, dirnames, filenames in os.walk(skill_dir, followlinks=False):
+            dirnames[:] = sorted(d for d in dirnames if d not in {".git", "__pycache__", ".DS_Store"})
+            cdir = Path(dirpath)
+            if cdir != skill_dir:
+                rel_d = cdir.relative_to(skill_dir).as_posix()
+                tf.add(cdir, arcname=f"{name}/{rel_d}", recursive=False, filter=_reset_tarinfo)
+            for fname in sorted(filenames):
+                if fname == ".DS_Store":
+                    continue
+                fpath = cdir / fname
+                rel = fpath.relative_to(skill_dir).as_posix()
+                tf.add(fpath, arcname=f"{name}/{rel}", recursive=False, filter=_reset_tarinfo)
 
     archive_sha256 = hashlib.sha256(archive_path.read_bytes()).hexdigest()
     provenance = {
@@ -290,7 +301,7 @@ def pack_skill(skill_dir: Path, out_dir: Path) -> PackedRelease:
             "medium": sec_report.medium_count,
         },
     }
-    provenance_path.write_text(json.dumps(provenance, indent=2) + "\n", encoding="utf-8")
+    atomic_write_text(provenance_path, json.dumps(provenance, indent=2) + "\n")
     return PackedRelease(
         skill_name=name,
         version=version,

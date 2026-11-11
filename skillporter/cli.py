@@ -22,7 +22,7 @@ from . import __version__, harnesses
 from .diagnose import diagnose as run_diagnose
 from .formats import inspect_skill_dir, render_adapted_skill
 from .frontmatter import Issue, discover, parse_skill, validate
-from .install import InstallError, plan_install, rollback_skill
+from .install import InstallError, install_many, plan_install, rollback_skill
 from .install import install as run_install
 from .install import uninstall as run_uninstall
 from .manifest import (
@@ -345,25 +345,22 @@ def _cmd_add(args: argparse.Namespace) -> int:
         if not args.json:
             print("\nInstalling...\n")
 
-        all_results = []
-        for sdir in skill_dirs:
-            try:
-                res = run_install(
-                    root,
-                    sdir,
-                    targets,
-                    strategy=args.strategy,
-                    scope=args.scope,
-                    force=args.force,
-                    source=resolved.canonical_source,
-                    resolved_commit=resolved.resolved_commit,
-                    record_state=True,
-                    adapt=args.adapt,
-                )
-                all_results.extend(res)
-            except InstallError as exc:
-                print(f"error: {exc}", file=sys.stderr)
-                return EXIT_ERROR
+        try:
+            all_results = install_many(
+                root,
+                skill_dirs,
+                targets,
+                strategy=args.strategy,
+                scope=args.scope,
+                force=args.force,
+                source=resolved.canonical_source,
+                resolved_commit=resolved.resolved_commit,
+                record_state=True,
+                adapt=args.adapt,
+            )
+        except InstallError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return EXIT_ERROR
 
         # Update manifest if skillporter.yaml exists
         manifest = load_manifest(root)
@@ -517,6 +514,8 @@ def _cmd_scan(args: argparse.Namespace) -> int:
         for f in rep.findings:
             loc = f"{f.file}:{f.line}" if f.line else f.file
             print(f"  [{badge(f.severity)}] {f.code} ({loc}): {f.message}")
+            if f.remediation:
+                print(f"      Fix: {f.remediation}")
     print(
         style(
             "\nNote: Static scanning inspects patterns and symlinks; it does not guarantee runtime safety.",
@@ -715,6 +714,7 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
                     "assets": pkg.assets,
                     "validation_issues": [str(i) for i in issues],
                     "security": sec.to_dict(),
+                    "adaptation_limitations": pkg.adaptation_limitations,
                     "adapted_previews": adapted_previews,
                 }
             )
@@ -1164,6 +1164,63 @@ def _cmd_pack(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _cmd_status(args: argparse.Namespace) -> int:
+    root = Path(args.path).expanduser().resolve()
+    manifest = load_manifest(root)
+    lock = load_lockfile(root)
+    records = load_state(root, scope=args.scope)
+    diag = run_diagnose(root, scope=args.scope)
+    detected = [d for d in harnesses.detect_harnesses(root) if d.installed]
+
+    lock_drift: list[str] = []
+    for sname, locked in sorted(lock.skills.items()):
+        copies = diag.skill_copies.get(sname, [])
+        if not copies:
+            lock_drift.append(f"{sname}: locked at {locked.tree_hash[:12]} but missing on disk")
+            continue
+        for cdir in copies:
+            actual_hash, _ = compute_tree_hash(cdir)
+            if locked.tree_hash and actual_hash != locked.tree_hash:
+                lock_drift.append(
+                    f"{sname} ({cdir.relative_to(root) if cdir.is_relative_to(root) else cdir}): "
+                    f"locked {locked.tree_hash[:12]} != disk {actual_hash[:12]}"
+                )
+
+    healthy = len(diag.findings) == 0 and len(lock_drift) == 0
+    payload = {
+        "root": str(root),
+        "manifest_present": manifest is not None,
+        "lockfile_present": (root / LOCKFILE_FILENAME).is_file(),
+        "lock_drift": lock_drift,
+        "detected_harnesses": [d.harness.name for d in detected],
+        "managed_skills": sorted(records),
+        "discovered_skills": diag.skill_names,
+        "drifted_skills": sorted(diag.drifted),
+        "findings": diag.findings,
+        "healthy": healthy,
+    }
+    if args.json:
+        print(json.dumps(payload, indent=2))
+        return EXIT_OK if healthy else EXIT_PROBLEM
+
+    print(f"skillporter {__version__} — workspace status for {root}\n")
+    print(f"Manifest ({MANIFEST_FILENAME}): {'present' if manifest else 'not initialized'}")
+    print(f"Lockfile ({LOCKFILE_FILENAME}): {'present' if (root / LOCKFILE_FILENAME).is_file() else 'not generated'}")
+    print(f"Detected harnesses: {', '.join(d.harness.name for d in detected) or '(none)'}")
+    print(f"Skills discovered:  {len(diag.skill_names)} ({len(records)} managed)")
+    print(f"Copy drift:         {len(diag.drifted)} skill(s)")
+    print(f"Lockfile drift:     {len(lock_drift)} entry(ies)")
+    if lock_drift:
+        for ld in lock_drift:
+            print(f"  - {ld}")
+    if diag.findings:
+        print("\nFindings:")
+        for f in diag.findings:
+            print(f"  - {f}")
+    print(f"\nStatus: {badge('HEALTHY' if healthy else 'NEEDS ATTENTION')}")
+    return EXIT_OK if healthy else EXIT_PROBLEM
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="skillporter",
@@ -1340,6 +1397,13 @@ def build_parser() -> argparse.ArgumentParser:
     mcp_p = sub.add_parser("mcp", help="run the stdio Model Context Protocol (MCP) server for agent harnesses")
     mcp_p.set_defaults(func=lambda _a: run_mcp_stdio())
 
+    # status
+    st_p = sub.add_parser("status", help="show unified workspace manifest, lockfile, harness, and drift status")
+    st_p.add_argument("path", nargs="?", default=".")
+    st_p.add_argument("--scope", choices=["project", "user"], default="project")
+    st_p.add_argument("--json", action="store_true")
+    st_p.set_defaults(func=_cmd_status)
+
     return p
 
 
@@ -1365,6 +1429,7 @@ KNOWN_COMMANDS = (
     "info",
     "pack",
     "mcp",
+    "status",
 )
 
 

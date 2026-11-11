@@ -138,6 +138,37 @@ _SCRIPT_PATTERNS: tuple[tuple[str, str, str, re.Pattern[str]], ...] = (
 )
 
 
+_REMEDIATIONS: dict[str, str] = {
+    "sec-private-key": (
+        "Remove embedded private keys and load secrets from environment variables or a vault at runtime."
+    ),
+    "sec-aws-key": "Remove hardcoded AWS access keys and use IAM roles or environment variables.",
+    "sec-github-token": "Revoke the token and replace hardcoded PATs with GITHUB_TOKEN environment variables.",
+    "sec-api-key": "Remove hardcoded API tokens and reference environment variables instead.",
+    "sec-prompt-override": "Remove instruction-override directives; skills must not subvert user or system boundaries.",
+    "sec-hidden-unicode": "Strip zero-width and bidirectional override Unicode characters from the file.",
+    "sec-html-comment-instruction": "Remove hidden imperative shell/override instructions from HTML comments.",
+    "sec-markdown-path-traversal": (
+        "Keep Markdown file references inside the skill root (e.g. references/FILE.md, no '../')."
+    ),
+    "sec-curl-pipe-sh": (
+        "Do not pipe remote downloads directly into a shell; download, verify a SHA-256 checksum, and inspect first."
+    ),
+    "sec-obfuscated-exec": "Remove base64/hex-decoded pipe-to-shell execution; write transparent, auditable scripts.",
+    "sec-reverse-shell": "Remove raw socket / reverse-shell commands from the skill package.",
+    "sec-credential-harvest": (
+        "Remove reads targeting host credential stores (~/.ssh, ~/.aws, /etc/shadow, .npmrc, .pypirc)."
+    ),
+    "sec-data-exfil": "Remove outbound HTTP POST commands that upload local host files.",
+    "sec-dynamic-eval": "Avoid eval(), exec(), or subprocess(..., shell=True); pass argument lists without a shell.",
+    "sec-symlink-escape": "Remove symlinks that resolve outside the skill root directory.",
+    "sec-path-traversal": "Remove '..' path traversal segments from file paths.",
+    "sec-binary-artifact": "Replace compiled binary blobs with auditable source scripts in scripts/.",
+    "sec-script-outside-scripts-dir": "Move executable scripts into the standard scripts/ subdirectory.",
+    "sec-oversized-file": "Split or compress large data assets so text files stay under 2 MiB.",
+}
+
+
 @dataclass
 class SecurityFinding:
     """One static security finding in a skill package."""
@@ -147,6 +178,11 @@ class SecurityFinding:
     file: str
     message: str
     line: int = 0
+    remediation: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.remediation and self.code in _REMEDIATIONS:
+            self.remediation = _REMEDIATIONS[self.code]
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -155,6 +191,7 @@ class SecurityFinding:
             "file": self.file,
             "line": self.line,
             "message": self.message,
+            "remediation": self.remediation,
         }
 
 

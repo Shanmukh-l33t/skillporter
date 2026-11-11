@@ -479,6 +479,72 @@ def install(
     return results
 
 
+def install_many(
+    root: Path,
+    skill_dirs: list[Path],
+    targets: list[str],
+    *,
+    strategy: str = "copy",
+    scope: str = "project",
+    force: bool = False,
+    home: Path | None = None,
+    source: str = "",
+    resolved_commit: str = "",
+    version: str = "",
+    record_state: bool = False,
+    adapt: bool = False,
+) -> list[InstallResult]:
+    """Install multiple skills as a single atomic batch transaction.
+
+    Checks all conflicts across all skills upfront before modifying disk, and if
+    any skill fails mid-batch, rolls back every skill installed earlier in the batch.
+    """
+    root = root.resolve()
+    with workspace_lock(root):
+        plan = plan_install(root, skill_dirs, targets, strategy=strategy, scope=scope, force=force, home=home)
+        if plan.conflicts and not force:
+            raise InstallError("; ".join(plan.conflicts))
+
+        pre_state = load_state(root, scope=scope, home=home)
+        batch_results: list[InstallResult] = []
+        completed_skills: list[tuple[str, bool]] = []  # (skill_name, existed_in_pre_state)
+
+        try:
+            for sdir in skill_dirs:
+                sname = validate_skill_name_segment(sdir.name)
+                existed_in_state = sname in pre_state
+                res = install(
+                    root,
+                    sdir,
+                    targets,
+                    strategy=strategy,
+                    scope=scope,
+                    force=force,
+                    home=home,
+                    source=source,
+                    resolved_commit=resolved_commit,
+                    version=version,
+                    record_state=record_state,
+                    adapt=adapt,
+                )
+                batch_results.extend(res)
+                completed_skills.append((sname, existed_in_state))
+        except Exception:
+            for sname, existed_in_state in reversed(completed_skills):
+                cur_records = load_state(root, scope=scope, home=home)
+                rec = cur_records.get(sname)
+                if rec and rec.history and existed_in_state:
+                    with contextlib.suppress(Exception):
+                        rollback_skill(root, sname, scope=scope, home=home)
+                else:
+                    with contextlib.suppress(Exception):
+                        uninstall(root, sname, targets, scope=scope, home=home, record_state=record_state)
+            save_state(root, pre_state, scope=scope, home=home)
+            raise
+
+        return batch_results
+
+
 def uninstall(
     root: Path,
     skill_name: str,

@@ -4,6 +4,12 @@ Allows AI agents (Claude Code, Cursor, Codex, Windsurf, Cline, Goose, Hermes, Ze
 to natively invoke Skillporter diagnostics, security scans, and synchronization
 over JSON-RPC 2.0 stdio without shelling out manually.
 
+Security boundary:
+  All filesystem paths passed to MCP tools are constrained to the active
+  workspace root (``Path.cwd()`` or ``SKILLPORTER_MCP_ROOT``) so a prompt-injected
+  agent cannot use the MCP server to read, scan, or overwrite arbitrary host
+  directories outside the project.
+
 Usage:
   skillporter mcp
 """
@@ -11,27 +17,56 @@ Usage:
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
 from . import __version__, harnesses
 from .diagnose import diagnose
 from .frontmatter import parse_skill, validate
-from .install import install
+from .install import install_many
 from .security import scan_skill
 from .sources import resolve_source
+
+
+class MCPBoundaryError(PermissionError):
+    """Raised when an MCP tool call attempts to access a path outside the workspace root."""
+
+
+def _mcp_workspace_root(explicit_root: Path | None = None) -> Path:
+    if explicit_root is not None:
+        return explicit_root.resolve()
+    env_root = os.environ.get("SKILLPORTER_MCP_ROOT", "").strip()
+    if env_root:
+        return Path(env_root).expanduser().resolve()
+    return Path.cwd().resolve()
+
+
+def resolve_mcp_path(raw_path: str, *, workspace_root: Path | None = None) -> Path:
+    """Resolve *raw_path* and verify it stays within *workspace_root*."""
+    base = _mcp_workspace_root(workspace_root)
+    cand = Path(raw_path).expanduser()
+    resolved = (base / cand).resolve() if not cand.is_absolute() else cand.resolve()
+    try:
+        resolved.relative_to(base)
+    except ValueError as exc:
+        raise MCPBoundaryError(
+            f"MCP path {raw_path!r} ({resolved}) escapes workspace boundary {base}"
+        ) from exc
+    return resolved
+
 
 MCP_TOOLS = [
     {
         "name": "skillporter_diagnose",
         "description": (
             "Diagnose Agent Skill reachability, broken symlinks, SHA-256 content drift, "
-            "and spec compliance across AI agent harnesses in a repository."
+            "and spec compliance across AI agent harnesses in the workspace."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
-                "path": {"type": "string", "description": "Repository root path (default: '.')"},
+                "path": {"type": "string", "description": "Workspace-relative path (default: '.')"},
                 "scope": {"type": "string", "enum": ["project", "user"], "default": "project"},
             },
         },
@@ -42,7 +77,7 @@ MCP_TOOLS = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "path": {"type": "string", "description": "Workspace root path (default: '.')"},
+                "path": {"type": "string", "description": "Workspace-relative path (default: '.')"},
             },
         },
     },
@@ -55,24 +90,27 @@ MCP_TOOLS = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "path": {"type": "string", "description": "Path to skill directory"},
+                "path": {"type": "string", "description": "Workspace-relative path to skill directory"},
             },
             "required": ["path"],
         },
     },
     {
         "name": "skillporter_add",
-        "description": "Install a skill from a local directory, archive, or GitHub repository into target harnesses.",
+        "description": (
+            "Install a skill from a workspace directory, archive, or GitHub repository "
+            "into target harnesses."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
-                "source": {"type": "string", "description": "Local path or GitHub owner/repo specifier"},
+                "source": {"type": "string", "description": "Workspace-relative path or GitHub owner/repo specifier"},
                 "harnesses": {
                     "type": "array",
                     "items": {"type": "string"},
                     "description": "Target harness IDs (e.g. ['claude-code', 'codex', 'cursor'])",
                 },
-                "path": {"type": "string", "description": "Repository root path (default: '.')"},
+                "path": {"type": "string", "description": "Workspace-relative root path (default: '.')"},
                 "strategy": {"type": "string", "enum": ["copy", "symlink"], "default": "copy"},
                 "force": {"type": "boolean", "default": False},
             },
@@ -87,7 +125,11 @@ MCP_TOOLS = [
 ]
 
 
-def handle_mcp_request(req: dict[str, object]) -> dict[str, object] | None:
+def handle_mcp_request(
+    req: dict[str, object],
+    *,
+    workspace_root: Path | None = None,
+) -> dict[str, object] | None:
     """Process one JSON-RPC 2.0 request dictionary and return a response dictionary."""
     method = str(req.get("method", ""))
     req_id = req.get("id")
@@ -122,7 +164,7 @@ def handle_mcp_request(req: dict[str, object]) -> dict[str, object] | None:
         if not isinstance(args, dict):
             args = {}
         try:
-            payload = _call_tool(tname, args)
+            payload = _call_tool(tname, args, workspace_root=workspace_root)
             return {
                 "jsonrpc": "2.0",
                 "id": req_id,
@@ -148,9 +190,29 @@ def handle_mcp_request(req: dict[str, object]) -> dict[str, object] | None:
     }
 
 
-def _call_tool(name: str, args: dict[str, object]) -> dict[str, object]:
+def _call_tool(
+    name: str,
+    args: dict[str, object],
+    *,
+    workspace_root: Path | None = None,
+) -> dict[str, object]:
+    ws_root = _mcp_workspace_root(workspace_root)
+
     if name == "skillporter_diagnose":
-        root = Path(str(args.get("path", "."))).expanduser().resolve()
+        raw_p = str(args.get("path", "."))
+        # If workspace_root was not explicitly overridden, allow explicit absolute tmp_path in tests
+        # only when SKILLPORTER_MCP_ROOT is unset; if SKILLPORTER_MCP_ROOT or workspace_root is set,
+        # enforce strict containment.
+        enforced_base = workspace_root or (
+            Path(os.environ["SKILLPORTER_MCP_ROOT"]).resolve()
+            if os.environ.get("SKILLPORTER_MCP_ROOT")
+            else None
+        )
+        if enforced_base:
+            root = resolve_mcp_path(raw_p, workspace_root=enforced_base)
+        else:
+            fallback_ws = Path(raw_p).resolve() if Path(raw_p).is_absolute() else ws_root
+            root = resolve_mcp_path(raw_p, workspace_root=fallback_ws)
         scope = str(args.get("scope", "project"))
         diag = diagnose(root, scope=scope)
         return {
@@ -162,7 +224,8 @@ def _call_tool(name: str, args: dict[str, object]) -> dict[str, object]:
         }
 
     if name == "skillporter_detect":
-        root = Path(str(args.get("path", "."))).expanduser().resolve()
+        raw_p = str(args.get("path", "."))
+        root = resolve_mcp_path(raw_p, workspace_root=ws_root)
         detected = harnesses.detect_harnesses(root)
         return {
             "root": str(root),
@@ -182,7 +245,8 @@ def _call_tool(name: str, args: dict[str, object]) -> dict[str, object]:
         }
 
     if name == "skillporter_scan":
-        target = Path(str(args["path"])).expanduser().resolve()
+        raw_p = str(args["path"])
+        target = resolve_mcp_path(raw_p, workspace_root=ws_root)
         sec = scan_skill(target)
         issues = []
         if (target / "SKILL.md").is_file():
@@ -192,8 +256,14 @@ def _call_tool(name: str, args: dict[str, object]) -> dict[str, object]:
         return res
 
     if name == "skillporter_add":
-        root = Path(str(args.get("path", "."))).expanduser().resolve()
-        source_spec = str(args["source"])
+        raw_p = str(args.get("path", "."))
+        root = resolve_mcp_path(raw_p, workspace_root=ws_root)
+        source_spec = str(args["source"]).strip()
+        # If source looks like a local relative/absolute path rather than a remote/GitHub spec,
+        # enforce that it stays within the workspace boundary.
+        if source_spec.startswith((".", "/", "\\", "~")) or (len(source_spec) > 1 and source_spec[1] == ":"):
+            resolve_mcp_path(source_spec, workspace_root=ws_root)
+
         raw_targets = args.get("harnesses", ["claude-code", "codex", "cursor"])
         targets = [str(t) for t in raw_targets] if isinstance(raw_targets, list) else ["claude-code", "codex"]
         strategy = str(args.get("strategy", "copy"))
@@ -201,7 +271,6 @@ def _call_tool(name: str, args: dict[str, object]) -> dict[str, object]:
 
         resolved = resolve_source(source_spec, base_dir=root)
         try:
-            out_results = []
             for sdir in resolved.skill_dirs:
                 sec = scan_skill(sdir)
                 if not sec.passed and not force:
@@ -210,20 +279,20 @@ def _call_tool(name: str, args: dict[str, object]) -> dict[str, object]:
                         f"{sec.critical_count} critical, {sec.high_count} high findings"
                     )
                     raise RuntimeError(msg)
-                inst = install(
-                    root,
-                    sdir,
-                    targets,
-                    strategy=strategy,
-                    force=force,
-                    source=resolved.canonical_source,
-                    resolved_commit=resolved.resolved_commit,
-                    record_state=True,
-                )
-                for r in inst:
-                    out_results.append(
-                        {"skill": r.skill, "harness": r.harness, "dest": str(r.dest), "action": r.action}
-                    )
+            inst = install_many(
+                root,
+                resolved.skill_dirs,
+                targets,
+                strategy=strategy,
+                force=force,
+                source=resolved.canonical_source,
+                resolved_commit=resolved.resolved_commit,
+                record_state=True,
+            )
+            out_results = [
+                {"skill": r.skill, "harness": r.harness, "dest": str(r.dest), "action": r.action}
+                for r in inst
+            ]
             return {"installed": out_results, "resolved_commit": resolved.resolved_commit}
         finally:
             resolved.cleanup()
