@@ -47,16 +47,18 @@ A skill authored for Claude Code in `.claude/skills/` is silently invisible to O
 ## One-Command Installation & Zero-Install Execution
 
 ```bash
-# Run immediately with uvx (zero install)
-uvx skillporter diagnose .
+# 1. Run immediately via npx directly from GitHub (zero install)
+npx github:Shanmukh-l33t/skillporter diagnose .
 
-# Or run with npx
-npx skillporter diagnose .
+# 2. Run immediately via uvx directly from GitHub (zero install)
+uvx --from git+https://github.com/Shanmukh-l33t/skillporter skillporter diagnose .
 
-# Or install globally via uv / pipx / pip
-uv tool install skillporter
-pipx install skillporter
-pip install skillporter
+# 3. Install globally via curl (Linux/macOS — bypasses PEP 668 externally-managed-environment)
+curl -fsSL https://raw.githubusercontent.com/Shanmukh-l33t/skillporter/main/install.sh | sh
+
+# 4. Install globally via uv tool or pipx directly from GitHub
+uv tool install git+https://github.com/Shanmukh-l33t/skillporter
+pipx install git+https://github.com/Shanmukh-l33t/skillporter
 ```
 
 ### Native Agent Integration (MCP Server)
@@ -64,8 +66,8 @@ pip install skillporter
 Register Skillporter directly inside Claude Code, Codex, Cursor, Windsurf, or Hermes so your agent can diagnose, scan, and synchronize skills on command:
 
 ```bash
-claude mcp add skillporter -- uvx skillporter mcp
-codex mcp add skillporter -- uvx skillporter mcp
+claude mcp add skillporter -- uvx --from git+https://github.com/Shanmukh-l33t/skillporter skillporter mcp
+codex mcp add skillporter -- uvx --from git+https://github.com/Shanmukh-l33t/skillporter skillporter mcp
 ```
 
 ---

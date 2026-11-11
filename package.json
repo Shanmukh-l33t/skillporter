@@ -1,0 +1,39 @@
+{
+  "name": "skillporter",
+  "version": "2.0.0",
+  "description": "ONE SKILL. EVERY AGENT. Universal package manager, validator, security scanner, and synchronizer for AI-agent skills.",
+  "keywords": [
+    "agent-skills",
+    "ai-agents",
+    "claude-code",
+    "codex",
+    "cursor",
+    "windsurf",
+    "github-copilot",
+    "gemini-cli",
+    "hermes",
+    "openclaw",
+    "openhands",
+    "goose",
+    "mcp"
+  ],
+  "homepage": "https://github.com/Shanmukh-l33t/skillporter",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Shanmukh-l33t/skillporter.git"
+  },
+  "license": "MIT",
+  "author": "Shanmukh Dheekonda",
+  "bin": {
+    "skillporter": "./npm/bin/skillporter.js"
+  },
+  "files": [
+    "npm/bin/skillporter.js",
+    "npm/bin/skillporter.pyz",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
