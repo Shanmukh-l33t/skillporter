@@ -14,6 +14,7 @@ repositories or archives.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import shutil
@@ -131,7 +132,17 @@ def safe_extract_zip(archive_path: Path, dest_dir: Path) -> Path:
                 target.relative_to(dest_dir)
             except ValueError as exc:
                 raise SourceError(f"archive member {name!r} escapes destination directory") from exc
-        zf.extractall(dest_dir)
+        # Extract from the same ZipFile we validated instead of zf.extractall():
+        # re-reading the archive closes the window where a swapped file could
+        # carry members the validation loop never saw.
+        for info in zf.infolist():
+            target = (dest_dir / info.filename).resolve()
+            if info.is_dir():
+                target.mkdir(parents=True, exist_ok=True)
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with zf.open(info.filename) as src, open(target, "wb") as out:
+                shutil.copyfileobj(src, out)
     return dest_dir
 
 
@@ -153,7 +164,22 @@ def safe_extract_tar(archive_path: Path, dest_dir: Path) -> Path:
                 target.relative_to(dest_dir)
             except ValueError as exc:
                 raise SourceError(f"tar member {member.name!r} escapes destination directory") from exc
-        tf.extractall(dest_dir)
+        # Extract only regular files/directories from this validated handle;
+        # tf.extractall() would re-open the archive and re-trust its members.
+        for member in tf.getmembers():
+            target = (dest_dir / member.name).resolve()
+            if member.isdir():
+                target.mkdir(parents=True, exist_ok=True)
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            src = tf.extractfile(member)
+            if src is None:
+                continue
+            with src, open(target, "wb") as out:
+                shutil.copyfileobj(src, out)
+            if member.mode:
+                with contextlib.suppress(OSError):
+                    os.chmod(target, member.mode & 0o777)
     return dest_dir
 
 

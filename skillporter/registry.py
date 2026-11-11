@@ -164,8 +164,14 @@ def load_catalog(registry_url: str | None = None) -> list[RegistryPackage]:
 
     try:
         if url.startswith(("http://", "https://")):
+            # Bounded read: an unbounded resp.read() lets a hostile registry
+            # exhaust memory. Cap at 1 MiB and reject larger payloads outright.
+            _MAX_REGISTRY_BYTES = 1 << 20
             with urllib.request.urlopen(url, timeout=5) as resp:  # noqa: S310
-                raw = json.loads(resp.read().decode("utf-8"))
+                body = resp.read(_MAX_REGISTRY_BYTES + 1)
+            if len(body) > _MAX_REGISTRY_BYTES:
+                raise ValueError(f"registry payload exceeds {_MAX_REGISTRY_BYTES} bytes; refusing to parse")
+            raw = json.loads(body.decode("utf-8"))
         else:
             raw = json.loads(Path(url).expanduser().read_text(encoding="utf-8"))
         items = raw if isinstance(raw, list) else raw.get("packages", [])
