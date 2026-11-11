@@ -12,11 +12,24 @@ permissions:
 jobs:
   test:
     name: test (py${{ matrix.python-version }})
-    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        # 3.9 is declared supported (requires-python >=3.9) but Ubuntu 26.04
+        # runners no longer ship it. Cover it on ubuntu-22.04 rather than
+        # silently dropping support.
+        include:
+          - python-version: "3.9"
+            os: ubuntu-22.04
+          - python-version: "3.10"
+            os: ubuntu-latest
+          - python-version: "3.11"
+            os: ubuntu-latest
+          - python-version: "3.12"
+            os: ubuntu-latest
+          - python-version: "3.13"
+            os: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
