@@ -236,6 +236,12 @@ def diagnose(
     ``scope="user"`` inspects the user-level locations instead.
     """
     root = root.resolve()
+    from .install import recover_interrupted_transactions
+    from .state import state_dir
+
+    if (state_dir(root, scope=scope, home=home) / "tmp").is_dir():
+        recover_interrupted_transactions(root, scope=scope, home=home)
+
     diag = Diagnosis(root=root)
 
     all_copies: dict[str, dict[str, str]] = {}  # skill_name -> {rel_dir: tree_hash}

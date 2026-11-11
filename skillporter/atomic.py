@@ -24,6 +24,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 _THREAD_LOCAL = threading.local()
+_IS_WINDOWS = os.name == "nt"
 
 
 def _held_locks() -> dict[str, int]:
@@ -100,7 +101,7 @@ def workspace_lock(root: Path, *, timeout_s: float = 10.0) -> Iterator[Path]:
         deadline = time.monotonic() + timeout_s
         locked = False
         try:
-            if os.name == "nt":
+            if _IS_WINDOWS:
                 import msvcrt
 
                 while True:
@@ -136,7 +137,7 @@ def workspace_lock(root: Path, *, timeout_s: float = 10.0) -> Iterator[Path]:
             held.pop(key, None)
             if locked:
                 with contextlib.suppress(OSError):
-                    if os.name == "nt":
+                    if _IS_WINDOWS:
                         import msvcrt
 
                         fh.seek(0)
