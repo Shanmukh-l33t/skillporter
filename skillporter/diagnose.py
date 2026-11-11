@@ -1,12 +1,19 @@
 """Diagnose why a skill does or does not load in a given harness, including
-content-drift and duplicate-loading detection.
+content-drift, duplicate-loading, multi-copy validation, and explicit
+verification states.
 
-This is the part competing sync tools skip: they copy files and report success,
-leaving the author to discover by hand that (say) Codex never reads
-``.claude/skills``, or that two copied directories have silently drifted out of
-sync. skillporter resolves every harness path, checks reachability, verifies
-SHA-256 content hashes across copies, detects duplicate loading within the same
-harness, and names the exact reason.
+Explicit compatibility & verification states exposed:
+  * ``FOUND``       — Skill directory with SKILL.md discovered in workspace.
+  * ``VALID``       — Passes all Agent Skills specification checks (0 errors).
+  * ``INVALID``     — Contains one or more specification errors.
+  * ``COMPATIBLE``  — Compatible with target harness (or ``ADAPTED`` when conversion required).
+  * ``INSTALLED``   — Present at a path scanned by the harness.
+  * ``VERIFIED``    — Installed AND adapter has independent runtime verification evidence.
+  * ``UNVERIFIED``  — Installed at documented path, not runtime-probed in live agent process.
+  * ``MISSING``     — Not present in any path scanned by the harness.
+  * ``DRIFT``       — Copies across directories have diverging SHA-256 content hashes.
+  * ``DUPLICATE``   — Present in >=2 distinct directories scanned by the same harness.
+  * ``BROKEN``      — Dangling symlink in harness skill directory.
 """
 
 from __future__ import annotations
@@ -64,7 +71,7 @@ class HarnessReport:
         return skill in self.reachable_skills
 
     def cell_state(self, skill: str) -> str:
-        """Return 'drifted', 'duplicate', 'yes', or 'MISSING'."""
+        """Return 'DRIFT', 'DUPLICATE', 'yes', or 'MISSING' (backward-compatible table cell)."""
         if skill not in self.reachable_skills:
             return "MISSING"
         if skill in self.drifted_skills:
@@ -73,6 +80,32 @@ class HarnessReport:
             return "DUPLICATE"
         return "yes"
 
+    def explicit_states(self, skill: str, *, is_valid: bool = True) -> list[str]:
+        """Return explicit states: FOUND, VALID/INVALID, COMPATIBLE, INSTALLED/MISSING, VERIFIED/UNVERIFIED."""
+        states = ["FOUND", "VALID" if is_valid else "INVALID"]
+        if self.support_status in ("NATIVE", "COMPATIBLE"):
+            states.append("COMPATIBLE")
+        elif self.support_status == "ADAPTED":
+            states.append("ADAPTED")
+        else:
+            states.append(self.support_status)
+
+        if skill not in self.reachable_skills:
+            states.append("MISSING")
+            return states
+
+        states.append("INSTALLED")
+        if skill in self.drifted_skills:
+            states.append("DRIFT")
+        if skill in self.duplicate_skills:
+            states.append("DUPLICATE")
+
+        if self.verification_level == "RUNTIME_VERIFIED":
+            states.append("VERIFIED")
+        else:
+            states.append("UNVERIFIED")
+        return states
+
 
 @dataclass
 class Diagnosis:
@@ -80,6 +113,7 @@ class Diagnosis:
 
     root: Path
     skills: list[Path] = field(default_factory=list)
+    skill_copies: dict[str, list[Path]] = field(default_factory=dict)
     reports: dict[str, HarnessReport] = field(default_factory=dict)
     issues: dict[str, list[Issue]] = field(default_factory=dict)
     findings: list[str] = field(default_factory=list)
@@ -92,6 +126,16 @@ class Diagnosis:
 
     def missing_in(self, skill: str) -> list[str]:
         return [h for h, r in self.reports.items() if not r.loads(skill)]
+
+    def is_skill_valid(self, skill: str) -> bool:
+        for copy_path in self.skill_copies.get(skill, []):
+            errs = [i for i in self.issues.get(str(copy_path), []) if i.level == "error"]
+            if errs:
+                return False
+        for path_str, iss_list in self.issues.items():
+            if Path(path_str).name == skill and any(i.level == "error" for i in iss_list):
+                return False
+        return True
 
 
 def resolve_path(raw: str, scope: str, root: Path, home: Path | None = None) -> Path:
@@ -144,6 +188,8 @@ def scan_location(
         return loc
 
     for entry in entries:
+        if entry.name.startswith("."):
+            continue
         if entry.is_symlink() and not entry.exists():
             loc.broken_links.append(str(entry))
             continue
@@ -155,7 +201,7 @@ def scan_location(
             continue
         # Nested category directories (e.g. Hermes $HERMES_HOME/skills/<category>/<name>/SKILL.md)
         if entry.is_dir() and recursive:
-            for nested in sorted(entry.rglob(_SKILL_FILE)):
+            for nested in discover(entry):
                 sname = nested.parent.name
                 if sname not in loc.skill_dirs:
                     loc.skill_dirs.append(sname)
@@ -183,8 +229,6 @@ def diagnose(
     root = root.resolve()
     diag = Diagnosis(root=root)
 
-    # Track every copy of every skill under root so we can detect content drift
-    # across copies even while deduplicating the skill list by name.
     all_copies: dict[str, dict[str, str]] = {}  # skill_name -> {rel_dir: tree_hash}
     seen: set[str] = set()
     for skill_md in discover(root):
@@ -198,11 +242,15 @@ def diagnose(
         if thash:
             all_copies.setdefault(name, {})[rel_dir] = thash
 
+        # Always validate every discovered copy so a corrupted secondary copy is never missed
+        copy_issues = validate(parse_skill(skill_md))
+        diag.issues[str(skill_dir)] = copy_issues
+        diag.skill_copies.setdefault(name, []).append(skill_dir)
+
         if name in seen:
             continue
         seen.add(name)
         diag.skills.append(skill_md)
-        diag.issues[str(skill_dir)] = validate(parse_skill(skill_md))
 
     selected = only or list(harnesses.HARNESSES)
     for name in selected:
@@ -230,8 +278,6 @@ def diagnose(
             for sname in loc.skill_dirs:
                 seen_in_harness.setdefault(sname, []).append(loc.raw_path)
 
-        # Duplicate check: only flag if a skill exists in >=2 *non-compatibility*
-        # or distinct physical paths read by the same harness (e.g. .agents/skills and .cursor/skills)
         for sname, raw_paths in seen_in_harness.items():
             if len(raw_paths) > 1:
                 report.duplicate_skills[sname] = raw_paths
@@ -296,8 +342,12 @@ def diagnose(
         path: [i for i in issues if i.level == "error"]
         for path, issues in diag.issues.items()
     }
+    seen_err_msgs: set[str] = set()
     for path, errs in errors.items():
         for issue in errs:
-            diag.findings.append(f"{Path(path).name}: {issue}")
+            msg = f"{Path(path).name}: {issue}"
+            if msg not in seen_err_msgs:
+                seen_err_msgs.add(msg)
+                diag.findings.append(msg)
 
     return diag

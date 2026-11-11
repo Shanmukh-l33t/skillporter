@@ -1,22 +1,15 @@
-"""Agent Skills frontmatter parsing and validation.
+"""Agent Skills frontmatter parsing, validation, and boundary-safe discovery.
 
-Implements the checks from https://agentskills.io/specification:
-
-* ``name``      — required, 1-64 chars, ``[a-z0-9-]`` only, no leading/trailing
-                  hyphen, no consecutive hyphens, must match the directory name.
-* ``description`` — required, 1-1024 chars, should say what *and* when.
-* ``license``    — optional
-* ``compatibility`` — optional, 1-500 chars
-* ``metadata``   — optional map of string -> string
-* ``allowed-tools`` — optional space-separated string (experimental)
-
-The parser is deliberately dependency-free: a YAML library is optional, and a
-small frontmatter-subset parser is used as fallback so the tool runs anywhere
-Python does.
+Implements the checks from https://agentskills.io/specification and categorizes
+findings into three explicit tiers:
+  * ``spec``                  — Official Agent Skills specification violations.
+  * ``recommendation``        — Progressive-disclosure and trigger-phrasing guidance.
+  * ``harness-compatibility`` — Features or limits that behave differently across harnesses.
 """
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -25,8 +18,10 @@ NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 MAX_NAME = 64
 MAX_DESCRIPTION = 1024
 MAX_COMPATIBILITY = 500
-# Recommended budget for the body an agent loads on activation.
 MAX_BODY_TOKENS_WARN = 5000
+MAX_BODY_LINES_WARN = 500
+
+_DEEP_REF_RE = re.compile(r"\]\((?:references|assets|scripts)/[^)\s/]+/[^)\s/]+/[^)\s]+\)")
 
 
 @dataclass
@@ -36,9 +31,18 @@ class Issue:
     level: str  # "error" | "warning"
     code: str
     message: str
+    category: str = "spec"  # "spec" | "recommendation" | "harness-compatibility"
 
     def __str__(self) -> str:
         return f"[{self.level}] {self.code}: {self.message}"
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "level": self.level,
+            "code": self.code,
+            "category": self.category,
+            "message": self.message,
+        }
 
 
 @dataclass
@@ -48,6 +52,7 @@ class SkillDoc:
     path: Path
     frontmatter: dict[str, object] = field(default_factory=dict)
     body: str = ""
+    has_tab_indent: bool = False
 
     @property
     def name(self) -> str:
@@ -71,13 +76,13 @@ def _unquote(value: str) -> str:
     return value
 
 
-def _parse_scalar_or_nested(lines: list[str]) -> dict[str, object]:
+def _parse_scalar_or_nested(lines: list[str]) -> tuple[dict[str, object], bool]:
     """Parse the block-style subset of YAML used by SKILL.md frontmatter.
 
-    Handles ``key: value``, nested one-level maps, and ``>``/``|`` block
-    scalars — the shapes the specification and real skills actually use.
+    Returns ``(parsed_dict, has_tab_indentation)``.
     """
     data: dict[str, object] = {}
+    has_tabs = any(line.startswith("\t") or line.startswith(" \t") for line in lines)
     i = 0
     while i < len(lines):
         raw = lines[i]
@@ -85,7 +90,6 @@ def _parse_scalar_or_nested(lines: list[str]) -> dict[str, object]:
             i += 1
             continue
         if raw.startswith((" ", "\t")):
-            # Continuation without a parent key — malformed, skip.
             i += 1
             continue
         if ":" not in raw:
@@ -96,10 +100,11 @@ def _parse_scalar_or_nested(lines: list[str]) -> dict[str, object]:
         rest = rest.strip()
 
         if rest in (">", "|", ">-", "|-"):
-            # Block scalar: consume following indented lines.
             block: list[str] = []
             i += 1
             while i < len(lines) and (lines[i].startswith((" ", "\t")) or not lines[i].strip()):
+                if lines[i].startswith("\t"):
+                    has_tabs = True
                 block.append(lines[i].strip())
                 i += 1
             joiner = "\n" if rest.startswith("|") else " "
@@ -110,39 +115,74 @@ def _parse_scalar_or_nested(lines: list[str]) -> dict[str, object]:
             continue
 
         if rest == "":
-            # Possibly a nested map.
-            nested: dict[str, str] = {}
+            nested_map: dict[str, str] = {}
+            nested_list: list[str] = []
             i += 1
             while i < len(lines) and (lines[i].startswith((" ", "\t")) or not lines[i].strip()):
+                if lines[i].startswith("\t"):
+                    has_tabs = True
                 child = lines[i].strip()
-                if child and ":" in child:
+                if not child or child.startswith("#"):
+                    i += 1
+                    continue
+                if child.startswith("- "):
+                    nested_list.append(_unquote(child[2:]))
+                elif ":" in child:
                     ck, _, cv = child.partition(":")
-                    nested[ck.strip()] = _unquote(cv)
+                    nested_map[ck.strip()] = _unquote(cv)
                 i += 1
-            data[key] = nested if nested else ""
+            if nested_list and not nested_map:
+                data[key] = nested_list
+            else:
+                data[key] = nested_map if nested_map else ""
+            continue
+
+        if rest.startswith("[") and rest.endswith("]"):
+            inner = rest[1:-1].strip()
+            data[key] = [_unquote(x) for x in inner.split(",") if x.strip()] if inner else []
+            i += 1
             continue
 
         data[key] = _unquote(rest)
         i += 1
-    return data
+    return data, has_tabs
 
 
 def split_frontmatter(text: str) -> tuple[dict[str, object], str]:
-    """Split ``---`` frontmatter from the Markdown body."""
-    if not text.startswith("---"):
-        return {}, text
-    parts = text.split("---", 2)
-    if len(parts) < 3:
-        return {}, text
-    raw_fm, body = parts[1], parts[2]
-    return _parse_scalar_or_nested(raw_fm.strip("\n").splitlines()), body.lstrip("\n")
+    """Split line-anchored ``---`` YAML frontmatter from the Markdown body."""
+    fm, body, _ = _split_frontmatter_detailed(text)
+    return fm, body
+
+
+def _split_frontmatter_detailed(text: str) -> tuple[dict[str, object], str, bool]:
+    clean = text[1:] if text.startswith("\ufeff") else text
+    lines = clean.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return {}, clean, False
+
+    closing_idx: int | None = None
+    for idx in range(1, len(lines)):
+        if lines[idx].strip() in ("---", "..."):
+            closing_idx = idx
+            break
+
+    if closing_idx is None:
+        return {}, clean, False
+
+    fm_lines = lines[1:closing_idx]
+    body_lines = lines[closing_idx + 1 :]
+    body = "\n".join(body_lines).lstrip("\n")
+    if clean.endswith("\n") and body:
+        body += "\n"
+    parsed, has_tabs = _parse_scalar_or_nested(fm_lines)
+    return parsed, body, has_tabs
 
 
 def parse_skill(path: Path) -> SkillDoc:
     """Parse a SKILL.md file into a :class:`SkillDoc`."""
     text = path.read_text(encoding="utf-8", errors="replace")
-    frontmatter, body = split_frontmatter(text)
-    return SkillDoc(path=path, frontmatter=frontmatter, body=body)
+    frontmatter, body, has_tabs = _split_frontmatter_detailed(text)
+    return SkillDoc(path=path, frontmatter=frontmatter, body=body, has_tab_indent=has_tabs)
 
 
 def validate(doc: SkillDoc) -> list[Issue]:
@@ -150,93 +190,232 @@ def validate(doc: SkillDoc) -> list[Issue]:
     issues: list[Issue] = []
     fm = doc.frontmatter
 
+    if doc.has_tab_indent:
+        issues.append(
+            Issue(
+                "error",
+                "frontmatter-tab-indentation",
+                "YAML frontmatter contains tab indentation; use spaces only",
+                category="spec",
+            )
+        )
+
     if not fm:
-        issues.append(Issue("error", "no-frontmatter", "SKILL.md must start with YAML frontmatter delimited by '---'"))
+        issues.append(
+            Issue(
+                "error",
+                "no-frontmatter",
+                "SKILL.md must start with YAML frontmatter delimited by '---'",
+                category="spec",
+            )
+        )
         return issues
 
     name = doc.name
     if not name:
-        issues.append(Issue("error", "missing-name", "'name' is required"))
+        issues.append(Issue("error", "missing-name", "'name' is required", category="spec"))
     else:
         if len(name) > MAX_NAME:
-            issues.append(Issue("error", "name-too-long", f"'name' is {len(name)} chars (max {MAX_NAME})"))
+            issues.append(
+                Issue("error", "name-too-long", f"'name' is {len(name)} chars (max {MAX_NAME})", category="spec")
+            )
         if not NAME_RE.match(name):
-            issues.append(Issue(
-                "error", "name-invalid-chars",
-                f"'name' {name!r} must be lowercase alphanumeric with single hyphens "
-                "(no leading/trailing hyphen, no consecutive hyphens)",
-            ))
+            issues.append(
+                Issue(
+                    "error",
+                    "name-invalid-chars",
+                    f"'name' {name!r} must be lowercase alphanumeric with single hyphens "
+                    "(no leading/trailing hyphen, no consecutive hyphens)",
+                    category="spec",
+                )
+            )
         if name != doc.directory_name:
-            issues.append(Issue(
-                "error", "name-directory-mismatch",
-                f"'name' {name!r} must match its directory name {doc.directory_name!r}",
-            ))
+            issues.append(
+                Issue(
+                    "error",
+                    "name-directory-mismatch",
+                    f"'name' {name!r} must match its directory name {doc.directory_name!r}",
+                    category="spec",
+                )
+            )
 
     desc = doc.description
     if not desc:
-        issues.append(Issue("error", "missing-description", "'description' is required"))
+        issues.append(Issue("error", "missing-description", "'description' is required", category="spec"))
     else:
         if len(desc) > MAX_DESCRIPTION:
-            issues.append(Issue(
-                "error", "description-too-long",
-                f"'description' is {len(desc)} chars (max {MAX_DESCRIPTION})",
-            ))
+            issues.append(
+                Issue(
+                    "error",
+                    "description-too-long",
+                    f"'description' is {len(desc)} chars (max {MAX_DESCRIPTION})",
+                    category="spec",
+                )
+            )
         if len(desc) < 20:
-            issues.append(Issue(
-                "warning", "description-vague",
-                "'description' is very short; state what the skill does AND when to use it",
-            ))
+            issues.append(
+                Issue(
+                    "warning",
+                    "description-vague",
+                    "'description' is very short; state what the skill does AND when to use it",
+                    category="recommendation",
+                )
+            )
         lowered = desc.lower()
         if not any(k in lowered for k in ("use when", "use this", "when the user", "when you", "trigger")):
-            issues.append(Issue(
-                "warning", "description-no-trigger",
-                "'description' does not say when to activate; add a 'Use when ...' clause",
-            ))
+            issues.append(
+                Issue(
+                    "warning",
+                    "description-no-trigger",
+                    "'description' does not say when to activate; add a 'Use when ...' clause",
+                    category="recommendation",
+                )
+            )
 
     compat = fm.get("compatibility")
     if isinstance(compat, str) and len(compat) > MAX_COMPATIBILITY:
-        issues.append(Issue(
-            "error", "compatibility-too-long",
-            f"'compatibility' is {len(compat)} chars (max {MAX_COMPATIBILITY})",
-        ))
+        issues.append(
+            Issue(
+                "error",
+                "compatibility-too-long",
+                f"'compatibility' is {len(compat)} chars (max {MAX_COMPATIBILITY})",
+                category="spec",
+            )
+        )
 
     meta = fm.get("metadata")
     if meta is not None and not isinstance(meta, dict):
-        issues.append(Issue("error", "metadata-not-map", "'metadata' must be a map of string keys to string values"))
+        issues.append(
+            Issue(
+                "error",
+                "metadata-not-map",
+                "'metadata' must be a map of string keys to string values",
+                category="spec",
+            )
+        )
     elif isinstance(meta, dict):
         for k, v in meta.items():
             if not isinstance(v, str):
-                issues.append(Issue(
-                    "warning", "metadata-non-string",
-                    f"metadata.{k} is not a string; clients may reject it",
-                ))
+                issues.append(
+                    Issue(
+                        "warning",
+                        "metadata-non-string",
+                        f"metadata.{k} is not a string; clients may reject it",
+                        category="spec",
+                    )
+                )
 
     tools = fm.get("allowed-tools")
     if tools is not None and not isinstance(tools, str):
-        issues.append(Issue("error", "allowed-tools-not-string", "'allowed-tools' must be a space-separated string"))
+        issues.append(
+            Issue(
+                "error",
+                "allowed-tools-not-string",
+                "'allowed-tools' must be a space-separated string",
+                category="spec",
+            )
+        )
+
+    if fm.get("context") == "fork":
+        issues.append(
+            Issue(
+                "warning",
+                "harness-specific-context-fork",
+                "'context: fork' is only supported by Claude Code and Hermes Agent; other harnesses ignore it",
+                category="harness-compatibility",
+            )
+        )
 
     body = doc.body.strip()
     if not body:
-        issues.append(Issue("warning", "empty-body", "SKILL.md body is empty; the agent loads nothing on activation"))
+        issues.append(
+            Issue(
+                "warning",
+                "empty-body",
+                "SKILL.md body is empty; the agent loads nothing on activation",
+                category="recommendation",
+            )
+        )
     else:
-        # Rough token estimate: ~4 chars/token for English prose.
         approx_tokens = len(body) // 4
         if approx_tokens > MAX_BODY_TOKENS_WARN:
-            issues.append(Issue(
-                "warning", "body-too-large",
-                f"body is ~{approx_tokens} tokens (recommended < {MAX_BODY_TOKENS_WARN}); "
-                "move detail into references/",
-            ))
+            issues.append(
+                Issue(
+                    "warning",
+                    "body-too-large",
+                    f"body is ~{approx_tokens} tokens (recommended < {MAX_BODY_TOKENS_WARN}; Cline enforces <5k); "
+                    "move detail into references/",
+                    category="harness-compatibility",
+                )
+            )
+        if _DEEP_REF_RE.search(body):
+            issues.append(
+                Issue(
+                    "warning",
+                    "deep-reference-path",
+                    "file references should stay one level deep (e.g. references/FILE.md)",
+                    category="recommendation",
+                )
+            )
 
     return issues
 
 
 def discover(root: Path) -> list[Path]:
-    """Find every SKILL.md under *root*, skipping VCS, virtualenv, and backup trees."""
-    skip = {".git", "node_modules", ".venv", "venv", "__pycache__", ".tox", ".mypy_cache", ".skillporter"}
+    """Find every skill root's SKILL.md under *root*, stopping at skill boundaries.
+
+    Once a directory contains ``SKILL.md``, it is a single skill package; we do
+    not recurse inside its ``references/``, ``scripts/``, or ``assets/``
+    subdirectories looking for nested skills. Symlink cycles are avoided by
+    tracking visited directory ``(st_dev, st_ino)`` pairs.
+    """
+    skip = {
+        ".git",
+        "node_modules",
+        ".venv",
+        "venv",
+        "__pycache__",
+        ".tox",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".skillporter",
+        "build",
+        "dist",
+    }
     found: list[Path] = []
-    for path in sorted(root.rglob("SKILL.md")):
-        if any(part in skip for part in path.parts):
+    visited_inodes: set[tuple[int, int]] = set()
+    root = Path(root)
+    if not root.exists():
+        return found
+
+    if root.is_file() and root.name == "SKILL.md":
+        return [root]
+
+    for dirpath, dirnames, filenames in os.walk(root, topdown=True, followlinks=True):
+        cpath = Path(dirpath)
+        try:
+            st = cpath.stat()
+            inode_key = (st.st_dev, st.st_ino)
+            if inode_key in visited_inodes and inode_key != (0, 0):
+                dirnames[:] = []
+                continue
+            visited_inodes.add(inode_key)
+        except OSError:
+            dirnames[:] = []
             continue
-        found.append(path)
-    return found
+
+        dirnames[:] = sorted(
+            d
+            for d in dirnames
+            if d not in skip
+            and not d.endswith(".egg-info")
+            and not d.startswith(".skillporter-")
+        )
+
+        if "SKILL.md" in filenames:
+            found.append(cpath / "SKILL.md")
+            # A directory containing SKILL.md is one skill; do not search inside it for more skills
+            dirnames[:] = []
+
+    return sorted(found)

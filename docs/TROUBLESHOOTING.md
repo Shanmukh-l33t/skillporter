@@ -1,41 +1,32 @@
 # Troubleshooting
 
-## A skill shows `MISSING` for a harness
-
-Run `skillporter matrix` and check the harness's project path. Then look at the
-file location the matrix claims (`.claude/skills/<name>/SKILL.md`,
-`.agents/skills/<name>/SKILL.md`, …). The path is almost always the problem, not
-the skill.
-
-## It works locally, not in Docker or CI
-
-You installed with `--strategy symlink`, and the build context dropped the link.
-Re-install with the default copy strategy:
+## Running `skillporter doctor`
+Start every troubleshooting session with:
 
 ```bash
-skillporter install path/to/skill --harness codex --force
+skillporter doctor .
 ```
 
-## Cursor lists the same skill twice
+`doctor` reports five explicit lifecycle states per skill and harness:
+- `FOUND` -> `VALID` / `INVALID` -> `COMPATIBLE` / `ADAPTED` -> `INSTALLED` / `MISSING` (plus `DRIFT` or `DUPLICATE`) -> `VERIFIED` / `UNVERIFIED`.
 
-The skill exists in two of Cursor's four roots (it reads `.agents`, `.cursor`,
-`.claude`, `.codex`). Keep one; remove the others.
+## A skill shows `DRIFT`
+Copies of the same skill across two harness directories (for example `.claude/skills/<name>` and `.agents/skills/<name>`) have different SHA-256 content hashes.
+- Running `skillporter sync` without `--force` refuses to overwrite drifted copies so manual edits are never lost silently.
+- Run `skillporter sync --force` (or `skillporter doctor --fix`) to snapshot existing copies to `.skillporter/backups/` and synchronize from the most recently modified copy.
 
-## `name` does not match directory
+## A skill shows `DUPLICATE` in Cursor
+The skill exists in two directories that Cursor scans simultaneously (such as `.agents/skills/<name>` and `.cursor/skills/<name>`). Remove `.cursor/skills/<name>` and keep `.agents/skills/<name>`, which satisfies both Codex and Cursor with a single folder.
 
-The spec requires the frontmatter `name` to equal the containing directory name.
-`skillporter validate` reports this as `name-directory-mismatch`.
+## A skill shows `INVALID` (`frontmatter-tab-indentation` or `name-directory-mismatch`)
+- `frontmatter-tab-indentation`: Replace tab characters with spaces in the YAML frontmatter block at the top of `SKILL.md`.
+- `name-directory-mismatch`: The `name:` field in `SKILL.md` must match the parent directory name.
 
-## Hermes reports MISSING
+## Restoring a previous version after an update
+Run:
 
-Hermes is profile-scoped. Use `--scope user` and make sure `HERMES_HOME` points
-at the profile you are actually running.
+```bash
+skillporter rollback <skill-name>
+```
 
-## `install` refuses to overwrite
-
-That is deliberate. Existing directories and symlinks are never replaced
-silently — pass `--force` once you have checked what is there.
-
-## Exit code 1 from `diagnose` in CI
-
-That is the contract: 1 = findings. Fail the job, read the findings, fix, re-run.
+Skillporter restores the most recent snapshot from `.skillporter/backups/<skill-name>/`.

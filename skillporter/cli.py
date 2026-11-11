@@ -801,6 +801,7 @@ def _cmd_sync(args: argparse.Namespace) -> int:
     root = Path(args.path).expanduser().resolve()
     manifest = load_manifest(root)
     targets = _resolve_target_harnesses(args.harness, root, scope=args.scope, default_detected=True)
+    force_flag = getattr(args, "force", False)
 
     synced_results = []
     if manifest and manifest.skills:
@@ -827,12 +828,33 @@ def _cmd_sync(args: argparse.Namespace) -> int:
             finally:
                 resolved.cleanup()
     else:
-        # Discover canonical skills in the repo and synchronize across target harnesses
+        # Check for content drift across copies before blindly overwriting
+        diag = run_diagnose(root, scope=args.scope)
+        if diag.drifted and not force_flag:
+            print(
+                "error: content drift detected across existing skill copies; refusing to overwrite without --force:",
+                file=sys.stderr,
+            )
+            for sname, phashes in sorted(diag.drifted.items()):
+                locs = ", ".join(f"{p} ({h[:8]})" for p, h in sorted(phashes.items()))
+                print(f"  - {sname}: {locs}", file=sys.stderr)
+            print(
+                "Re-run `skillporter sync --force` to synchronize from the most recently modified copy "
+                "(existing copies are snapshotted to .skillporter/backups/ first).",
+                file=sys.stderr,
+            )
+            return EXIT_PROBLEM
+
+        # Discover canonical skills in the repo (preferring newest mtime when multiple copies exist)
         canonical_by_name: dict[str, Path] = {}
         for skill_md in discover(root):
             sname = skill_md.parent.name
             if sname not in canonical_by_name:
                 canonical_by_name[sname] = skill_md.parent
+            else:
+                prev_md = canonical_by_name[sname] / "SKILL.md"
+                if skill_md.stat().st_mtime > prev_md.stat().st_mtime:
+                    canonical_by_name[sname] = skill_md.parent
 
         if not canonical_by_name:
             print(f"no skills or {MANIFEST_FILENAME} found under {root}")
@@ -932,9 +954,12 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
         active_proj = {d.harness.name for d in detected if d.project_active}
         targets = args.harness or sorted({"claude-code", "codex", "cursor"} | active_proj)
         for skill_md in diag.skills:
+            sname = skill_md.parent.name
+            copies = diag.skill_copies.get(sname, [skill_md.parent])
+            newest_dir = max(copies, key=lambda d: (d / "SKILL.md").stat().st_mtime)
             run_install(
                 root,
-                skill_md.parent,
+                newest_dir,
                 targets,
                 strategy="copy",
                 scope=args.scope,
@@ -943,15 +968,53 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
             )
         diag = run_diagnose(root, only=targets, scope=args.scope)
 
+    active_names = (
+        [harnesses.get(h).name for h in args.harness]
+        if args.harness
+        else sorted({"claude-code", "codex", "cursor"} | {d.harness.name for d in detected if d.project_active})
+    )
+
+    skill_summaries = []
+    for skill_md in diag.skills:
+        sname = skill_md.parent.name
+        valid = diag.is_skill_valid(sname)
+        thash, _ = compute_tree_hash(skill_md.parent)
+        per_harness = {}
+        for hname in active_names:
+            if hname in diag.reports:
+                per_harness[hname] = diag.reports[hname].explicit_states(sname, is_valid=valid)
+        skill_summaries.append(
+            {
+                "name": sname,
+                "path": str(skill_md.parent),
+                "state": "VALID" if valid else "INVALID",
+                "tree_hash": thash[:12] if thash else "",
+                "copies": len(diag.skill_copies.get(sname, [])),
+                "harnesses": per_harness,
+            }
+        )
+
+    remediations: list[str] = []
+    if diag.drifted:
+        remediations.append("skillporter sync --force   # reconcile drifted copies (snapshots backup first)")
+    if any("not visible to:" in f or "broken symlink" in f for f in diag.findings):
+        remediations.append("skillporter doctor --fix   # install missing skills and remove broken symlinks")
+    if any(not diag.is_skill_valid(s) for s in diag.skill_names):
+        remediations.append("skillporter validate .     # inspect and fix SKILL.md specification errors")
+
     if args.json:
         print(
             json.dumps(
                 {
                     "root": str(root),
                     "detected_harnesses": [d.harness.name for d in detected],
+                    "checked_harnesses": active_names,
                     "skills": diag.skill_names,
+                    "skill_states": skill_summaries,
                     "drifted": diag.drifted,
+                    "duplicates": diag.duplicates,
                     "findings": diag.findings,
+                    "remediations": remediations,
                     "healthy": len(diag.findings) == 0,
                 },
                 indent=2,
@@ -961,14 +1024,25 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
 
     print(f"skillporter {__version__} — doctor report for {root}\n")
     print(f"Detected harnesses: {', '.join(d.harness.name for d in detected) or '(none)'}")
+    print(f"Checked harnesses:  {', '.join(active_names)}")
     print(f"Discovered skills:  {', '.join(diag.skill_names) or '(none)'}")
     print(f"Content drift:      {len(diag.drifted)} skill(s)")
+
+    if skill_summaries:
+        print("\nSkill Status Matrix (FOUND / VALID / COMPATIBLE / INSTALLED / VERIFIED):")
+        for s in skill_summaries:
+            print(f"  {s['name']} [{s['state']}] (hash: {s['tree_hash']}, copies: {s['copies']})")
+            for hname, st_list in s["harnesses"].items():
+                print(f"    - {hname:16} {' -> '.join(st_list)}")
+
     if diag.findings:
         print("\nIssues found:")
         for f in diag.findings:
             print(f"  - {f}")
-        if not args.fix:
-            print("\nTip: run `skillporter doctor --fix` or `skillporter sync` to repair reachability and drift.")
+        if remediations and not args.fix:
+            print("\nRecommended fixes:")
+            for cmd in remediations:
+                print(f"  $ {cmd}")
         return EXIT_PROBLEM
     print("\nStatus: HEALTHY (all checked skills reachable, valid, and in sync).")
     return EXIT_OK
@@ -1185,6 +1259,7 @@ def build_parser() -> argparse.ArgumentParser:
     sy.add_argument("--harness", action="append")
     sy.add_argument("--strategy", choices=["copy", "symlink"], default="copy")
     sy.add_argument("--scope", choices=["project", "user"], default="project")
+    sy.add_argument("--force", action="store_true", help="overwrite drifted copies after snapshotting backups")
     sy.set_defaults(func=_cmd_sync)
 
     # update

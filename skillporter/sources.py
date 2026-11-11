@@ -79,6 +79,38 @@ def _find_skill_dirs(search_root: Path) -> list[Path]:
 #: execute a command on some git versions.
 _SAFE_GIT_REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,200}$")
 
+MAX_ARCHIVE_FILES = 1000
+MAX_SINGLE_FILE_BYTES = 10 * 1024 * 1024  # 10 MiB per member
+MAX_TOTAL_ARCHIVE_BYTES = 50 * 1024 * 1024  # 50 MiB total archive extraction budget
+
+
+def _copy_bounded(
+    src,
+    out,
+    *,
+    member_name: str,
+    max_file_bytes: int,
+    total_counter: list[int],
+    max_total_bytes: int,
+) -> None:
+    """Copy stream in chunks while enforcing per-file and total decompression limits."""
+    written = 0
+    while True:
+        chunk = src.read(65536)
+        if not chunk:
+            break
+        written += len(chunk)
+        total_counter[0] += len(chunk)
+        if written > max_file_bytes:
+            raise SourceError(
+                f"archive member {member_name!r} exceeds maximum allowed size ({max_file_bytes} bytes)"
+            )
+        if total_counter[0] > max_total_bytes:
+            raise SourceError(
+                f"archive exceeds maximum total extracted size ({max_total_bytes} bytes)"
+            )
+        out.write(chunk)
+
 
 def _validate_git_ref(ref: str) -> str:
     """Return *ref* if it is a plausible git ref, else raise SourceError."""
@@ -113,12 +145,24 @@ def _unsafe_member_name(name: str) -> str:
     return ""
 
 
-def safe_extract_zip(archive_path: Path, dest_dir: Path) -> Path:
-    """Extract a ZIP archive into *dest_dir*, rejecting path traversal (Zip-Slip) and symlinks."""
+def safe_extract_zip(
+    archive_path: Path,
+    dest_dir: Path,
+    *,
+    max_files: int = MAX_ARCHIVE_FILES,
+    max_file_bytes: int = MAX_SINGLE_FILE_BYTES,
+    max_total_bytes: int = MAX_TOTAL_ARCHIVE_BYTES,
+) -> Path:
+    """Extract a ZIP archive into *dest_dir*, rejecting path traversal, symlinks, and zip bombs."""
     dest_dir = dest_dir.resolve()
     dest_dir.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(archive_path, "r") as zf:
-        for info in zf.infolist():
+        infos = zf.infolist()
+        if len(infos) > max_files:
+            raise SourceError(
+                f"archive {archive_path} contains {len(infos)} entries (exceeds limit of {max_files})"
+            )
+        for info in infos:
             name = info.filename
             reason = _unsafe_member_name(name)
             if reason:
@@ -127,31 +171,53 @@ def safe_extract_zip(archive_path: Path, dest_dir: Path) -> Path:
             mode = (info.external_attr >> 16) & 0o170000
             if mode == 0o120000:
                 raise SourceError(f"unsafe symlink entry {name!r} in {archive_path} (archive symlinks rejected)")
+            if info.file_size > max_file_bytes:
+                raise SourceError(
+                    f"archive member {name!r} exceeds maximum allowed size ({max_file_bytes} bytes)"
+                )
             target = (dest_dir / name).resolve()
             try:
                 target.relative_to(dest_dir)
             except ValueError as exc:
                 raise SourceError(f"archive member {name!r} escapes destination directory") from exc
-        # Extract from the same ZipFile we validated instead of zf.extractall():
-        # re-reading the archive closes the window where a swapped file could
-        # carry members the validation loop never saw.
-        for info in zf.infolist():
+
+        total_counter = [0]
+        for info in infos:
             target = (dest_dir / info.filename).resolve()
             if info.is_dir():
                 target.mkdir(parents=True, exist_ok=True)
                 continue
             target.parent.mkdir(parents=True, exist_ok=True)
             with zf.open(info.filename) as src, open(target, "wb") as out:
-                shutil.copyfileobj(src, out)
+                _copy_bounded(
+                    src,
+                    out,
+                    member_name=info.filename,
+                    max_file_bytes=max_file_bytes,
+                    total_counter=total_counter,
+                    max_total_bytes=max_total_bytes,
+                )
     return dest_dir
 
 
-def safe_extract_tar(archive_path: Path, dest_dir: Path) -> Path:
-    """Extract a tar archive into *dest_dir*, rejecting path traversal and symlinks/devices."""
+def safe_extract_tar(
+    archive_path: Path,
+    dest_dir: Path,
+    *,
+    max_files: int = MAX_ARCHIVE_FILES,
+    max_file_bytes: int = MAX_SINGLE_FILE_BYTES,
+    max_total_bytes: int = MAX_TOTAL_ARCHIVE_BYTES,
+) -> Path:
+    """Extract a tar archive into *dest_dir*, rejecting path traversal, symlinks/devices, and tar bombs."""
     dest_dir = dest_dir.resolve()
     dest_dir.mkdir(parents=True, exist_ok=True)
     with tarfile.open(archive_path, "r:*") as tf:
-        for member in tf.getmembers():
+        members = tf.getmembers()
+        if len(members) > max_files:
+            raise SourceError(
+                f"archive {archive_path} contains {len(members)} entries (exceeds limit of {max_files})"
+            )
+        for member in members:
             reason = _unsafe_member_name(member.name)
             if reason:
                 raise SourceError(f"unsafe tar path {member.name!r} in {archive_path} ({reason} rejected)")
@@ -159,14 +225,18 @@ def safe_extract_tar(archive_path: Path, dest_dir: Path) -> Path:
                 raise SourceError(
                     f"unsafe special/symlink entry {member.name!r} in {archive_path} (rejected by security policy)"
                 )
+            if member.size > max_file_bytes:
+                raise SourceError(
+                    f"archive member {member.name!r} exceeds maximum allowed size ({max_file_bytes} bytes)"
+                )
             target = (dest_dir / member.name).resolve()
             try:
                 target.relative_to(dest_dir)
             except ValueError as exc:
                 raise SourceError(f"tar member {member.name!r} escapes destination directory") from exc
-        # Extract only regular files/directories from this validated handle;
-        # tf.extractall() would re-open the archive and re-trust its members.
-        for member in tf.getmembers():
+
+        total_counter = [0]
+        for member in members:
             target = (dest_dir / member.name).resolve()
             if member.isdir():
                 target.mkdir(parents=True, exist_ok=True)
@@ -176,7 +246,14 @@ def safe_extract_tar(archive_path: Path, dest_dir: Path) -> Path:
             if src is None:
                 continue
             with src, open(target, "wb") as out:
-                shutil.copyfileobj(src, out)
+                _copy_bounded(
+                    src,
+                    out,
+                    member_name=member.name,
+                    max_file_bytes=max_file_bytes,
+                    total_counter=total_counter,
+                    max_total_bytes=max_total_bytes,
+                )
             if member.mode:
                 with contextlib.suppress(OSError):
                     os.chmod(target, member.mode & 0o777)
@@ -188,7 +265,17 @@ def _git_clone(url: str, ref: str = "", subpath: str = "", raw_spec: str = "", k
     tmp = Path(tempfile.mkdtemp(prefix="skillporter-src-"))
     repo_dir = tmp / "repo"
     try:
-        cmd = ["git", "clone", "--quiet"]
+        cmd = [
+            "git",
+            "-c",
+            "protocol.ext.allow=never",
+            "-c",
+            "core.fsmonitor=false",
+            "-c",
+            "core.symlinks=false",
+            "clone",
+            "--quiet",
+        ]
         # Use shallow clone when ref is empty or looks like branch/tag, full clone for commit SHA
         is_sha = bool(ref and re.fullmatch(r"[0-9a-fA-F]{7,40}", ref))
         if not is_sha:

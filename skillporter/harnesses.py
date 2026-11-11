@@ -829,15 +829,26 @@ def load_adapter_file(path: Path) -> list[Harness]:
     for item in items:
         if not isinstance(item, dict) or "name" not in item or "paths" not in item:
             raise ValueError(f"invalid adapter definition in {path}: missing 'name' or 'paths'")
-        skill_paths = tuple(
-            SkillPath(
-                path=str(p["path"]),
-                scope=str(p.get("scope", "project")),
-                note=str(p.get("note", "")),
-                is_compatibility=bool(p.get("is_compatibility", False)),
+        skill_paths: list[SkillPath] = []
+        for p in item["paths"]:
+            raw_p = str(p["path"]).strip()
+            sc = str(p.get("scope", "project"))
+            norm_p = raw_p.replace("\\", "/")
+            if sc in ("project", "user") and (
+                norm_p.startswith("/") or ".." in [seg for seg in norm_p.split("/") if seg]
+            ):
+                raise ValueError(
+                    f"unsafe adapter path {raw_p!r} for scope {sc!r}: "
+                    "relative paths without '..' required"
+                )
+            skill_paths.append(
+                SkillPath(
+                    path=raw_p,
+                    scope=sc,
+                    note=str(p.get("note", "")),
+                    is_compatibility=bool(p.get("is_compatibility", False)),
+                )
             )
-            for p in item["paths"]
-        )
         h = Harness(
             name=str(item["name"]).lower(),
             display_name=str(item.get("display_name", item["name"])),
@@ -851,7 +862,7 @@ def load_adapter_file(path: Path) -> list[Harness]:
             notes=tuple(str(n) for n in item.get("notes", ())),
             limitations=tuple(str(x) for x in item.get("limitations", ())),
             aliases=tuple(str(a) for a in item.get("aliases", ())),
-            paths=skill_paths,
+            paths=tuple(skill_paths),
         )
         register_adapter(h)
         loaded.append(h)

@@ -8,19 +8,25 @@ Key guarantees:
   1. Shared destinations (such as ``.agents/skills`` shared by Codex, Cursor,
      Gemini CLI, Zed, Antigravity, OpenHands, and Goose) are written ONCE per run.
   2. Existing unmanaged files are never silently overwritten without ``--force``.
-  3. Existing managed installations are snapshotted to ``.skillporter/backups/``
-     before update/overwrite so partial failures automatically roll back and
-     users can run ``skillporter rollback <skill>``.
+  3. Directory replacements are staged via ``.skillporter/tmp/`` so interrupted
+     writes never leave half-copied skill trees, and if any target in a
+     multi-harness transaction fails, both newly created AND overwritten
+     destinations are restored to their exact pre-transaction state.
+  4. All skill names are validated as single safe path segments so ``install``,
+     ``uninstall``, and ``rollback`` can never escape harness skill roots.
 """
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import harnesses
+from .atomic import atomic_write_text, workspace_lock
 from .diagnose import resolve_path
 from .formats import render_adapted_skill
 from .frontmatter import parse_skill
@@ -30,11 +36,39 @@ from .state import (
     record_installation,
     save_state,
     snapshot_skill_for_rollback,
+    state_dir,
 )
 
 
 class InstallError(RuntimeError):
-    """Raised when an install cannot be completed safely."""
+    """Raised when an install or uninstall cannot be completed safely."""
+
+
+def validate_skill_name_segment(skill_name: str, base: Path | None = None) -> str:
+    """Validate that *skill_name* is a single safe directory name segment.
+
+    Prevents path traversal (e.g. ``../../victim``) in ``install``,
+    ``uninstall``, and ``rollback_skill``.
+    """
+    clean = skill_name.strip()
+    if (
+        not clean
+        or clean in (".", "..")
+        or "/" in clean
+        or "\\" in clean
+        or "\x00" in clean
+        or (len(clean) > 1 and clean[1] == ":")
+    ):
+        raise InstallError(
+            f"invalid skill name {skill_name!r}: must be a single directory name without path separators or '..'"
+        )
+    if base is not None:
+        resolved_base = base.resolve()
+        raw_cand = resolved_base / clean
+        candidate = raw_cand.resolve() if not raw_cand.is_symlink() else raw_cand
+        if candidate.parent.resolve() != resolved_base:
+            raise InstallError(f"skill destination {candidate} escapes harness directory {resolved_base}")
+    return clean
 
 
 @dataclass
@@ -86,7 +120,7 @@ def plan_install(
 ) -> InstallPlan:
     """Compute an installation plan without modifying the filesystem."""
     root = root.resolve()
-    skill_names = [d.name for d in skill_dirs]
+    skill_names = [ validate_skill_name_segment(d.name) for d in skill_dirs ]
     plan = InstallPlan(
         root=root,
         scope=scope,
@@ -96,7 +130,7 @@ def plan_install(
     )
 
     for skill_dir in skill_dirs:
-        sname = skill_dir.name
+        sname = validate_skill_name_segment(skill_dir.name)
         seen_dests: dict[Path, PlannedDestination] = {}
         for target in targets:
             h = harnesses.get(target)
@@ -105,6 +139,7 @@ def plan_install(
                 continue
             primary = paths[0]
             base = resolve_path(primary.path, scope, root, home)
+            validate_skill_name_segment(sname, base)
             dest = (base / sname).resolve() if not (base / sname).is_symlink() else (base / sname)
 
             if dest in seen_dests:
@@ -133,7 +168,15 @@ def plan_install(
     return plan
 
 
-def _copy_skill(src: Path, dest: Path, *, force: bool) -> str:
+def _stage_and_copy_skill(
+    src: Path,
+    dest: Path,
+    *,
+    force: bool,
+    txn_tmp_root: Path,
+    replaced_in_txn: list[tuple[Path, Path]],
+) -> str:
+    """Copy *src* to *dest* via a staging directory, preserving prior *dest* for rollback."""
     existed = dest.exists() or dest.is_symlink()
     if existed:
         if dest.is_symlink():
@@ -142,18 +185,38 @@ def _copy_skill(src: Path, dest: Path, *, force: bool) -> str:
                     f"{dest} is a symlink; re-run with --force to replace it, "
                     "or use --strategy symlink to manage links explicitly"
                 )
-            dest.unlink()
-        elif force:
+        elif not force:
+            raise InstallError(f"{dest} already exists; re-run with --force to overwrite")
+        else:
             if src.resolve() == dest.resolve():
                 return "unchanged"
-            shutil.rmtree(dest)
-        else:
-            raise InstallError(f"{dest} already exists; re-run with --force to overwrite")
-    shutil.copytree(src, dest, symlinks=False)
+
+    txn_tmp_root.mkdir(parents=True, exist_ok=True)
+    stage_dir = txn_tmp_root / f"stage-{uuid.uuid4().hex[:10]}"
+    shutil.copytree(src, stage_dir, symlinks=True)
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if existed:
+        prev_slot = txn_tmp_root / f"prev-{uuid.uuid4().hex[:10]}"
+        shutil.move(str(dest), str(prev_slot))
+        replaced_in_txn.append((dest, prev_slot))
+
+    shutil.move(str(stage_dir), str(dest))
     return "created"
 
 
-def _link_skill(src: Path, dest: Path, *, force: bool) -> str:
+def _stage_and_link_skill(
+    src: Path,
+    dest: Path,
+    *,
+    force: bool,
+    txn_tmp_root: Path,
+    replaced_in_txn: list[tuple[Path, Path]],
+) -> str:
+    if os.name == "nt":
+        raise InstallError("symlink strategy is not reliable on Windows; use --strategy copy")
+
+    existed = dest.exists() or dest.is_symlink()
     if dest.is_symlink():
         try:
             current = dest.resolve()
@@ -163,19 +226,20 @@ def _link_skill(src: Path, dest: Path, *, force: bool) -> str:
             return "unchanged"
         if not force:
             raise InstallError(f"{dest} points at {current}; re-run with --force to repoint")
-        dest.unlink()
-    elif dest.exists():
-        if not force:
-            raise InstallError(f"{dest} exists as a real directory; re-run with --force to replace it")
-        shutil.rmtree(dest)
-    if os.name == "nt":
-        raise InstallError("symlink strategy is not reliable on Windows; use --strategy copy")
+    elif dest.exists() and not force:
+        raise InstallError(f"{dest} exists as a real directory; re-run with --force to replace it")
+
     dest.parent.mkdir(parents=True, exist_ok=True)
+    if existed:
+        txn_tmp_root.mkdir(parents=True, exist_ok=True)
+        prev_slot = txn_tmp_root / f"prev-{uuid.uuid4().hex[:10]}"
+        shutil.move(str(dest), str(prev_slot))
+        replaced_in_txn.append((dest, prev_slot))
+
     try:
         rel_target = os.path.relpath(src.resolve(), dest.parent.resolve())
         dest.symlink_to(Path(rel_target), target_is_directory=True)
     except ValueError:
-        # Different drive on POSIX/Windows fallback
         dest.symlink_to(src.resolve(), target_is_directory=True)
     return "created"
 
@@ -196,7 +260,7 @@ def install(
     adapt: bool = False,
     skill_name_override: str = "",
 ) -> list[InstallResult]:
-    """Install one skill into the given harnesses.
+    """Install one skill into the given harnesses transactionally.
 
     ``skill_dir`` is the source (must contain SKILL.md).
     """
@@ -207,102 +271,135 @@ def install(
         raise InstallError(f"unknown strategy {strategy!r}; expected 'copy' or 'symlink'")
 
     doc = parse_skill(skill_dir / "SKILL.md")
-    skill_name = skill_name_override or skill_dir.name
+    skill_name = validate_skill_name_segment(skill_name_override or skill_dir.name)
     meta = doc.frontmatter.get("metadata")
     inferred_version = version or (
         str(meta.get("version", "1.0.0")) if isinstance(meta, dict) else "1.0.0"
     )
 
     results: list[InstallResult] = []
-    written: dict[Path, str] = {}  # dest -> first harness that wrote it
+    written: dict[Path, str] = {}
     created_in_txn: list[Path] = []
+    replaced_in_txn: list[tuple[Path, Path]] = []
     backup_entry = None
-    existing_records = load_state(root, scope=scope, home=home) if record_state else {}
-    existing_record = existing_records.get(skill_name)
 
-    try:
-        for target in targets:
-            h = harnesses.get(target)
-            paths = h.project_paths if scope == "project" else h.user_paths
-            if not paths:
-                raise InstallError(f"harness {target!r} has no {scope}-level skill path")
+    sdir_root = state_dir(root, scope=scope, home=home)
+    txn_tmp_root = sdir_root / "tmp" / f"txn-{uuid.uuid4().hex[:12]}"
 
-            primary = paths[0]
-            base = resolve_path(primary.path, scope, root, home)
-            dest = base / skill_name
+    with workspace_lock(root):
+        existing_records = load_state(root, scope=scope, home=home) if record_state else {}
+        existing_record = existing_records.get(skill_name)
 
-            if dest in written:
-                via = primary.path if scope == "project" else base
+        try:
+            for target in targets:
+                h = harnesses.get(target)
+                paths = h.project_paths if scope == "project" else h.user_paths
+                if not paths:
+                    raise InstallError(f"harness {target!r} has no {scope}-level skill path")
+
+                primary = paths[0]
+                base = resolve_path(primary.path, scope, root, home)
+                validate_skill_name_segment(skill_name, base)
+                dest = base / skill_name
+
+                if dest in written:
+                    via = primary.path if scope == "project" else base
+                    results.append(
+                        InstallResult(
+                            skill=skill_name,
+                            harness=h.name,
+                            dest=dest,
+                            action="unchanged",
+                            detail=f"shared path already installed for {written[dest]} ({strategy} via {via})",
+                        )
+                    )
+                    continue
+
+                if record_state and dest.exists() and not dest.is_symlink() and backup_entry is None:
+                    backup_entry = snapshot_skill_for_rollback(
+                        root, skill_name, dest, existing_record, scope=scope, home=home
+                    )
+
+                existed_before = dest.exists() or dest.is_symlink()
+                try:
+                    if strategy == "copy":
+                        action = _stage_and_copy_skill(
+                            skill_dir,
+                            dest,
+                            force=force,
+                            txn_tmp_root=txn_tmp_root,
+                            replaced_in_txn=replaced_in_txn,
+                        )
+                    else:
+                        action = _stage_and_link_skill(
+                            skill_dir,
+                            dest,
+                            force=force,
+                            txn_tmp_root=txn_tmp_root,
+                            replaced_in_txn=replaced_in_txn,
+                        )
+                except InstallError as exc:
+                    raise InstallError(f"{h.name}: {exc}") from exc
+
+                if not existed_before and action == "created":
+                    created_in_txn.append(dest)
+
+                detail_suffix = f"{strategy} via {primary.path if scope == 'project' else base}"
+                if adapt and h.capabilities.adapted_format and scope == "project":
+                    rel_adapt, adapt_content = render_adapted_skill(doc, h.capabilities.adapted_format)
+                    adapt_path = root / rel_adapt
+                    atomic_write_text(adapt_path, adapt_content)
+                    detail_suffix += f" + adapted {rel_adapt}"
+
+                written[dest] = h.name
                 results.append(
                     InstallResult(
                         skill=skill_name,
                         harness=h.name,
                         dest=dest,
-                        action="unchanged",
-                        detail=f"shared path already installed for {written[dest]} ({strategy} via {via})",
+                        action=action,
+                        detail=detail_suffix,
                     )
                 )
-                continue
+        except Exception:
+            # 1. Remove any brand-new destinations created in this failed transaction
+            for created_dest in created_in_txn:
+                if created_dest.is_symlink():
+                    created_dest.unlink(missing_ok=True)
+                elif created_dest.is_dir():
+                    shutil.rmtree(created_dest, ignore_errors=True)
+            # 2. Restore any pre-existing destinations that were replaced in this transaction
+            for orig_dest, prev_slot in reversed(replaced_in_txn):
+                if orig_dest.is_symlink():
+                    orig_dest.unlink(missing_ok=True)
+                elif orig_dest.exists():
+                    shutil.rmtree(orig_dest, ignore_errors=True)
+                if prev_slot.exists() or prev_slot.is_symlink():
+                    shutil.move(str(prev_slot), str(orig_dest))
+            shutil.rmtree(txn_tmp_root, ignore_errors=True)
+            raise
 
-            if record_state and dest.exists() and not dest.is_symlink() and backup_entry is None:
-                backup_entry = snapshot_skill_for_rollback(
-                    root, skill_name, dest, existing_record, scope=scope, home=home
-                )
+        # Clean up temporary replaced slots after all targets succeeded
+        shutil.rmtree(txn_tmp_root, ignore_errors=True)
+        with contextlib.suppress(OSError):
+            if not record_state and sdir_root.exists() and not any((sdir_root / "tmp").iterdir()):
+                (sdir_root / "tmp").rmdir()
 
-            existed_before = dest.exists() or dest.is_symlink()
-            try:
-                if strategy == "copy":
-                    action = _copy_skill(skill_dir, dest, force=force)
-                else:
-                    action = _link_skill(skill_dir, dest, force=force)
-            except InstallError as exc:
-                raise InstallError(f"{h.name}: {exc}") from exc
-
-            if not existed_before:
-                created_in_txn.append(dest)
-
-            detail_suffix = f"{strategy} via {primary.path if scope == 'project' else base}"
-            if adapt and h.capabilities.adapted_format and scope == "project":
-                rel_adapt, adapt_content = render_adapted_skill(doc, h.capabilities.adapted_format)
-                adapt_path = root / rel_adapt
-                adapt_path.parent.mkdir(parents=True, exist_ok=True)
-                adapt_path.write_text(adapt_content, encoding="utf-8")
-                detail_suffix += f" + adapted {rel_adapt}"
-
-            written[dest] = h.name
-            results.append(
-                InstallResult(
-                    skill=skill_name,
-                    harness=h.name,
-                    dest=dest,
-                    action=action,
-                    detail=detail_suffix,
-                )
+        if record_state and written:
+            record_installation(
+                root,
+                skill_name=skill_name,
+                source=source or str(skill_dir),
+                skill_dir=skill_dir,
+                harnesses=[h_obj.harness for h_obj in results],
+                destinations=list(written.keys()),
+                strategy=strategy,
+                scope=scope,
+                resolved_commit=resolved_commit,
+                version=inferred_version,
+                backup_entry=backup_entry,
+                home=home,
             )
-    except Exception:
-        # Transactional rollback of newly created destinations on mid-install failure
-        for created_dest in created_in_txn:
-            if created_dest.is_symlink():
-                created_dest.unlink(missing_ok=True)
-            elif created_dest.is_dir():
-                shutil.rmtree(created_dest, ignore_errors=True)
-        raise
-
-    if record_state and written:
-        record_installation(
-            root,
-            skill_name=skill_name,
-            source=source or str(skill_dir),
-            skill_dir=skill_dir,
-            harnesses=[h_obj.harness for h_obj in results],
-            destinations=list(written.keys()),
-            strategy=strategy,
-            scope=scope,
-            resolved_commit=resolved_commit,
-            version=inferred_version,
-            backup_entry=backup_entry,
-            home=home,
-        )
 
     return results
 
@@ -316,40 +413,44 @@ def uninstall(
     home: Path | None = None,
     record_state: bool = False,
 ) -> list[InstallResult]:
-    """Remove a skill from the given harnesses (never touches the source)."""
+    """Remove a skill from the given harnesses (never touches the source or outside paths)."""
     root = root.resolve()
+    skill_name = validate_skill_name_segment(skill_name)
     results: list[InstallResult] = []
     removed_dests: set[str] = set()
 
-    for target in targets:
-        h = harnesses.get(target)
-        paths = h.project_paths if scope == "project" else h.user_paths
-        if not paths:
-            results.append(InstallResult(skill_name, h.name, root, "skipped", f"no {scope} path"))
-            continue
-        base = resolve_path(paths[0].path, scope, root, home)
-        dest = base / skill_name
-        if dest.is_symlink():
-            dest.unlink()
-            removed_dests.add(str(dest.resolve()))
-            results.append(InstallResult(skill_name, h.name, dest, "removed", "symlink"))
-        elif dest.is_dir():
-            removed_dests.add(str(dest.resolve()))
-            shutil.rmtree(dest)
-            results.append(InstallResult(skill_name, h.name, dest, "removed", "directory"))
-        else:
-            results.append(InstallResult(skill_name, h.name, dest, "skipped", "not installed"))
+    with workspace_lock(root):
+        for target in targets:
+            h = harnesses.get(target)
+            paths = h.project_paths if scope == "project" else h.user_paths
+            if not paths:
+                results.append(InstallResult(skill_name, h.name, root, "skipped", f"no {scope} path"))
+                continue
+            base = resolve_path(paths[0].path, scope, root, home)
+            validate_skill_name_segment(skill_name, base)
+            dest = base / skill_name
+            if dest.is_symlink():
+                with contextlib.suppress(OSError):
+                    removed_dests.add(str(dest.resolve()))
+                dest.unlink()
+                results.append(InstallResult(skill_name, h.name, dest, "removed", "symlink"))
+            elif dest.is_dir():
+                removed_dests.add(str(dest.resolve()))
+                shutil.rmtree(dest)
+                results.append(InstallResult(skill_name, h.name, dest, "removed", "directory"))
+            else:
+                results.append(InstallResult(skill_name, h.name, dest, "skipped", "not installed"))
 
-    if record_state and removed_dests:
-        records = load_state(root, scope=scope, home=home)
-        rec = records.get(skill_name)
-        if rec:
-            rec.destinations = [d for d in rec.destinations if d not in removed_dests]
-            removed_harnesses = {r.harness for r in results if r.action == "removed"}
-            rec.harnesses = [hn for hn in rec.harnesses if hn not in removed_harnesses]
-            if not rec.destinations:
-                records.pop(skill_name, None)
-            save_state(root, records, scope=scope, home=home)
+        if record_state and removed_dests:
+            records = load_state(root, scope=scope, home=home)
+            rec = records.get(skill_name)
+            if rec:
+                rec.destinations = [d for d in rec.destinations if d not in removed_dests]
+                removed_harnesses = {r.harness for r in results if r.action == "removed"}
+                rec.harnesses = [hn for hn in rec.harnesses if hn not in removed_harnesses]
+                if not rec.destinations:
+                    records.pop(skill_name, None)
+                save_state(root, records, scope=scope, home=home)
 
     return results
 
@@ -364,6 +465,7 @@ def rollback_skill(
 ) -> list[InstallResult]:
     """Restore a skill to its previous backup snapshot across all tracked destinations."""
     root = root.resolve()
+    skill_name = validate_skill_name_segment(skill_name)
     records = load_state(root, scope=scope, home=home)
     rec = records.get(skill_name)
     if not rec or not rec.history:

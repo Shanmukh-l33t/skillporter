@@ -26,6 +26,8 @@ SEVERITY_ORDER = {
     "INFO": 0,
 }
 
+MAX_SCAN_FILE_BYTES = 2 * 1024 * 1024  # 2 MiB cap per text file during pattern scan
+
 # Patterns for embedded secrets and private keys
 _SECRET_PATTERNS: tuple[tuple[str, str, str, re.Pattern[str]], ...] = (
     (
@@ -93,6 +95,12 @@ _SCRIPT_PATTERNS: tuple[tuple[str, str, str, re.Pattern[str]], ...] = (
     ),
     (
         "CRITICAL",
+        "sec-obfuscated-exec",
+        "Base64 or hex decoded payload piped directly into shell/interpreter",
+        re.compile(r"(?:base64\s+(?:-d|--decode)|xxd\s+-r)\b[^\n|]*\|\s*(?:sudo\s+)?(?:ba)?(?:sh|python|perl|node)\b"),
+    ),
+    (
+        "CRITICAL",
         "sec-reverse-shell",
         "Potential reverse shell or raw socket execution pattern",
         re.compile(r"(?:/dev/tcp/\d|nc\s+-e\s+/bin/|bash\s+-i\s+>&\s+/dev/tcp/|socat\s+.*exec:)"),
@@ -102,6 +110,12 @@ _SCRIPT_PATTERNS: tuple[tuple[str, str, str, re.Pattern[str]], ...] = (
         "sec-credential-harvest",
         "Access to sensitive host credential stores (~/.ssh, ~/.aws, /etc/shadow)",
         re.compile(r"(?:~/\.ssh/id_|~/\.aws/credentials|/etc/shadow|\.npmrc|\.pypirc)"),
+    ),
+    (
+        "HIGH",
+        "sec-data-exfil",
+        "Outbound HTTP POST uploading local file contents",
+        re.compile(r"\b(?:curl\b[^\n]*(?:-d|--data|--data-binary)\s+@|wget\b[^\n]*--post-file)"),
     ),
     (
         "MEDIUM",
@@ -197,6 +211,8 @@ class SecurityReport:
 def compute_tree_hash(skill_dir: Path) -> tuple[str, dict[str, str]]:
     """Compute a deterministic SHA-256 content hash for a skill directory.
 
+    Uses ``os.walk(..., followlinks=False)`` so directory symlinks are hashed as
+    links and never followed into infinite cycles.
     Returns ``(overall_sha256_hex, {relative_posix_path: file_sha256_hex})``.
     """
     skill_dir = skill_dir.resolve()
@@ -206,12 +222,22 @@ def compute_tree_hash(skill_dir: Path) -> tuple[str, dict[str, str]]:
     if not skill_dir.exists():
         return "", {}
 
-    for path in sorted(skill_dir.rglob("*")):
-        if path.is_dir() and not path.is_symlink():
-            continue
+    all_entries: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(skill_dir, followlinks=False):
+        dirnames[:] = sorted(d for d in dirnames if d not in {".git", "__pycache__", ".DS_Store"})
+        cdir = Path(dirpath)
+        for dname in list(dirnames):
+            dpath = cdir / dname
+            if dpath.is_symlink():
+                all_entries.append(dpath)
+                dirnames.remove(dname)
+        for fname in sorted(filenames):
+            if fname == ".DS_Store":
+                continue
+            all_entries.append(cdir / fname)
+
+    for path in sorted(all_entries, key=lambda p: p.relative_to(skill_dir).as_posix()):
         rel = path.relative_to(skill_dir).as_posix()
-        if any(part in {".git", "__pycache__", ".DS_Store"} for part in path.parts):
-            continue
         if path.is_symlink():
             target = os.readlink(path)
             digest = hashlib.sha256(f"symlink:{target}".encode()).hexdigest()
@@ -239,7 +265,6 @@ def scan_skill(skill_dir: Path) -> SecurityReport:
         )
         return report
 
-    # Walk with os.walk(followlinks=False) so we catch symlink escapes before reading
     for dirpath, dirnames, filenames in os.walk(raw_root, followlinks=False):
         dirnames[:] = sorted(d for d in dirnames if d not in {".git", "__pycache__", ".venv", "node_modules"})
         current_dir = Path(dirpath)
@@ -299,9 +324,26 @@ def scan_skill(skill_dir: Path) -> SecurityReport:
                 continue
 
             try:
-                text = fpath.read_text(encoding="utf-8", errors="replace")
+                with open(fpath, "rb") as bf:
+                    raw_bytes = bf.read(MAX_SCAN_FILE_BYTES + 1)
+                if len(raw_bytes) > MAX_SCAN_FILE_BYTES:
+                    report.findings.append(
+                        SecurityFinding(
+                            "LOW",
+                            "sec-oversized-file",
+                            rel,
+                            f"File exceeds {MAX_SCAN_FILE_BYTES} bytes; truncated during static pattern scan",
+                        )
+                    )
+                    raw_bytes = raw_bytes[:MAX_SCAN_FILE_BYTES]
+                text = raw_bytes.decode("utf-8", errors="replace")
             except OSError:
                 continue
+
+            # Strip a single leading UTF-8 BOM at byte 0 so legitimate BOM files do not
+            # trigger sec-hidden-unicode, while mid-file \ufeff or zero-width chars still do.
+            if text.startswith("\ufeff"):
+                text = text[1:]
 
             is_script = fpath.suffix.lower() in {".sh", ".bash", ".zsh", ".py", ".js", ".ts", ".mjs", ".ps1", ".rb"}
             is_markdown = fpath.suffix.lower() in {".md", ".mdc", ".txt"} or fpath.name == "SKILL.md"
@@ -322,13 +364,12 @@ def scan_skill(skill_dir: Path) -> SecurityReport:
                         report.findings.append(SecurityFinding(sev, code, rel, msg, line=idx))
                 for sev, code, msg, pat in _SCRIPT_PATTERNS:
                     if pat.search(line):
-                        # In markdown, curl|sh is still CRITICAL; dynamic eval in prose is lower unless in script
                         effective_sev = sev if (is_script or sev == "CRITICAL") else "INFO"
                         report.findings.append(SecurityFinding(effective_sev, code, rel, msg, line=idx))
                 if is_markdown:
                     for sev, code, msg, pat in _PROMPT_PATTERNS:
                         if pat == _PROMPT_PATTERNS[2][3]:
-                            continue  # multi-line HTML comment checked below
+                            continue
                         if pat.search(line):
                             report.findings.append(SecurityFinding(sev, code, rel, msg, line=idx))
 

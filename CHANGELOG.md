@@ -6,6 +6,14 @@ versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [2.0.0] - 2026-11-11
 
+### Security & Reliability Hardening (Multi-Agent Audit)
+- **Path Traversal Guard (`install.py`, `harnesses.py`)**: Added `validate_skill_name_segment()` across `install`, `uninstall`, and `rollback_skill` and path validation in `load_adapter_file()` to prevent `../` or backslash traversal outside harness roots.
+- **Staged Directory Replacement & Full Transaction Restoration (`install.py`, `atomic.py`)**: Replaced in-place `shutil.rmtree` with staged swaps in `.skillporter/tmp/txn-<id>/` and `workspace_lock()` advisory locking; partial failures now restore pre-existing overwritten destinations as well as removing newly created ones.
+- **Archive Decompression Bomb & Git Clone Hardening (`sources.py`)**: Enforced streaming byte/entry caps (`MAX_ARCHIVE_FILES = 1000`, `MAX_SINGLE_FILE_BYTES = 10 MiB`, `MAX_TOTAL_ARCHIVE_BYTES = 50 MiB`), Windows backslash traversal rejection, git ref option-injection guards, and `git clone -c protocol.ext.allow=never -c core.fsmonitor=false -c core.symlinks=false`.
+- **Stop-at-Skill-Root Discovery & Symlink Loop Protection (`frontmatter.py`, `security.py`)**: `discover()` stops recursing once `SKILL.md` is found in a directory and tracks `(st_dev, st_ino)` inodes; `compute_tree_hash()` uses `os.walk(..., followlinks=False)`.
+- **Line-Anchored YAML Frontmatter & Multi-Copy Validation (`frontmatter.py`, `diagnose.py`)**: Fixed inline `---` splitting, UTF-8 BOM handling, and tab-indentation detection (`frontmatter-tab-indentation`); `diagnose()` now validates every discovered copy of a skill and exposes explicit `FOUND` / `VALID` / `COMPATIBLE` / `INSTALLED` / `VERIFIED` / `UNVERIFIED` / `MISSING` states in `skillporter doctor`.
+- **Sync Drift Protection (`cli.py`)**: `skillporter sync` refuses to overwrite drifted copies without `--force`, and syncs from the newest copy after snapshotting backups when `--force` is passed.
+
 ### Added
 - **Universal 19-Harness Adapter Catalog**: Evidence-based support (`NATIVE`, `COMPATIBLE`, `ADAPTED`) and verification tracking for Claude Code, OpenAI Codex, Cursor, GitHub Copilot, Gemini CLI, Google Antigravity, Windsurf, Cline, Roo Code, OpenCode, Zed, Replit Agent, JetBrains Junie, Hermes Agent, OpenClaw, OpenHands, Goose, Continue, and Aider.
 - **Declarative Adapter SDK**: `register_adapter`, `unregister_adapter`, and `load_adapter_file` for adding custom/third-party harness definitions safely without executing arbitrary code.
