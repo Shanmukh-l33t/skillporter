@@ -73,6 +73,24 @@ def _find_skill_dirs(search_root: Path) -> list[Path]:
     return found
 
 
+#: A git ref must look like a ref. Anything starting with "-" would be parsed by
+#: git as an option (argument injection): ``--upload-pack=`` alone is enough to
+#: execute a command on some git versions.
+_SAFE_GIT_REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,200}$")
+
+
+def _validate_git_ref(ref: str) -> str:
+    """Return *ref* if it is a plausible git ref, else raise SourceError."""
+    if not ref:
+        return ref
+    if not _SAFE_GIT_REF.match(ref) or ".." in ref:
+        raise SourceError(
+            f"invalid git ref {ref!r}: refs may contain only letters, digits, '.', '_', '/' "
+            "and '-' (not as the first character)"
+        )
+    return ref
+
+
 def _unsafe_member_name(name: str) -> str:
     """Return a reason string when an archive member name is unsafe, else "".
 
@@ -140,6 +158,7 @@ def safe_extract_tar(archive_path: Path, dest_dir: Path) -> Path:
 
 
 def _git_clone(url: str, ref: str = "", subpath: str = "", raw_spec: str = "", kind: str = "git") -> ResolvedSource:
+    ref = _validate_git_ref(ref)
     tmp = Path(tempfile.mkdtemp(prefix="skillporter-src-"))
     repo_dir = tmp / "repo"
     try:
@@ -150,7 +169,8 @@ def _git_clone(url: str, ref: str = "", subpath: str = "", raw_spec: str = "", k
             cmd.extend(["--depth", "1"])
             if ref:
                 cmd.extend(["--branch", ref])
-        cmd.extend([url, str(repo_dir)])
+        # "--" terminates option parsing: a URL can never be read as a flag.
+        cmd.extend(["--", url, str(repo_dir)])
 
         proc = subprocess.run(
             cmd,

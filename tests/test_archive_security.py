@@ -146,3 +146,29 @@ def test_tar_extracts_legitimate_skill(tmp_path):
     ])
     out = safe_extract_tar(archive, tmp_path / "out")
     assert (out / "my-skill" / "SKILL.md").is_file()
+
+
+# ------------------------------------------------------- git argument injection
+def test_git_ref_rejects_option_injection():
+    """A ref starting with '-' would be parsed by git as a flag."""
+    from skillporter.sources import SourceError, _validate_git_ref
+
+    for bad in ("--upload-pack=touch /tmp/x", "-c", "--config=core.pager=id", "-"):
+        with pytest.raises(SourceError):
+            _validate_git_ref(bad)
+
+
+def test_git_ref_rejects_traversal_and_empty_segments():
+    from skillporter.sources import SourceError, _validate_git_ref
+
+    for bad in ("a/../../b", "../main", "main..x"):
+        with pytest.raises(SourceError):
+            _validate_git_ref(bad)
+
+
+def test_git_ref_accepts_real_refs():
+    from skillporter.sources import _validate_git_ref
+
+    for good in ("main", "v1.0.0", "release/2.1", "feature_x", "abc1234567890abcdef"):
+        assert _validate_git_ref(good) == good
+    assert _validate_git_ref("") == ""
