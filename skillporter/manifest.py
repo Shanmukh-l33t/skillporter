@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .atomic import atomic_write_text
+
 MANIFEST_FILENAME = "skillporter.yaml"
 LOCKFILE_FILENAME = "skillporter.lock"
 MANIFEST_SCHEMA_VERSION = 1
@@ -292,7 +294,7 @@ def load_manifest(root: Path) -> ProjectManifest | None:
 
 def save_manifest(root: Path, manifest: ProjectManifest) -> Path:
     p = root / MANIFEST_FILENAME
-    p.write_text(manifest.to_yaml(), encoding="utf-8")
+    atomic_write_text(p, manifest.to_yaml())
     return p
 
 
@@ -319,5 +321,5 @@ def load_lockfile(root: Path) -> Lockfile:
 
 def save_lockfile(root: Path, lockfile: Lockfile) -> Path:
     p = root / LOCKFILE_FILENAME
-    p.write_text(json.dumps(lockfile.to_dict(), indent=2) + "\n", encoding="utf-8")
+    atomic_write_text(p, json.dumps(lockfile.to_dict(), indent=2) + "\n")
     return p

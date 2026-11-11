@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .atomic import atomic_write_text
 from .security import compute_tree_hash
 
 STATE_SCHEMA_VERSION = 1
@@ -158,7 +159,7 @@ def save_state(
         "updated_at": _now_iso(),
         "skills": {k: v.to_dict() for k, v in sorted(records.items())},
     }
-    sf.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    atomic_write_text(sf, json.dumps(payload, indent=2) + "\n")
     return sf
 
 
