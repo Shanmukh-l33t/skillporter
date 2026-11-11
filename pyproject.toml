@@ -4,13 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "skillporter"
-version = "2.0.3"
-description = "ONE SKILL. EVERY AGENT. Universal package manager, validator, security scanner, and synchronizer for AI-agent skills across 19+ harnesses."
+version = "2.4.0"
+description = "AI agent skill manager for multi-agent skill synchronization, skill lifecycle management, and deterministic skill lockfile security across 19+ harnesses."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
 authors = [{ name = "Shanmukh Dheekonda" }]
 keywords = [
+  "ai-agent-skill-manager",
+  "multi-agent-skill-synchronization",
+  "skill-lifecycle-management",
+  "skill-lockfile",
   "agent-skills",
   "claude-code",
   "codex",

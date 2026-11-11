@@ -1,0 +1,14 @@
+name: Skillporter PR Guardian
+url: https://github.com/Shanmukh-l33t/skillporter
+description: >
+  Automated multi-agent skill reachability, SHA-256 drift, security risk score,
+  and skillporter.lock verification on every Pull Request.
+public: true
+default_events:
+  - pull_request
+  - check_suite
+default_permissions:
+  contents: read
+  pull_requests: write
+  checks: write
+  security_events: write

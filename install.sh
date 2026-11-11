@@ -5,7 +5,7 @@
 set -eu
 
 REPO="Shanmukh-l33t/skillporter"
-VERSION="${SKILLPORTER_VERSION:-v2.0.3}"
+VERSION="${SKILLPORTER_VERSION:-v2.4.0}"
 URL="https://github.com/${REPO}/releases/download/${VERSION}/skillporter.pyz"
 FALLBACK_URL="https://raw.githubusercontent.com/${REPO}/main/npm/bin/skillporter.pyz"
 

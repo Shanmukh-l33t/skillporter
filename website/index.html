@@ -13,10 +13,11 @@
       <a href="#" class="brand">
         <span class="brand-mark">▪</span>
         <span class="brand-name">SKILLPORTER</span>
-        <span class="version-pill">v2.0.0</span>
+        <span class="version-pill">v2.4.0</span>
       </a>
       <nav class="nav-links">
         <a href="#problem">Why</a>
+        <a href="#compare">Compare</a>
         <a href="#harnesses">19 Harnesses</a>
         <a href="#features">Lifecycle</a>
         <a href="#security">Security</a>
@@ -91,15 +92,48 @@
           </ul>
         </div>
         <div class="panel panel-good">
-          <h3>With Skillporter v2.0</h3>
+          <h3>With Skillporter v2.4</h3>
           <ul class="clean-list">
             <li><strong>Smart Deduplication</strong>: Writes <code>.agents/skills</code> once for 14 compatible harnesses.</li>
             <li><strong>SHA-256 Drift Detection</strong>: Flags <code>DRIFT</code> in CI the moment two copies diverge.</li>
-            <li><strong>Static Supply-Chain Gate</strong>: Scans for secrets, prompt injection, hidden Unicode, and <code>curl | sh</code> before install.</li>
-            <li><strong>Deterministic Lockfile</strong>: Pins exact Git commits and SHA-256 tree hashes in <code>skillporter.lock</code>.</li>
-            <li><strong>Transactional Rollback</strong>: Snapshots prior versions to <code>.skillporter/backups/</code> for instant <code>skillporter rollback</code>.</li>
+            <li><strong>Dual-Engine Security &amp; 0–100 Risk Score</strong>: Integrates NVIDIA SkillSpector + offline fallback, SARIF 2.1.0, and opt-in WASM/gVisor dry-run sandbox.</li>
+            <li><strong>Semver Dependencies &amp; Lockfile v2</strong>: Resolves transitive skill graphs and pins commits + SHA-256 tree hashes in <code>skillporter.lock</code>.</li>
+            <li><strong>Transactional Rollback</strong>: Snapshots prior versions to <code>.skillporter/backups/</code> for instant atomic <code>skillporter rollback</code>.</li>
           </ul>
         </div>
+      </div>
+    </section>
+
+    <!-- 2B. COMPARISON MATRIX VS LOOKALIKE TOOLS -->
+    <section id="compare" class="section container">
+      <div class="section-header">
+        <span class="section-tag">WHY SKILLPORTER?</span>
+        <h2>Feature Comparison vs. Lookalike Tools</h2>
+        <p class="section-desc">Built for multi-agent engineering teams running 2+ AI harnesses in production and CI.</p>
+      </div>
+      <div class="table-wrap">
+        <table class="harness-table">
+          <thead>
+            <tr>
+              <th>Capability</th>
+              <th>skillporter (v2.4)</th>
+              <th>skillport</th>
+              <th>agent-skill-porter</th>
+              <th>skill-porter</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>Verified AI Harnesses</strong></td><td><strong>19 Harnesses</strong></td><td>3</td><td>4</td><td>2</td></tr>
+            <tr><td><strong>60s Zero-Install Demo</strong></td><td><code>uvx skillporter demo</code></td><td>No</td><td>No</td><td>No</td></tr>
+            <tr><td><strong>Shared <code>.agents/skills</code> Deduplication</strong></td><td><strong>Yes (14 harnesses)</strong></td><td>No</td><td>No</td><td>No</td></tr>
+            <tr><td><strong>SHA-256 Content-Drift Detection</strong></td><td><strong>Yes (<code>diagnose</code>, <code>lock --check</code>)</strong></td><td>No</td><td>No</td><td>No</td></tr>
+            <tr><td><strong>0–100 Risk Score &amp; SkillSpector Engine</strong></td><td><strong>Yes + Offline Fallback</strong></td><td>No</td><td>Basic regex</td><td>No</td></tr>
+            <tr><td><strong>SARIF 2.1.0 &amp; GitHub Code Scanning</strong></td><td><strong>Yes (<code>--format sarif</code>)</strong></td><td>No</td><td>No</td><td>No</td></tr>
+            <tr><td><strong>Opt-In Dry-Run Sandbox</strong></td><td><strong>Yes (<code>sandbox run</code>)</strong></td><td>No</td><td>No</td><td>No</td></tr>
+            <tr><td><strong>Semver Dependency Resolver &amp; Graph</strong></td><td><strong>Yes (<code>skillporter graph</code>)</strong></td><td>No</td><td>No</td><td>No</td></tr>
+            <tr><td><strong>Transactional Backups &amp; Rollback</strong></td><td><strong>Yes (<code>.skillporter/backups/</code>)</strong></td><td>No</td><td>No</td><td>No</td></tr>
+          </tbody>
+        </table>
       </div>
     </section>
 

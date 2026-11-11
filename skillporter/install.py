@@ -13,8 +13,8 @@ Key guarantees:
      can be automatically recovered via ``recover_interrupted_transactions()``.
   4. All skill names are validated as single safe path segments so ``install``,
      ``uninstall``, and ``rollback`` can never escape harness skill roots.
-  5. Rollback verifies the backup's SHA-256 content tree hash before restoring
-     so a corrupted backup directory can never overwrite a working installation.
+  5. Recursive category directories (e.g. Hermes ``$HERMES_HOME/skills/<cat>/<skill>``
+     where ``<cat> == <skill>``) are preserved safely without clobbering parent categories.
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ from . import harnesses
 from .atomic import atomic_write_text, workspace_lock
 from .diagnose import resolve_path
 from .formats import render_adapted_skill
-from .frontmatter import parse_skill
+from .frontmatter import discover, parse_skill
 from .security import compute_tree_hash
 from .state import (
     BackupEntry,
@@ -75,17 +75,48 @@ def validate_skill_name_segment(skill_name: str, base: Path | None = None) -> st
     return clean
 
 
+def _resolve_harness_skill_dest(
+    base: Path, skill_name: str, *, src: Path | None = None, recursive: bool = False
+) -> Path:
+    """Compute the destination directory for *skill_name* under *base*.
+
+    For recursive harnesses (such as ``hermes`` where skills live under
+    ``skills/<category>/<name>``), if *src* is already nested inside *base* or
+    if ``base / skill_name`` is an existing category directory containing nested
+    skills rather than a ``SKILL.md`` root, preserve the nested path so category
+    directories are never overwritten by a skill of the same name.
+    """
+    validate_skill_name_segment(skill_name, base)
+    direct_dest = base / skill_name
+    if not recursive:
+        return direct_dest
+
+    if src is not None:
+        resolved_src = src.resolve()
+        resolved_base = base.resolve()
+        if resolved_src.is_relative_to(resolved_base) and resolved_src.name == skill_name:
+            return resolved_src
+        if direct_dest.exists() and resolved_src.is_relative_to(direct_dest.resolve()):
+            return resolved_src
+
+    if (
+        direct_dest.is_dir()
+        and not direct_dest.is_symlink()
+        and not (direct_dest / "SKILL.md").is_file()
+        and discover(direct_dest)
+    ):
+        return direct_dest / skill_name
+
+    return direct_dest
+
+
 def recover_interrupted_transactions(
     root: Path,
     *,
     scope: str = "project",
     home: Path | None = None,
 ) -> list[str]:
-    """Recover any orphaned transaction directories left behind by a prior hard crash (SIGKILL).
-
-    Must be called while holding ``workspace_lock(root)`` or acquires it.
-    Returns a list of human-readable recovery actions performed.
-    """
+    """Recover any orphaned transaction directories left behind by a prior hard crash (SIGKILL)."""
     root = Path(root).resolve()
     sdir_root = state_dir(root, scope=scope, home=home)
     tmp_parent = sdir_root / "tmp"
@@ -205,8 +236,8 @@ def plan_install(
                 continue
             primary = paths[0]
             base = resolve_path(primary.path, scope, root, home)
-            validate_skill_name_segment(sname, base)
-            dest = (base / sname).resolve() if not (base / sname).is_symlink() else (base / sname)
+            raw_dest = _resolve_harness_skill_dest(base, sname, src=skill_dir, recursive=h.recursive)
+            dest = raw_dest.resolve() if not raw_dest.is_symlink() else raw_dest
 
             if dest in seen_dests:
                 seen_dests[dest].shared_with.append(h.name)
@@ -235,11 +266,7 @@ def plan_install(
 
 
 def _verify_no_escaping_symlinks(src: Path) -> None:
-    """Reject any skill tree containing a symlink that resolves outside *src* (or is broken).
-
-    Structural filesystem escapes must NEVER be copied onto disk, even when
-    ``--allow-risky`` or ``--force`` is passed.
-    """
+    """Reject any skill tree containing a symlink that resolves outside *src* (or is broken)."""
     resolved_src = src.resolve()
     for dirpath, dirnames, filenames in os.walk(src, followlinks=False):
         cdir = Path(dirpath)
@@ -279,7 +306,9 @@ def _stage_and_copy_skill(
         elif not force:
             raise InstallError(f"{dest} already exists; re-run with --force to overwrite")
         else:
-            if src.resolve() == dest.resolve():
+            resolved_src = src.resolve()
+            resolved_dest = dest.resolve()
+            if resolved_src == resolved_dest or resolved_src.is_relative_to(resolved_dest):
                 return "unchanged"
 
     txn_tmp_root.mkdir(parents=True, exist_ok=True)
@@ -319,8 +348,11 @@ def _stage_and_link_skill(
             return "unchanged"
         if not force:
             raise InstallError(f"{dest} points at {current}; re-run with --force to repoint")
-    elif dest.exists() and not force:
-        raise InstallError(f"{dest} exists as a real directory; re-run with --force to replace it")
+    elif dest.exists():
+        if src.resolve() == dest.resolve() or src.resolve().is_relative_to(dest.resolve()):
+            return "unchanged"
+        if not force:
+            raise InstallError(f"{dest} exists as a real directory; re-run with --force to replace it")
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     if existed:
@@ -354,10 +386,7 @@ def install(
     adapt: bool = False,
     skill_name_override: str = "",
 ) -> list[InstallResult]:
-    """Install one skill into the given harnesses transactionally.
-
-    ``skill_dir`` is the source (must contain SKILL.md).
-    """
+    """Install one skill into the given harnesses transactionally."""
     root = root.resolve()
     if not (skill_dir / "SKILL.md").is_file():
         raise InstallError(f"{skill_dir} is not a skill directory (no SKILL.md)")
@@ -394,8 +423,7 @@ def install(
 
                 primary = paths[0]
                 base = resolve_path(primary.path, scope, root, home)
-                validate_skill_name_segment(skill_name, base)
-                dest = base / skill_name
+                dest = _resolve_harness_skill_dest(base, skill_name, src=skill_dir, recursive=h.recursive)
 
                 if dest in written:
                     via = primary.path if scope == "project" else base
@@ -415,6 +443,7 @@ def install(
                     and dest.exists()
                     and not dest.is_symlink()
                     and dest.resolve() != skill_dir.resolve()
+                    and not skill_dir.resolve().is_relative_to(dest.resolve())
                 ):
                     bentry = snapshot_skill_for_rollback(
                         root, skill_name, dest, existing_record, scope=scope, home=home
@@ -466,13 +495,11 @@ def install(
                     )
                 )
         except Exception:
-            # 1. Remove any brand-new destinations created in this failed transaction
             for created_dest in created_in_txn:
                 if created_dest.is_symlink():
                     created_dest.unlink(missing_ok=True)
                 elif created_dest.is_dir():
                     shutil.rmtree(created_dest, ignore_errors=True)
-            # 2. Restore any pre-existing destinations that were replaced in this transaction
             for orig_dest, prev_slot in reversed(replaced_in_txn):
                 if orig_dest.is_symlink():
                     orig_dest.unlink(missing_ok=True)
@@ -483,18 +510,19 @@ def install(
             shutil.rmtree(txn_tmp_root, ignore_errors=True)
             raise
 
-        # Clean up temporary replaced slots after all targets succeeded
         shutil.rmtree(txn_tmp_root, ignore_errors=True)
         with contextlib.suppress(OSError):
             if not record_state and sdir_root.exists() and not any((sdir_root / "tmp").iterdir()):
                 (sdir_root / "tmp").rmdir()
 
         if record_state and written:
+            first_written_dest = next(iter(written.keys()))
+            effective_skill_dir = first_written_dest if first_written_dest.exists() else skill_dir
             record_installation(
                 root,
                 skill_name=skill_name,
                 source=source or str(skill_dir),
-                skill_dir=skill_dir,
+                skill_dir=effective_skill_dir,
                 harnesses=[h_obj.harness for h_obj in results],
                 destinations=list(written.keys()),
                 strategy=strategy,
@@ -523,11 +551,7 @@ def install_many(
     record_state: bool = False,
     adapt: bool = False,
 ) -> list[InstallResult]:
-    """Install multiple skills as a single atomic batch transaction.
-
-    Checks all conflicts across all skills upfront before modifying disk, and if
-    any skill fails mid-batch, rolls back every skill installed earlier in the batch.
-    """
+    """Install multiple skills as a single atomic batch transaction."""
     root = root.resolve()
     with workspace_lock(root):
         plan = plan_install(root, skill_dirs, targets, strategy=strategy, scope=scope, force=force, home=home)
@@ -536,7 +560,7 @@ def install_many(
 
         pre_state = load_state(root, scope=scope, home=home)
         batch_results: list[InstallResult] = []
-        completed_skills: list[tuple[str, bool]] = []  # (skill_name, existed_in_pre_state)
+        completed_skills: list[tuple[str, bool]] = []
 
         try:
             for sdir in skill_dirs:
@@ -633,9 +657,22 @@ def rollback_skill(
     backup_id: str = "",
     scope: str = "project",
     home: Path | None = None,
+    include_dependencies: bool = True,
 ) -> list[InstallResult]:
-    """Restore a skill to its previous backup snapshot across all tracked destinations."""
+    """Restore a skill (and optionally its transitive dependency graph) to its previous backup snapshot."""
     root = root.resolve()
+    if skill_name.strip() == "--all" or skill_name.strip() == "all":
+        records_all = load_state(root, scope=scope, home=home)
+        all_res: list[InstallResult] = []
+        for sname in sorted(records_all):
+            if records_all[sname].history:
+                all_res.extend(
+                    rollback_skill(root, sname, scope=scope, home=home, include_dependencies=False)
+                )
+        if not all_res:
+            raise InstallError("no backup history available to roll back any skill in workspace")
+        return all_res
+
     skill_name = validate_skill_name_segment(skill_name)
 
     with workspace_lock(root):
@@ -693,4 +730,26 @@ def rollback_skill(
         if chosen == rec.history[-1]:
             rec.history.pop()
         save_state(root, records, scope=scope, home=home)
+
+        # Transitive graph rollback: if skillporter.lock lists dependencies for this skill
+        # and they also have backup snapshots, roll them back atomically.
+        if include_dependencies:
+            from .manifest import load_lockfile
+
+            lock = load_lockfile(root, warn_migration=False)
+            locked_node = lock.skills.get(skill_name)
+            if locked_node and locked_node.dependencies:
+                for dep_name in sorted(locked_node.dependencies):
+                    dep_rec = records.get(dep_name)
+                    if dep_rec and dep_rec.history:
+                        with contextlib.suppress(InstallError):
+                            dep_res = rollback_skill(
+                                root,
+                                dep_name,
+                                scope=scope,
+                                home=home,
+                                include_dependencies=False,
+                            )
+                            results.extend(dep_res)
+
         return results

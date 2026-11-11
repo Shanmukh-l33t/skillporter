@@ -1,12 +1,16 @@
-# SKILLPORTER
+# SKILLPORTER — The AI Agent Skill Manager
 
-## ONE SKILL. EVERY AGENT.
+**ONE SKILL. EVERY AGENT.** Multi-agent skill synchronization, skill lifecycle management, 0–100 security risk scoring, and deterministic `skillporter.lock` lockfiles across 19 AI coding harnesses.
 
-**Install, manage, validate, security-scan, and synchronize AI-agent skills across the entire agent ecosystem.**
+```bash
+# Zero-install execution (<60s): diagnose your repo or run the interactive demo
+uvx skillporter diagnose .
+uvx skillporter demo
+```
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)](https://www.python.org/)
 [![Harnesses: 19 Verified](https://img.shields.io/badge/harnesses-19%20supported-00b4d8)](docs/harnesses/README.md)
-[![Tests: 115 Passing](https://img.shields.io/badge/tests-115%20passing-brightgreen)](tests/)
+[![Tests: 133 Passing](https://img.shields.io/badge/tests-133%20passing-brightgreen)](tests/)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-0-success)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -40,119 +44,123 @@ Every AI coding and autonomous agent harness reads skills from a **different dir
 
 A skill authored for Claude Code in `.claude/skills/` is silently invisible to OpenAI Codex, Gemini CLI, Zed, and Windsurf. Hand-rolled symlinks break in Docker build contexts, `git worktree`, and Windows checkouts — while manual copies silently drift out of sync.
 
-**Skillporter solves the entire lifecycle:** one command resolves skills from GitHub or local paths, runs a static security and supply-chain scan, deduplicates shared destinations (`.agents/skills`), tracks ownership and SHA-256 content hashes, detects content drift across copies, and supports deterministic lockfiles (`skillporter.lock`) and transactional rollback.
+---
+
+## Why Skillporter? (Feature Comparison vs. Lookalike Tools)
+
+| Capability | **skillporter (v2.4)** | `skillport` | `agent-skill-porter` | `skill-porter` |
+|---|:---:|:---:|:---:|:---:|
+| **Supported AI Harnesses** | **19 (Evidence-Verified)** | 3 | 4 | 2 |
+| **Shared `.agents/skills` Deduplication** | **Yes (writes once for 14 agents)** | No | No | No |
+| **SHA-256 Content-Drift Detection** | **Yes (`diagnose`, `lock --check`)** | No | No | No |
+| **Security Engine & 0–100 Risk Score** | **NVIDIA SkillSpector + Built-in Fallback** | None | Basic regex | None |
+| **SARIF 2.1.0 & GitHub Code Scanning** | **Yes (`--format sarif`)** | No | No | No |
+| **Opt-in Dry-Run Sandbox (`sandbox run`)** | **Yes (WASM / gVisor / AST Tracer)** | No | No | No |
+| **Semver Dependency Resolver & `graph`** | **Yes (`skillporter.yaml` + `skillporter.lock` v2)** | No | No | No |
+| **Transactional Rollback (`.skillporter/backups/`)** | **Yes (atomic graph restore)** | No | No | No |
+| **Built-in MCP Server (`skillporter mcp`)** | **Yes (Claude, Codex, Cursor, LangChain, CrewAI, AutoGen)** | No | No | No |
 
 ---
 
-## One-Command Installation & Zero-Install Execution
+## 60-Second Quick Start & Zero-Install Execution
 
 ```bash
-# 1. Run immediately via uvx from PyPI (zero install)
+# 1. Try the 60-second zero-residue demo (shows broken symlinks & SHA-256 drift being healed)
+uvx skillporter demo
+
+# 2. Diagnose your repository immediately via uvx or npx
 uvx skillporter diagnose .
-
-# 2. Install globally via uv tool or pipx from PyPI
-uv tool install skillporter
-pipx install skillporter
-
-# 3. Run via npx from npm (or directly from GitHub)
 npx @shanmukhdheekonda/skillporter diagnose .
-npx github:Shanmukh-l33t/skillporter diagnose .
 
-# 4. Install globally via curl (Linux/macOS — bypasses PEP 668 externally-managed-environment)
-curl -fsSL https://raw.githubusercontent.com/Shanmukh-l33t/skillporter/main/install.sh | sh
-```
+# 3. Validate SKILL.md compliance and compute a 0-100 security risk score (JSON or SARIF)
+skillporter validate . --format json
+skillporter scan . --format sarif > skillporter.sarif
 
-### Native Agent Integration (MCP Server)
+# 4. Explain any diagnostic, lockfile, or security finding in plain English
+skillporter explain DRIFT
+skillporter explain sec-prompt-override
 
-Register Skillporter directly inside Claude Code, Codex, Cursor, Windsurf, or Hermes so your agent can diagnose, scan, and synchronize skills on command:
-
-```bash
-claude mcp add skillporter -- uvx skillporter mcp
-codex mcp add skillporter -- uvx skillporter mcp
-```
-
----
-
-## 60-Second Quick Start
-
-```bash
-# 1. Detect which AI agent harnesses are installed or active in your repo
-skillporter detect .
-
-# 2. Install a skill from GitHub across all detected harnesses (validates + security-scans first)
+# 5. Install a skill across all detected harnesses, resolve dependencies, and pin skillporter.lock
 skillporter add anthropics/skills --skill pdf --harness all
-
-# 3. Diagnose reachability, broken symlinks, duplicate loading, and SHA-256 content drift
-skillporter diagnose .
-
-# 4. Run a static supply-chain security scan on any skill directory
-skillporter scan .
-
-# 5. Initialize skillporter.yaml, synchronize teammates, and pin skillporter.lock
-skillporter init
 skillporter sync
-skillporter lock
+skillporter lock --check
+skillporter graph
 ```
 
 ---
 
-## Real-World Evidence: Why Skillporter Exists
+## Security Model, Risk Scoring & Experimental Dry-Run Sandbox
 
-Built after auditing the exact failure modes reported across upstream agent ecosystems:
+Agent skills are untrusted supply-chain packages: they inject natural-language instructions directly into your LLM's system context and often bundle executable scripts (`scripts/*.py`, `scripts/*.sh`).
 
-- **[agentskills/agentskills#15](https://github.com/agentskills/agentskills/issues/15)** (130+ comments) — *"Claude is looking at `.claude/skills/` and GitHub Copilot is looking at `.github/skills/`… create symlinks that match the specific folder of each harness"*
-- **[thn-inc/claude-tweaks#3000](https://github.com/thn-inc/claude-tweaks/issues/3000)** — skill resolution misses `.agents/skills` when the symlink is absent or inside a **git worktree**
-- **[openclaw/openclaw#14593](https://github.com/openclaw/openclaw/issues/14593)** — symlinked skill installs fail inside Docker build contexts
-- **[squne121/loop-protocol](https://github.com/squne121/loop-protocol/issues)** — replacing broken Codex skill symlinks with a fail-closed `.agents/skills` bridge
+### 1. Dual-Engine Security Scanning & 0–100 Risk Score (`validate`, `scan`, `inspect`)
+- **Primary Backend**: Integrates **NVIDIA SkillSpector** (`skillspector scan --no-llm --format json`) when installed on `PATH`, merging its findings with Skillporter's built-in scanner.
+- **Built-in Offline Fallback**: When running offline (`--offline` or `SKILLPORTER_OFFLINE=1`) or without `skillspector` installed, Skillporter runs its zero-dependency static and semantic-heuristic engine (`skillporter-static v2.4.0`).
+- **Transparent 0–100 Risk Score & Category Breakdown**: Every scan computes a deterministic `0–100` risk score broken down across 6 categories:
+  1. `secrets` (`sec-private-key`, `sec-aws-key`, `sec-github-token`, `sec-api-key`)
+  2. `prompt_injection` (`sec-prompt-override`, `sec-hidden-unicode`, `sec-html-comment-instruction`, `sec-css-hidden-instruction`)
+  3. `code_execution` (`sec-curl-pipe-sh`, `sec-obfuscated-exec`, `sec-base64-decode`, `sec-reverse-shell`, `sec-dynamic-eval`)
+  4. `data_exfiltration` (`sec-env-exfil`, `sec-credential-harvest`, `sec-data-exfil`)
+  5. `filesystem_escape` (`sec-symlink-escape`, `sec-path-traversal`, `sec-markdown-path-traversal`, `sec-broken-symlink`)
+  6. `supply_chain` (`sec-binary-artifact`, `sec-script-outside-scripts-dir`, `sec-external-download`, `sec-oversized-file`)
+- **Configurable Fail-Closed Thresholds (`skillporter.yaml`)**:
+  ```yaml
+  schema_version: 2
+  project: acme-platform
+  security:
+    policy: HIGH
+    max_risk_score: 30
+  ```
+  Any skill scoring above `security.max_risk_score` blocks `skillporter add` and `skillporter sync` with exit code `1`. Structural escapes (`sec-symlink-escape`, `sec-path-traversal`) are unconditionally blocked even with `--allow-risky` or `--force`.
+
+### 2. What Is Checked vs. What Is NOT Checked
+- **What IS Checked**:
+  - Known prompt-injection override directives, hidden zero-width/bidi Unicode, HTML comments, and `display:none` CSS blocks in `SKILL.md`.
+  - Hardcoded PEM private keys, AWS keys, GitHub PATs, and OpenAI/Anthropic/Slack tokens.
+  - Pipe-to-shell RCE (`curl | sh`), base64/hex obfuscation, reverse shells, `os.environ` exfiltration, credential store reads (`~/.ssh`, `~/.aws`, `/etc/shadow`), and `eval`/`exec`/`os.system`.
+  - Archive Zip-Slip/Tar-Slip path traversal, decompression bombs, and escaping symlinks.
+- **What Is NOT Checked (Honest Limitations)**:
+  - **Static analysis does not guarantee runtime safety.** Novel semantic prompt injections phrased without known override patterns can still steer an LLM at runtime.
+  - Dynamic payloads fetched at runtime from legitimate-looking domains after a skill is invoked by an agent.
+  - Model-specific jailbreaks or downstream tool-call misconfigurations inside the host agent harness.
+
+### 3. Experimental Opt-In Dry-Run Sandbox (`skillporter sandbox run <skill>`)
+To reduce (though not eliminate) runtime blind spots, `skillporter sandbox run <skill>` (default **OFF**, labeled **EXPERIMENTAL**) inspects and traces a skill using `wasmtime` (WASI capability sandbox with zero preopened write dirs and zero network sockets), `runsc` (gVisor rootless `--network=none` sandbox), or the built-in AST + shell behavioral interceptor:
+- Reports `proposed_file_writes`, `proposed_file_reads`, `proposed_network_calls`, `proposed_tool_invocations`, and `proposed_env_accesses`.
+- Mathematically verifies via before/after SHA-256 tree hashing that **zero host files or network sockets were mutated**.
 
 ---
 
-## Key Features
+## Dependencies, Semver Constraints & Lockfile v2 (`skillporter.yaml` & `skillporter.lock`)
 
-### 1. Universal Source Resolution (`skillporter add`)
-Install skills from:
-- **GitHub shorthand**: `skillporter add owner/repo` or `skillporter add owner/repo/skills/my-skill@v1.2.0`
-- **GitHub tree URLs**: `skillporter add https://github.com/owner/repo/tree/main/skills/my-skill`
-- **Git URLs & commit SHAs**: `skillporter add https://example.com/skills.git --ref ceb64c6`
-- **ZIP & tar.gz archives**: `skillporter add ./bundle.zip` (hardened against Zip-Slip and symlink escapes)
-- **Registry slugs**: `skillporter add registry:anthropics/skills`
-- **Local directories**: `skillporter add ./authoring/my-skill --harness claude-code --harness codex`
-
-### 2. SHA-256 Content-Drift & Duplicate Detection (`skillporter diagnose`)
-Competing tools copy files once and report success forever. Skillporter hashes every file inside every installed skill copy (`SHA-256`).
-- **Drift**: If you edit `.claude/skills/my-skill/SKILL.md` and forget to update `.agents/skills/my-skill/SKILL.md`, `skillporter diagnose` flags `DRIFT` with the exact diverging hashes and exits `1`.
-- **Duplicate loading**: If a skill is installed in both `.agents/skills` and `.cursor/skills`, `diagnose` flags `DUPLICATE` so Cursor does not load the same skill twice.
-
-### 3. Static Security & Supply-Chain Protection (`skillporter scan`)
-Agent skills contain natural-language instructions and executable scripts. Before installing any skill, Skillporter inspects all Markdown and script files for:
-- **Embedded secrets & private keys** (`sec-private-key`, `sec-aws-key`, `sec-github-token`, `sec-api-key`)
-- **Prompt injection & covert overrides** (`sec-prompt-override`, `sec-hidden-unicode`, `sec-html-comment-instruction`)
-- **Dangerous execution patterns** (`sec-curl-pipe-sh`, `sec-reverse-shell`, `sec-credential-harvest`, `sec-dynamic-eval`)
-- **Filesystem escapes** (`sec-symlink-escape`, `sec-path-traversal`, `sec-binary-artifact`)
-
-*Transparency note: Static scanning inspects files for known dangerous patterns and structural escapes; it does not guarantee runtime safety.*
-
-### 4. Manifest (`skillporter.yaml`), Lockfile (`skillporter.lock`) & Rollback
-Declare your project's skills in `skillporter.yaml`:
+Declare skill dependencies with semver ranges (`^1.0.0`, `~1.2.0`, `>=1.0.0 <2.0.0`, `*`) in `skillporter.yaml` or `SKILL.md` frontmatter:
 
 ```yaml
-schema_version: 1
+schema_version: 2
 project: acme-platform
 scope: project
 strategy: copy
-security_policy: HIGH
+security:
+  policy: HIGH
+  max_risk_score: 30
 harnesses:
   - claude-code
   - codex
   - cursor
-  - github-copilot
 skills:
-  - name: skillporter
-    source: Shanmukh-l33t/skillporter/skills/skillporter
-    ref: main
+  - name: release-orchestrator
+    source: ./skills/release-orchestrator
+    version: "1.2.0"
+    dependencies:
+      - name: changelog-helper
+        version: "^1.0.0"
+        source: ./skills/changelog-helper
 ```
 
-Run `skillporter sync` to reconcile the workspace, `skillporter lock` to pin exact git commits and SHA-256 tree hashes in `skillporter.lock`, and `skillporter rollback <skill>` to restore the previous snapshot from `.skillporter/backups/` if an update introduces a regression.
+- `skillporter graph [--format json]` prints the resolved topological dependency tree and exits `1` on cyclic dependencies or version conflicts.
+- `skillporter sync` installs the full transitive dependency set in topological order.
+- `skillporter lock --check` verifies in CI that `skillporter.lock` matches on-disk SHA-256 hashes and the resolved dependency graph (auto-migrating v1 lockfiles on read with a one-time warning).
+- `skillporter rollback <skill>` (or `skillporter rollback all`) atomically restores the skill and its transitive dependencies from `.skillporter/backups/`.
 
 ---
 
@@ -160,72 +168,27 @@ Run `skillporter sync` to reconcile the workspace, `skillporter lock` to pin exa
 
 | Command | Description |
 |---|---|
-| `skillporter add <source>` | Resolve, validate, security-scan, and install skills from GitHub, Git, archive, or local path |
+| `skillporter add <source>` | Resolve, validate, security-scan, and install skills (`--max-risk-score`, `--format json`) |
 | `skillporter diagnose [path]` | Check reachability, broken symlinks, SHA-256 content drift, duplicates, and spec compliance |
-| `skillporter doctor [path] [--fix]` | Run full workspace health check and optionally auto-repair missing/drifted installs |
-| `skillporter scan [path]` | Run static supply-chain and prompt-injection security assessment |
-| `skillporter validate [path]` | Validate `SKILL.md` frontmatter and body against the [Agent Skills spec](https://agentskills.io/specification) |
-| `skillporter inspect <source>` | Inspect a local or remote skill package (files, scripts, security, adapted previews) before installing |
-| `skillporter detect [path]` | Detect which AI agent harnesses are installed on the machine or active in the project |
+| `skillporter doctor [path] [--fix]` | Run full workspace health check and auto-repair missing/drifted installs |
+| `skillporter scan [path]` | Run security & supply-chain assessment with 0–100 risk score (`--format text\|json\|sarif`) |
+| `skillporter validate [path]` | Validate `SKILL.md` spec compliance and compute 0–100 risk score (`--format text\|json\|sarif`) |
+| `skillporter sandbox run <skill>` | **[Experimental]** Run opt-in dry-run behavioral sandbox (`--runtime auto\|wasm\|gvisor\|dry-run`) |
+| `skillporter demo` | Scaffold a temporary multi-harness workspace and demonstrate drift/symlink auto-repair in <60s |
+| `skillporter explain <finding>` | Translate any diagnostic code (`DRIFT`, `BROKEN`, `CYCLE`) or `sec-*` rule into plain English + fix |
+| `skillporter graph [path]` | Print or export (`--format json`) the resolved transitive skill dependency tree |
+| `skillporter sync [path]` | Resolve transitive dependencies, reconcile across harnesses, and update `skillporter.lock` |
+| `skillporter lock [path] [--check]` | Write or CI-verify (`--check`) deterministic `skillporter.lock` v2 |
+| `skillporter status [path]` | Show per-harness installed vs. locked state, copy drift, and lockfile drift |
+| `skillporter publish [path]` | Validate, security-gate (`risk_score <= 30`), pack, and publish to registry (`--dry-run`) |
+| `skillporter ci-report [path]` | Generate Markdown/JSON PR report for GitHub Actions and the Skillporter GitHub App |
+| `skillporter inspect <source>` | Inspect local/remote skill package with risk score, categories, and adapted previews |
+| `skillporter detect [path]` | Detect installed AI agent harnesses on the machine or active in the project |
 | `skillporter matrix` | Print the 19-harness compatibility and verification matrix (`--json` supported) |
-| `skillporter init [path]` | Generate `skillporter.yaml` from discovered skills and active harnesses |
-| `skillporter sync [path]` | Reconcile workspace skills across target harnesses and update `skillporter.lock` |
-| `skillporter lock [path]` | Write deterministic `skillporter.lock` with SHA-256 content tree hashes |
-| `skillporter list [path]` | List managed and discovered skills with ownership, hashes, and active harnesses |
-| `skillporter update [skill]` | Update tracked skills from their recorded upstream source |
-| `skillporter rollback <skill>` | Restore a skill to its previous backup snapshot in `.skillporter/backups/` |
-| `skillporter install <path>` | Low-level local directory installer (`--strategy copy\|symlink`, `--adapt`, `--force`) |
-| `skillporter remove <skill>` | Remove a skill from target harnesses (`uninstall` alias supported) |
-| `skillporter search [query]` | Search the seed and configured skill registry catalog |
-| `skillporter info <target>` | Show detailed metadata for a harness adapter or registry package |
-| `skillporter pack [path]` | Build an immutable `.tar.gz` release archive and `provenance.json` checksum manifest |
+| `skillporter rollback <skill>` | Atomically restore a skill (and its dependency graph) from `.skillporter/backups/` |
 | `skillporter mcp` | Start the zero-dependency stdio JSON-RPC 2.0 MCP server |
 
 ### Exit Codes (CI Contract)
 - `0` — Clean / all checks passed
-- `1` — Findings detected (missing reachability, content drift, broken symlink, spec error, or security policy block)
-- `2` — Usage or runtime error (invalid path, unknown harness, unsafe overwrite refusal)
-
----
-
-## GitHub Action Integration
-
-Validate `SKILL.md` compliance, scan for security risks, and verify harness reachability automatically on every pull request:
-
-```yaml
-name: Skillporter Check
-on: [push, pull_request]
-jobs:
-  skills:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: Shanmukh-l33t/skillporter@v2
-        with:
-          command: validate
-          path: .
-          run-security-scan: "true"
-```
-
----
-
-## Documentation
-
-- [Getting Started](docs/getting-started/README.md)
-- [Installation & Distribution (uvx, npx, binaries, MCP)](docs/installation/README.md)
-- [Supported Harnesses & Evidence Directory (19 Harnesses)](docs/harnesses/README.md)
-- [CLI Command Reference](docs/commands/README.md)
-- [Configuration (`skillporter.yaml` & `skillporter.lock`)](docs/configuration/README.md)
-- [Security & Supply-Chain Model](docs/security/README.md)
-- [System Architecture](ARCHITECTURE.md)
-- [Adapter Development SDK](docs/adapters/README.md)
-- [Registry & Immutable Packaging](docs/registry/README.md)
-- [Troubleshooting](docs/troubleshooting/README.md)
-- [Contributing Guide](CONTRIBUTING.md)
-- [Product Roadmap](ROADMAP.md)
-
----
-
-## License
-
-MIT — see [LICENSE](LICENSE).
+- `1` — Findings detected (drift, broken symlink, spec error, security block, risk score > threshold, lock drift, or dependency cycle/conflict)
+- `2` — Usage or runtime error (invalid path, unknown harness, missing `--skill` name)

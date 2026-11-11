@@ -58,9 +58,19 @@ jobs:
           node-version: "20"
       - run: pip install -e .
       - name: Validate every SKILL.md in the repo
-        run: skillporter validate .
-      - name: Static security scan on shipped skills
-        run: skillporter scan .
+        run: |
+          skillporter validate .
+          skillporter validate skills/skillporter --format json > /dev/null
+      - name: Static security scan on shipped skills (text & SARIF 2.1.0)
+        run: |
+          skillporter scan .
+          skillporter scan . --format sarif > skillporter.sarif
+      - name: Verify demo, explain, sandbox & dependency graph
+        run: |
+          skillporter demo
+          skillporter explain DRIFT
+          skillporter sandbox run skills/skillporter
+          skillporter graph
       - name: Harness matrix renders
         run: skillporter matrix
       - name: Build standalone zipapp & verify NPX wrapper

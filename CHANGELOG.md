@@ -4,6 +4,36 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [Semantic Versioning](https://semver.org/).
 
+## [2.4.0] - 2026-11-11
+
+### Added (Workstream 4 — Dependencies & Versioning + WS2.4 & WS3.4–3.5)
+- **Semver Dependency Resolver (`skillporter/resolver.py`)**: Deterministic dependency graph resolution supporting `^`, `~`, `>=`, `<=`, `==`, `*`, and compound semver constraints across `skillporter.yaml` (`dependencies:`) and `SKILL.md` frontmatter (`dependencies:`), with cycle detection (`DependencyCycleError`, exit code 1) and conflict reporting (`DependencyConflictError`, exit code 1).
+- **Lockfile v2 & Auto-Migration (`skillporter/manifest.py`)**: Extended `skillporter.lock` (`schema_version: 2`) to record `dependencies`, `risk_score`, and `direct` per node with byte-stable serialization across machines and automatic v1 -> v2 migration on read (warns once).
+- **Transitive Sync, Atomic Graph Rollback & `skillporter graph` (`cli.py`, `install.py`)**: `sync` installs the full transitive dependency set in topological order; `rollback` restores dependent nodes atomically; added `skillporter graph [--format text|json]`.
+- **Community Skill Registry Phase 1 Spec & Client (`docs/registry/SPEC.md`, `registry.py`)**: Versioned registry client contract (`v1.0.0`), ratings/downloads/risk_score metadata, and `skillporter publish [--dry-run]`.
+- **Opt-In Privacy-Preserving Telemetry & MCP Framework Recipes (`telemetry.py`, `integrations/mcp-recipes/`)**: Strictly opt-in local analytics (`SKILLPORTER_TELEMETRY=1` / `telemetry.enabled: true`, honors `DO_NOT_TRACK=1`) and runnable MCP recipes for LangChain, CrewAI, and AutoGen.
+
+## [2.3.0] - 2026-11-11
+
+### Added (Workstream 2 — Adoption, Zero-Residue Demo & Explain)
+- **`skillporter demo` (`skillporter/demo.py`)**: Scaffolds an isolated temporary workspace with sample skills across `.claude/skills` and `.agents/skills`, demonstrates broken symlink and SHA-256 drift detection and auto-repair (`diagnose` -> `sync` -> diff), and leaves zero residue.
+- **`skillporter explain` (`skillporter/explain.py`)**: Translates any diagnostic state (`DRIFT`, `DUPLICATE`, `BROKEN`, `MISSING`, `LOCK_DRIFT`, `CYCLE`, `CONFLICT`, `RISK_THRESHOLD`), validation error, or `sec-*` rule into plain-English cause + suggested fix command.
+- **Website & README Comparison Matrix (`website/index.html`, `README.md`)**: Added feature comparison vs. `skillport`, `agent-skill-porter`, and `skill-porter`, and placed the zero-install `uvx skillporter diagnose .` path in the first 10 lines of `README.md`.
+
+## [2.2.0] - 2026-11-11
+
+### Added (Workstream 1 Items 3–5 & Workstream 3 Items 1–3)
+- **Experimental Opt-In Dry-Run Sandbox (`skillporter/sandbox.py`)**: `skillporter sandbox run <skill> [--runtime auto|wasm|gvisor|dry-run]` traces proposed file writes, sensitive file reads, network calls, env accesses, and tool invocations without mutating filesystem or network state.
+- **Configurable Risk Score Gate (`skillporter.yaml`)**: Added `security.max_risk_score` (and `--max-risk-score`) causing `add` and `sync` to fail closed with exit code 1 when a skill's risk score exceeds the threshold.
+- **CI Lockfile Check, Per-Harness Status & GitHub App (`ci_report.py`, `integrations/github-app/`, `action.yml`)**: Added `skillporter lock --check`, per-harness installed-vs-locked state in `skillporter status`, `skillporter ci-report`, SARIF upload workflow, and GitHub App PR webhook bot.
+
+## [2.1.0] - 2026-11-11
+
+### Added & Fixed (Workstream 1 Items 1–2 & v2.0.3 Audit Fixes)
+- **NVIDIA SkillSpector Integration & 0–100 Risk Scoring (`skillporter/security.py`)**: Integrated `skillspector` CLI as primary security backend with automatic offline fallback to `skillporter-static`, exposing 0–100 `risk_score`, `recommendation` (`APPROVE`/`CAUTION`/`REJECT`), `category_breakdown`, `engine`, and `engine_version` across `validate`, `scan`, and `inspect`.
+- **SARIF 2.1.0 & `--format json|sarif` Output (`security.py`, `cli.py`)**: Added `--format text|json|sarif` to `scan`, `validate`, and `inspect` for GitHub Code Scanning.
+- **Recursive Category Collision & Missing `--skill` Fixes (`install.py`, `cli.py`)**: Fixed `doctor --fix` when a skill name matches its parent category directory (e.g. Hermes `skills/web/web`), and made `add --skill` / `inspect --skill` fail closed when any requested skill name is missing.
+
 ## [2.0.3] - 2026-11-11
 
 ### Fixed (10,000-Session Benchmark Review Remediation)

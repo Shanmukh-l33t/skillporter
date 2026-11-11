@@ -1,22 +1,29 @@
-"""Static Security and Supply-Chain Assessment Engine for Agent Skills.
+"""Security and Supply-Chain Assessment Engine for Agent Skills.
 
 Skills are untrusted packages containing natural-language agent instructions
-and optional executable scripts. This module performs static analysis on
-SKILL.md, supporting Markdown, scripts, symlinks, and archive contents before
-installation.
+and optional executable scripts. This module performs static and semantic-heuristic
+analysis on SKILL.md, supporting Markdown, scripts, symlinks, and archive contents
+before installation, with first-class integration for NVIDIA SkillSpector when
+available and automatic offline fallback to the built-in scanner.
 
 Assessment classification:
-  * STATIC_SECURITY_ASSESSMENT — Heuristic/pattern and structural verification.
-    Never claims that static scanning guarantees runtime safety.
+  * STATIC_SECURITY_ASSESSMENT — Deterministic pattern, structural, and risk-score
+    verification. Never claims that static scanning guarantees runtime safety.
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
+import shutil
+import subprocess
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
+
+SCANNER_ENGINE_VERSION = "2.4.0"
 
 SEVERITY_ORDER = {
     "CRITICAL": 4,
@@ -26,9 +33,55 @@ SEVERITY_ORDER = {
     "INFO": 0,
 }
 
+SEVERITY_SCORE_WEIGHTS = {
+    "CRITICAL": 55,
+    "HIGH": 35,
+    "MEDIUM": 15,
+    "LOW": 5,
+    "INFO": 2,
+}
+
+CATEGORY_KEYS: tuple[str, ...] = (
+    "secrets",
+    "prompt_injection",
+    "code_execution",
+    "data_exfiltration",
+    "filesystem_escape",
+    "supply_chain",
+)
+
 STRUCTURAL_ESCAPE_CODES = frozenset({"sec-symlink-escape", "sec-path-traversal"})
 
 MAX_SCAN_FILE_BYTES = 2 * 1024 * 1024  # 2 MiB cap per text file during pattern scan
+
+# Map every rule code to a canonical risk category
+_FINDING_CATEGORIES: dict[str, str] = {
+    "sec-private-key": "secrets",
+    "sec-aws-key": "secrets",
+    "sec-github-token": "secrets",
+    "sec-api-key": "secrets",
+    "sec-prompt-override": "prompt_injection",
+    "sec-hidden-unicode": "prompt_injection",
+    "sec-html-comment-instruction": "prompt_injection",
+    "sec-css-hidden-instruction": "prompt_injection",
+    "sec-markdown-path-traversal": "filesystem_escape",
+    "sec-curl-pipe-sh": "code_execution",
+    "sec-obfuscated-exec": "code_execution",
+    "sec-base64-decode": "code_execution",
+    "sec-reverse-shell": "code_execution",
+    "sec-dynamic-eval": "code_execution",
+    "sec-env-exfil": "data_exfiltration",
+    "sec-credential-harvest": "data_exfiltration",
+    "sec-data-exfil": "data_exfiltration",
+    "sec-symlink-escape": "filesystem_escape",
+    "sec-broken-symlink": "filesystem_escape",
+    "sec-path-traversal": "filesystem_escape",
+    "sec-missing-root": "filesystem_escape",
+    "sec-binary-artifact": "supply_chain",
+    "sec-script-outside-scripts-dir": "supply_chain",
+    "sec-oversized-file": "supply_chain",
+    "sec-external-download": "supply_chain",
+}
 
 # Patterns for embedded secrets and private keys
 _SECRET_PATTERNS: tuple[tuple[str, str, str, re.Pattern[str]], ...] = (
@@ -200,6 +253,7 @@ _REMEDIATIONS: dict[str, str] = {
     ),
     "sec-data-exfil": "Remove outbound HTTP POST commands that upload local host files.",
     "sec-dynamic-eval": "Avoid os.system(), eval(), exec(), or inline 'python -c' shell execution.",
+    "sec-external-download": "Pin downloaded artifacts by SHA-256 digest or vendor static references locally.",
     "sec-symlink-escape": "Remove symlinks that resolve outside the skill root directory.",
     "sec-broken-symlink": "Remove or fix broken symlinks inside the skill directory.",
     "sec-path-traversal": "Remove '..' path traversal segments from file paths.",
@@ -211,7 +265,7 @@ _REMEDIATIONS: dict[str, str] = {
 
 @dataclass
 class SecurityFinding:
-    """One static security finding in a skill package."""
+    """One security finding in a skill package."""
 
     severity: str  # CRITICAL | HIGH | MEDIUM | LOW | INFO
     code: str
@@ -219,15 +273,19 @@ class SecurityFinding:
     message: str
     line: int = 0
     remediation: str = ""
+    category: str = ""
 
     def __post_init__(self) -> None:
         if not self.remediation and self.code in _REMEDIATIONS:
             self.remediation = _REMEDIATIONS[self.code]
+        if not self.category:
+            self.category = _FINDING_CATEGORIES.get(self.code, "supply_chain")
 
     def to_dict(self) -> dict[str, object]:
         return {
             "severity": self.severity,
             "code": self.code,
+            "category": self.category,
             "file": self.file,
             "line": self.line,
             "message": self.message,
@@ -237,13 +295,16 @@ class SecurityFinding:
 
 @dataclass
 class SecurityReport:
-    """Complete static security assessment of a skill directory."""
+    """Complete security assessment of a skill directory with 0-100 risk score."""
 
     root: Path
     assessment_type: str = "STATIC_SECURITY_ASSESSMENT"
+    engine: str = "skillporter-static"
+    engine_version: str = SCANNER_ENGINE_VERSION
     tree_hash: str = ""
     file_hashes: dict[str, str] = field(default_factory=dict)
     findings: list[SecurityFinding] = field(default_factory=list)
+    external_score: int | None = None
 
     @property
     def critical_count(self) -> int:
@@ -267,18 +328,77 @@ class SecurityReport:
         return any(f.code in STRUCTURAL_ESCAPE_CODES for f in self.findings)
 
     @property
+    def category_breakdown(self) -> dict[str, int]:
+        """Compute per-category 0-100 risk contribution across the 6 canonical security categories."""
+        scores: dict[str, int] = {cat: 0 for cat in CATEGORY_KEYS}
+        for f in self.findings:
+            cat = f.category if f.category in scores else "supply_chain"
+            weight = 90 if f.code in STRUCTURAL_ESCAPE_CODES else SEVERITY_SCORE_WEIGHTS.get(f.severity, 5)
+            scores[cat] = min(100, scores[cat] + weight)
+        return scores
+
+    @property
+    def risk_score(self) -> int:
+        """Return a deterministic 0-100 risk score calibrated to the SkillSpector rubric."""
+        cat_sum = sum(self.category_breakdown.values())
+        computed = min(100, cat_sum)
+        if self.external_score is not None:
+            return min(100, max(computed, int(self.external_score)))
+        return computed
+
+    @property
+    def risk_level(self) -> str:
+        """Map 0-100 risk_score to human-readable risk posture."""
+        score = self.risk_score
+        if score == 0:
+            return "LOW"
+        if score <= 20:
+            return "LOW"
+        if score <= 35:
+            return "MODERATE"
+        if score <= 50:
+            return "MEDIUM"
+        if score <= 80:
+            return "HIGH"
+        return "CRITICAL"
+
+    @property
+    def recommendation(self) -> str:
+        """Return SkillSpector-compatible posture verdict: APPROVE, CAUTION, or REJECT."""
+        if self.has_structural_escape or self.critical_count > 0 or self.risk_score > 50:
+            return "REJECT"
+        if self.high_count > 0 or self.risk_score > 20:
+            return "CAUTION"
+        return "APPROVE"
+
+    @property
     def passed(self) -> bool:
         """Default policy: pass if there are no CRITICAL or HIGH findings."""
         return self.critical_count == 0 and self.high_count == 0
 
-    def fails_policy(self, block_on: str = "HIGH") -> bool:
+    def fails_policy(self, block_on: str = "HIGH", max_risk_score: int | None = None) -> bool:
+        if self.has_structural_escape:
+            return True
+        if max_risk_score is not None and self.risk_score > max_risk_score:
+            return True
         threshold = SEVERITY_ORDER.get(block_on.upper(), SEVERITY_ORDER["HIGH"])
         return any(SEVERITY_ORDER.get(f.severity, 0) >= threshold for f in self.findings)
+
+    def exceeds_risk_threshold(self, max_risk_score: int | None) -> bool:
+        if max_risk_score is None:
+            return False
+        return self.risk_score > max_risk_score
 
     def to_dict(self) -> dict[str, object]:
         return {
             "root": str(self.root),
             "assessment_type": self.assessment_type,
+            "engine": self.engine,
+            "engine_version": self.engine_version,
+            "risk_score": self.risk_score,
+            "risk_level": self.risk_level,
+            "recommendation": self.recommendation,
+            "category_breakdown": self.category_breakdown,
             "disclaimer": (
                 "Static analysis inspects files for known dangerous patterns and integrity anomalies; "
                 "it does not guarantee runtime safety."
@@ -340,12 +460,7 @@ def compute_tree_hash(skill_dir: Path) -> tuple[str, dict[str, str]]:
 def _check_symlink_safety(
     link_path: Path, resolved_root: Path, rel: str, is_dir: bool = False
 ) -> SecurityFinding | None:
-    """Inspect a symlink inside a skill directory.
-
-    * If it points outside *resolved_root* AND the target exists on the host
-      (e.g. ``/etc/shadow``, ``/root/.ssh``, ``../secret.txt``), return CRITICAL ``sec-symlink-escape``.
-    * If it is a dangling/broken link to a non-existent path, return MEDIUM ``sec-broken-symlink``.
-    """
+    """Inspect a symlink inside a skill directory."""
     raw_target = os.readlink(link_path)
     try:
         target = link_path.resolve()
@@ -376,11 +491,56 @@ def _check_symlink_safety(
         )
 
 
-def scan_skill(skill_dir: Path) -> SecurityReport:
-    """Run static security and supply-chain checks on a skill directory."""
+def _run_external_skillspector(skill_dir: Path) -> dict[str, object] | None:
+    """Invoke NVIDIA SkillSpector CLI (`skillspector scan <dir> --no-llm --format json`) if installed."""
+    spector_bin = os.environ.get("SKILLPORTER_SPECTOR_BIN", "").strip() or shutil.which("skillspector")
+    if not spector_bin:
+        return None
+
+    with tempfile.TemporaryDirectory(prefix="skillporter-spector-") as tmp:
+        out_json = Path(tmp) / "report.json"
+        try:
+            proc = subprocess.run(
+                [spector_bin, "scan", str(skill_dir), "--no-llm", "--format", "json", "--output", str(out_json)],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                stdin=subprocess.DEVNULL,
+                check=False,
+            )
+            if out_json.is_file():
+                return json.loads(out_json.read_text(encoding="utf-8"))
+            if proc.stdout.strip().startswith("{"):
+                return json.loads(proc.stdout.strip())
+        except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+            return None
+    return None
+
+
+def scan_skill(
+    skill_dir: Path,
+    *,
+    engine: str = "auto",
+    offline: bool = False,
+) -> SecurityReport:
+    """Run security and supply-chain checks on a skill directory.
+
+    Uses NVIDIA SkillSpector when available (and ``engine`` is ``auto`` or
+    ``skillspector`` and ``offline=False``), merging findings with the built-in
+    static scanner and falling back cleanly when offline or when SkillSpector
+    is not installed.
+    """
     raw_root = Path(skill_dir)
     resolved_root = raw_root.resolve()
-    report = SecurityReport(root=resolved_root)
+    env_offline = os.environ.get("SKILLPORTER_OFFLINE", "").strip() == "1"
+    is_offline = offline or env_offline
+    req_engine = (os.environ.get("SKILLPORTER_SECURITY_ENGINE", "").strip() or engine or "auto").lower()
+
+    report = SecurityReport(
+        root=resolved_root,
+        engine="skillporter-static",
+        engine_version=SCANNER_ENGINE_VERSION,
+    )
 
     if not raw_root.exists():
         report.findings.append(
@@ -500,7 +660,125 @@ def scan_skill(skill_dir: Path) -> SecurityReport:
                             report.findings.append(SecurityFinding(effective_sev, code, rel, msg, line=l_idx))
                             existing_codes.add(code)
 
+    # Integrate NVIDIA SkillSpector when enabled and available
+    if not is_offline and req_engine in ("auto", "skillspector"):
+        ext = _run_external_skillspector(resolved_root)
+        if isinstance(ext, dict):
+            report.engine = "skillspector"
+            report.engine_version = str(ext.get("engine_version") or ext.get("version") or SCANNER_ENGINE_VERSION)
+            raw_score = ext.get("risk_score", ext.get("score"))
+            if isinstance(raw_score, (int, float)):
+                report.external_score = int(raw_score)
+            ext_findings = ext.get("findings", [])
+            if isinstance(ext_findings, list):
+                existing_keys = {(f.code, f.file, f.line) for f in report.findings}
+                for ef in ext_findings:
+                    if not isinstance(ef, dict):
+                        continue
+                    ecode = str(ef.get("rule_id") or ef.get("code") or "spector-finding")
+                    efile = str(ef.get("file") or "SKILL.md")
+                    eline = int(ef.get("line", 0)) if isinstance(ef.get("line"), int) else 0
+                    esev = str(ef.get("severity") or "MEDIUM").upper()
+                    if esev not in SEVERITY_ORDER:
+                        esev = "MEDIUM"
+                    emsg = str(ef.get("message") or ef.get("description") or "Flagged by SkillSpector")
+                    ecat = str(ef.get("category") or _FINDING_CATEGORIES.get(ecode, "supply_chain"))
+                    if (ecode, efile, eline) not in existing_keys:
+                        report.findings.append(
+                            SecurityFinding(
+                                severity=esev,
+                                code=ecode,
+                                file=efile,
+                                message=emsg,
+                                line=eline,
+                                category=ecat,
+                            )
+                        )
+                        existing_keys.add((ecode, efile, eline))
+
     tree_hash, file_hashes = compute_tree_hash(resolved_root)
     report.tree_hash = tree_hash
     report.file_hashes = file_hashes
     return report
+
+
+def to_sarif(
+    reports: dict[str, SecurityReport] | list[SecurityReport],
+    *,
+    tool_version: str = SCANNER_ENGINE_VERSION,
+) -> dict[str, object]:
+    """Serialize one or more SecurityReports into SARIF 2.1.0 for GitHub Code Scanning."""
+    rep_list = list(reports.values()) if isinstance(reports, dict) else list(reports)
+
+    sarif_level_map = {
+        "CRITICAL": "error",
+        "HIGH": "error",
+        "MEDIUM": "warning",
+        "LOW": "note",
+        "INFO": "note",
+    }
+
+    rules_by_id: dict[str, dict[str, object]] = {}
+    results: list[dict[str, object]] = []
+
+    for rep in rep_list:
+        skill_name = rep.root.name
+        for f in rep.findings:
+            if f.code not in rules_by_id:
+                rules_by_id[f.code] = {
+                    "id": f.code,
+                    "name": f.code,
+                    "shortDescription": {"text": f.message},
+                    "help": {"text": f.remediation or f.message},
+                    "defaultConfiguration": {
+                        "level": sarif_level_map.get(f.severity, "warning"),
+                    },
+                    "properties": {
+                        "category": f.category,
+                        "severity": f.severity,
+                    },
+                }
+            artifact_uri = f"{skill_name}/{f.file}" if not f.file.startswith(skill_name) else f.file
+            region: dict[str, int] = {"startLine": max(1, f.line)}
+            results.append(
+                {
+                    "ruleId": f.code,
+                    "level": sarif_level_map.get(f.severity, "warning"),
+                    "message": {
+                        "text": f"[{skill_name}] {f.message}"
+                        + (f" Remediation: {f.remediation}" if f.remediation else ""),
+                    },
+                    "locations": [
+                        {
+                            "physicalLocation": {
+                                "artifactLocation": {"uri": artifact_uri},
+                                "region": region,
+                            }
+                        }
+                    ],
+                    "properties": {
+                        "skill": skill_name,
+                        "severity": f.severity,
+                        "category": f.category,
+                        "risk_score": rep.risk_score,
+                    },
+                }
+            )
+
+    return {
+        "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+        "version": "2.1.0",
+        "runs": [
+            {
+                "tool": {
+                    "driver": {
+                        "name": "skillporter",
+                        "version": tool_version,
+                        "informationUri": "https://github.com/Shanmukh-l33t/skillporter",
+                        "rules": [rules_by_id[k] for k in sorted(rules_by_id)],
+                    }
+                },
+                "results": results,
+            }
+        ],
+    }

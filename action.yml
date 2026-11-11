@@ -1,5 +1,5 @@
-name: "Skillporter — Validate, Scan & Diagnose Agent Skills"
-description: "Validate SKILL.md compliance, run static security checks, and verify cross-harness reachability."
+name: "Skillporter — Validate, Scan, Lock-Check & Comment on PRs"
+description: "Validate SKILL.md compliance, run security scans (SARIF 2.1.0), verify lockfiles, and post PR diagnostic reports."
 author: "Shanmukh Dheekonda"
 branding:
   icon: "shield"
@@ -7,7 +7,7 @@ branding:
 
 inputs:
   command:
-    description: "Skillporter command to execute (validate, scan, diagnose, doctor)"
+    description: "Skillporter command to execute (validate, scan, diagnose, doctor, lock)"
     required: false
     default: "validate"
   path:
@@ -19,9 +19,29 @@ inputs:
     required: false
     default: ""
   run-security-scan:
-    description: "Also execute `skillporter scan` static supply-chain security check"
+    description: "Also execute `skillporter scan` supply-chain security check"
     required: false
     default: "true"
+  max-risk-score:
+    description: "Maximum allowed 0-100 security risk score before failing closed"
+    required: false
+    default: ""
+  sarif-file:
+    description: "Output path for SARIF 2.1.0 security report (e.g. skillporter.sarif)"
+    required: false
+    default: "skillporter.sarif"
+  upload-sarif:
+    description: "Upload SARIF report to GitHub Code Scanning"
+    required: false
+    default: "false"
+  lock-check:
+    description: "Run `skillporter lock --check` to fail CI on lockfile drift"
+    required: false
+    default: "false"
+  pr-comment:
+    description: "Generate and post an actionable `skillporter ci-report` comment on pull requests"
+    required: false
+    default: "false"
   python-version:
     description: "Python version to use"
     required: false
@@ -44,14 +64,45 @@ runs:
     - name: Run Skillporter Primary Check
       shell: bash
       run: |
+        RISK_ARG=""
+        if [ -n "${{ inputs.max-risk-score }}" ]; then
+          RISK_ARG="--max-risk-score ${{ inputs.max-risk-score }}"
+        fi
         if [ "${{ inputs.command }}" = "diagnose" ] && [ -n "${{ inputs.harnesses }}" ]; then
           skillporter diagnose "${{ inputs.path }}" --harness "${{ inputs.harnesses }}"
         else
-          skillporter ${{ inputs.command }} "${{ inputs.path }}"
+          skillporter ${{ inputs.command }} "${{ inputs.path }}" $RISK_ARG
         fi
 
-    - name: Run Static Security Assessment
-      if: ${{ inputs.run-security-scan == 'true' && inputs.command != 'scan' }}
+    - name: Run Security Assessment & Emit SARIF 2.1.0
+      if: ${{ inputs.run-security-scan == 'true' }}
       shell: bash
       run: |
-        skillporter scan "${{ inputs.path }}"
+        RISK_ARG=""
+        if [ -n "${{ inputs.max-risk-score }}" ]; then
+          RISK_ARG="--max-risk-score ${{ inputs.max-risk-score }}"
+        fi
+        skillporter scan "${{ inputs.path }}" --format sarif $RISK_ARG > "${{ inputs.sarif-file }}"
+        skillporter scan "${{ inputs.path }}" $RISK_ARG
+
+    - name: Verify Lockfile Integrity (lock --check)
+      if: ${{ inputs.lock-check == 'true' }}
+      shell: bash
+      run: |
+        skillporter lock "${{ inputs.path }}" --check
+
+    - name: Upload SARIF to GitHub Code Scanning
+      if: ${{ always() && inputs.upload-sarif == 'true' }}
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: ${{ inputs.sarif-file }}
+
+    - name: Post PR Diagnostic & Security Report
+      if: ${{ always() && inputs.pr-comment == 'true' && github.event_name == 'pull_request' }}
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: |
+        skillporter ci-report "${{ inputs.path }}" \
+          --github-repo "${{ github.repository }}" \
+          --pr "${{ github.event.pull_request.number }}"

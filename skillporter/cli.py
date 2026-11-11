@@ -19,7 +19,10 @@ import sys
 from pathlib import Path
 
 from . import __version__, harnesses
+from .ci_report import check_lockfile_staleness, generate_ci_report, post_github_pr_comment
+from .demo import run_demo
 from .diagnose import diagnose as run_diagnose
+from .explain import explain_finding
 from .formats import inspect_skill_dir, render_adapted_skill
 from .frontmatter import Issue, discover, parse_skill, validate
 from .install import InstallError, install_many, plan_install, rollback_skill
@@ -37,15 +40,27 @@ from .manifest import (
     save_manifest,
 )
 from .mcp_server import run_mcp_stdio
-from .registry import pack_skill, resolve_registry_spec, search_catalog
-from .security import compute_tree_hash, scan_skill
+from .registry import pack_skill, publish_skill, resolve_registry_spec, search_catalog
+from .resolver import DependencyConflictError, DependencyCycleError, DependencyError, resolve_dependency_graph
+from .sandbox import run_sandbox
+from .security import CATEGORY_KEYS, SCANNER_ENGINE_VERSION, compute_tree_hash, scan_skill, to_sarif
 from .sources import SourceError, resolve_source
 from .state import load_state
+from .telemetry import record_telemetry_event
 from .ui import BOLD, CYAN, DIM, badge, style
 
 EXIT_OK = 0
 EXIT_PROBLEM = 1
 EXIT_ERROR = 2
+
+
+def _fmt_mode(args: argparse.Namespace) -> str:
+    fmt = str(getattr(args, "format", "") or "").strip().lower()
+    if fmt in ("json", "sarif", "text", "markdown"):
+        return fmt
+    if getattr(args, "json", False):
+        return "json"
+    return "text"
 
 
 def _resolve_target_harnesses(
@@ -165,8 +180,9 @@ def _cmd_diagnose(args: argparse.Namespace) -> int:
         selected = harnesses.names()
 
     diag = run_diagnose(root, only=selected, scope=args.scope)
+    fmt = _fmt_mode(args)
 
-    if args.json:
+    if fmt == "json":
         payload = {
             "root": str(diag.root),
             "scope": args.scope,
@@ -260,11 +276,22 @@ def _cmd_add(args: argparse.Namespace) -> int:
     try:
         skill_dirs = resolved.skill_dirs
         if args.skill:
-            wanted = {s.strip() for s in args.skill}
-            skill_dirs = [d for d in skill_dirs if d.name in wanted]
-            if not skill_dirs:
-                print(f"error: requested skill(s) {sorted(wanted)} not found in {args.source}", file=sys.stderr)
+            wanted = {part.strip() for raw in args.skill for part in raw.split(",") if part.strip()}
+            found_names = {d.name for d in skill_dirs}
+            missing_names = sorted(wanted - found_names)
+            if missing_names:
+                print(
+                    f"error: requested skill(s) {missing_names} not found in {args.source} "
+                    f"(available: {sorted(found_names)})",
+                    file=sys.stderr,
+                )
                 return EXIT_ERROR
+            skill_dirs = [d for d in skill_dirs if d.name in wanted]
+
+        manifest = load_manifest(root)
+        max_risk_score = getattr(args, "max_risk_score", None)
+        if max_risk_score is None and manifest is not None:
+            max_risk_score = manifest.max_risk_score
 
         plan = plan_install(
             root,
@@ -281,18 +308,28 @@ def _cmd_add(args: argparse.Namespace) -> int:
         sec_high = 0
         sec_info = 0
         sec_reports = {}
+        risk_threshold_exceeded: list[str] = []
         for sdir in skill_dirs:
             issues = validate(parse_skill(sdir / "SKILL.md"))
             for iss in issues:
                 if iss.level == "error":
                     spec_errors.append(f"{sdir.name}: {iss}")
-            srep = scan_skill(sdir)
+            srep = scan_skill(
+                sdir,
+                engine=getattr(args, "engine", "auto"),
+                offline=getattr(args, "offline", False),
+            )
             sec_reports[sdir.name] = srep
             sec_critical += srep.critical_count
             sec_high += srep.high_count
             sec_info += srep.medium_count + srep.low_count
+            if srep.exceeds_risk_threshold(max_risk_score):
+                risk_threshold_exceeded.append(
+                    f"{sdir.name} (risk_score {srep.risk_score}/100 > max_risk_score {max_risk_score})"
+                )
 
-        if args.json:
+        is_json = _fmt_mode(args) == "json"
+        if is_json:
             if args.dry_run:
                 print(
                     json.dumps(
@@ -304,12 +341,14 @@ def _cmd_add(args: argparse.Namespace) -> int:
                             "harnesses": targets,
                             "shared_destinations": plan.shared_count,
                             "spec_errors": spec_errors,
+                            "max_risk_score": max_risk_score,
+                            "risk_threshold_exceeded": risk_threshold_exceeded,
                             "security": {k: v.to_dict() for k, v in sec_reports.items()},
                         },
                         indent=2,
                     )
                 )
-                return EXIT_PROBLEM if (spec_errors or sec_critical or sec_high) else EXIT_OK
+                return EXIT_PROBLEM if (spec_errors or sec_critical or sec_high or risk_threshold_exceeded) else EXIT_OK
         else:
             print(style("SKILLPORTER", BOLD, CYAN))
             print(f"\nSource: {resolved.kind}:{args.source}")
@@ -317,7 +356,8 @@ def _cmd_add(args: argparse.Namespace) -> int:
                 print(f"Commit: {resolved.resolved_commit[:12]}")
             print("\nFound skills:")
             for sdir in skill_dirs:
-                print(f"  {sdir.name}")
+                srep_i = sec_reports[sdir.name]
+                print(f"  {sdir.name}  (risk: {srep_i.risk_score}/100 · {srep_i.recommendation})")
             print("\nTarget harnesses:")
             for t in targets:
                 print(f"  {harnesses.get(t).label} ({t})")
@@ -329,7 +369,7 @@ def _cmd_add(args: argparse.Namespace) -> int:
             print(f"\nValidation: {badge(val_label)}")
             for err in spec_errors:
                 print(f"  - {err}")
-            print("\nSecurity assessment (static):")
+            print("\nSecurity assessment:")
             print(f"  {sec_info} informational/medium finding(s)")
             print(f"  {sec_critical + sec_high} critical/high finding(s)")
 
@@ -338,6 +378,14 @@ def _cmd_add(args: argparse.Namespace) -> int:
             print(
                 "\nerror: installation blocked by structural filesystem escape "
                 "(escaping symlinks or path traversal cannot be overridden with --allow-risky or --force)",
+                file=sys.stderr,
+            )
+            return EXIT_PROBLEM
+
+        if risk_threshold_exceeded and not args.allow_risky:
+            print(
+                f"\nerror: installation blocked by configured security.max_risk_score ({max_risk_score}): "
+                + ", ".join(risk_threshold_exceeded),
                 file=sys.stderr,
             )
             return EXIT_PROBLEM
@@ -351,11 +399,11 @@ def _cmd_add(args: argparse.Namespace) -> int:
             return EXIT_PROBLEM
 
         if args.dry_run:
-            if not args.json:
+            if not is_json:
                 print("\nDry run complete (no files modified).")
             return EXIT_OK
 
-        if not args.json:
+        if not is_json:
             print("\nInstalling...\n")
 
         try:
@@ -376,7 +424,6 @@ def _cmd_add(args: argparse.Namespace) -> int:
             return EXIT_ERROR
 
         # Update manifest if skillporter.yaml exists
-        manifest = load_manifest(root)
         if manifest and args.scope == "project":
             existing_names = {s.name for s in manifest.skills}
             for sdir in skill_dirs:
@@ -392,7 +439,7 @@ def _cmd_add(args: argparse.Namespace) -> int:
                     )
             save_manifest(root, manifest)
 
-        if args.json:
+        if is_json:
             print(
                 json.dumps(
                     {
@@ -471,31 +518,110 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     if not target.exists():
         print(f"error: {target} does not exist", file=sys.stderr)
         return EXIT_ERROR
+    fmt = _fmt_mode(args)
     files = [target] if target.name == "SKILL.md" else discover(target)
     if not files:
-        if getattr(args, "json", False):
-            print(json.dumps({"valid": True, "files": {}}, indent=2))
+        empty_cats = {cat: 0 for cat in CATEGORY_KEYS}
+        if fmt == "sarif":
+            print(json.dumps(to_sarif([]), indent=2))
+        elif fmt == "json":
+            print(
+                json.dumps(
+                    {
+                        "valid": True,
+                        "risk_score": 0,
+                        "risk_level": "LOW",
+                        "recommendation": "APPROVE",
+                        "category_breakdown": empty_cats,
+                        "engine": "skillporter-static",
+                        "engine_version": SCANNER_ENGINE_VERSION,
+                        "files": {},
+                        "skills": {},
+                    },
+                    indent=2,
+                )
+            )
         else:
             print(f"no SKILL.md found under {target} (0 errors).")
         return EXIT_OK
 
     problems = 0
     json_out = {}
+    skill_details = {}
+    sec_reports = []
+    agg_categories: dict[str, int] = {cat: 0 for cat in CATEGORY_KEYS}
+    max_risk = 0
+    engine_name = "skillporter-static"
+    engine_ver = SCANNER_ENGINE_VERSION
+    max_risk_threshold = getattr(args, "max_risk_score", None)
+
     for path in files:
         issues: list[Issue] = validate(parse_skill(path))
         errors = [i for i in issues if i.level == "error"]
         problems += len(errors)
+        srep = scan_skill(
+            path.parent,
+            engine=getattr(args, "engine", "auto"),
+            offline=getattr(args, "offline", False),
+        )
+        sec_reports.append(srep)
+        engine_name = srep.engine
+        engine_ver = srep.engine_version
+        if srep.risk_score > max_risk:
+            max_risk = srep.risk_score
+        for cat, cscore in srep.category_breakdown.items():
+            agg_categories[cat] = max(agg_categories.get(cat, 0), cscore)
+        if srep.exceeds_risk_threshold(max_risk_threshold):
+            problems += 1
+
         label = path.parent.name
         json_out[str(path)] = [{"level": i.level, "code": i.code, "message": i.message} for i in issues]
-        if not getattr(args, "json", False):
+        skill_details[label] = {
+            "path": str(path.parent),
+            "valid": len(errors) == 0,
+            "risk_score": srep.risk_score,
+            "risk_level": srep.risk_level,
+            "recommendation": srep.recommendation,
+            "category_breakdown": srep.category_breakdown,
+            "engine": srep.engine,
+            "engine_version": srep.engine_version,
+            "issues": json_out[str(path)],
+        }
+        if fmt == "text":
             if issues:
-                print(f"{label}:")
+                print(
+                    f"{label}: (risk: {srep.risk_score}/100 · {srep.recommendation} · "
+                    f"engine: {srep.engine} v{srep.engine_version})"
+                )
                 for i in issues:
                     print(f"  {i}")
             else:
-                print(f"{label}: OK")
-    if getattr(args, "json", False):
-        print(json.dumps({"valid": problems == 0, "files": json_out}, indent=2))
+                print(
+                    f"{label}: OK  (risk: {srep.risk_score}/100 · {srep.recommendation} · "
+                    f"engine: {srep.engine} v{srep.engine_version})"
+                )
+
+    if fmt == "sarif":
+        print(json.dumps(to_sarif(sec_reports, tool_version=engine_ver), indent=2))
+    elif fmt == "json":
+        rec = "REJECT" if max_risk > 50 else ("CAUTION" if max_risk > 20 else "APPROVE")
+        rlevel = "CRITICAL" if max_risk > 80 else ("HIGH" if max_risk > 50 else ("MEDIUM" if max_risk > 20 else "LOW"))
+        print(
+            json.dumps(
+                {
+                    "valid": problems == 0,
+                    "risk_score": max_risk,
+                    "risk_level": rlevel,
+                    "recommendation": rec,
+                    "category_breakdown": agg_categories,
+                    "engine": engine_name,
+                    "engine_version": engine_ver,
+                    "files": json_out,
+                    "skills": skill_details,
+                },
+                indent=2,
+            )
+        )
     return EXIT_PROBLEM if problems else EXIT_OK
 
 
@@ -505,18 +631,39 @@ def _cmd_scan(args: argparse.Namespace) -> int:
         print(f"error: {target} does not exist", file=sys.stderr)
         return EXIT_ERROR
 
+    fmt = _fmt_mode(args)
     skill_dirs = [target] if (target / "SKILL.md").is_file() else [p.parent for p in discover(target)]
     if not skill_dirs:
         skill_dirs = [target]
 
-    reports = {d.name: scan_skill(d) for d in skill_dirs}
-    blocked = any(not r.passed for r in reports.values())
+    reports = {
+        d.name: scan_skill(
+            d,
+            engine=getattr(args, "engine", "auto"),
+            offline=getattr(args, "offline", False),
+        )
+        for d in skill_dirs
+    }
+    max_risk_threshold = getattr(args, "max_risk_score", None)
+    blocked = any(
+        (not r.passed) or r.has_structural_escape or r.exceeds_risk_threshold(max_risk_threshold)
+        for r in reports.values()
+    )
 
-    if args.json:
+    if fmt == "sarif":
+        print(json.dumps(to_sarif(reports), indent=2))
+        return EXIT_PROBLEM if blocked else EXIT_OK
+
+    if fmt == "json":
+        max_score = max((r.risk_score for r in reports.values()), default=0)
+        first_rep = next(iter(reports.values()), None)
         print(
             json.dumps(
                 {
                     "passed": not blocked,
+                    "risk_score": max_score,
+                    "engine": first_rep.engine if first_rep else "skillporter-static",
+                    "engine_version": first_rep.engine_version if first_rep else SCANNER_ENGINE_VERSION,
                     "reports": {k: v.to_dict() for k, v in reports.items()},
                 },
                 indent=2,
@@ -524,10 +671,20 @@ def _cmd_scan(args: argparse.Namespace) -> int:
         )
         return EXIT_PROBLEM if blocked else EXIT_OK
 
-    print(f"skillporter {__version__} — static security assessment\n")
+    print(f"skillporter {__version__} — security assessment\n")
     for sname, rep in reports.items():
-        verdict = "PASSED" if rep.passed else "BLOCKED"
-        print(f"{sname}: {badge(verdict)}  (sha256: {rep.tree_hash[:12] if rep.tree_hash else 'n/a'})")
+        exceeds = rep.exceeds_risk_threshold(max_risk_threshold)
+        verdict = "PASSED" if (rep.passed and not exceeds) else "BLOCKED"
+        print(
+            f"{sname}: {badge(verdict)}  "
+            f"(risk: {rep.risk_score}/100 · {rep.recommendation} · "
+            f"engine: {rep.engine} v{rep.engine_version} · "
+            f"sha256: {rep.tree_hash[:12] if rep.tree_hash else 'n/a'})"
+        )
+        non_zero_cats = {k: v for k, v in rep.category_breakdown.items() if v > 0}
+        if non_zero_cats:
+            cats_str = ", ".join(f"{k}={v}" for k, v in non_zero_cats.items())
+            print(f"  Categories: {cats_str}")
         if not rep.findings:
             print("  0 findings across all scanned files.")
         for f in rep.findings:
@@ -703,6 +860,7 @@ def _cmd_search(args: argparse.Namespace) -> int:
 
 def _cmd_inspect(args: argparse.Namespace) -> int:
     root = Path.cwd()
+    fmt_out = _fmt_mode(args)
     try:
         resolved = resolve_source(args.source, base_dir=root)
     except (SourceError, KeyError) as exc:
@@ -712,18 +870,26 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
     try:
         skill_dirs = resolved.skill_dirs
         if getattr(args, "skill", None):
-            wanted = {s.strip() for s in args.skill}
-            skill_dirs = [d for d in skill_dirs if d.name in wanted]
-            if not skill_dirs:
-                print(f"error: requested skill(s) {sorted(wanted)} not found in {args.source}", file=sys.stderr)
+            wanted = {part.strip() for raw in args.skill for part in raw.split(",") if part.strip()}
+            found_names = {d.name for d in skill_dirs}
+            missing_names = sorted(wanted - found_names)
+            if missing_names:
+                print(
+                    f"error: requested skill(s) {missing_names} not found in {args.source} "
+                    f"(available: {sorted(found_names)})",
+                    file=sys.stderr,
+                )
                 return EXIT_ERROR
+            skill_dirs = [d for d in skill_dirs if d.name in wanted]
 
         items = []
+        sec_reports = []
         for sdir in skill_dirs:
             pkg = inspect_skill_dir(sdir)
             doc = pkg.skill_doc or parse_skill(sdir / "SKILL.md")
             issues = validate(doc)
             sec = scan_skill(sdir)
+            sec_reports.append(sec)
             adapted_previews = {}
             if args.preview_adapt:
                 fmt = args.preview_adapt
@@ -740,13 +906,23 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
                     "references": pkg.references,
                     "assets": pkg.assets,
                     "validation_issues": [str(i) for i in issues],
+                    "risk_score": sec.risk_score,
+                    "risk_level": sec.risk_level,
+                    "recommendation": sec.recommendation,
+                    "category_breakdown": sec.category_breakdown,
+                    "engine": sec.engine,
+                    "engine_version": sec.engine_version,
                     "security": sec.to_dict(),
                     "adaptation_limitations": pkg.adaptation_limitations,
                     "adapted_previews": adapted_previews,
                 }
             )
 
-        if args.json:
+        if fmt_out == "sarif":
+            print(json.dumps(to_sarif(sec_reports), indent=2))
+            return EXIT_OK
+
+        if fmt_out == "json":
             print(
                 json.dumps(
                     {
@@ -773,7 +949,12 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
             )
             sec_d = item["security"]
             verdict = "PASSED" if sec_d["passed"] else "BLOCKED"
-            print(f"  Security:    {badge(verdict)} (sha256: {str(sec_d['tree_hash'])[:12]})")
+            print(
+                f"  Security:    {badge(verdict)} "
+                f"(risk: {item['risk_score']}/100 · {item['recommendation']} · "
+                f"engine: {item['engine']} v{item['engine_version']} · "
+                f"sha256: {str(sec_d['tree_hash'])[:12]})"
+            )
             if item["validation_issues"]:
                 print("  Validation issues:")
                 for iss in item["validation_issues"]:
@@ -789,27 +970,83 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
 
 def _cmd_lock(args: argparse.Namespace) -> int:
     root = Path(args.path).expanduser().resolve()
+    fmt = _fmt_mode(args)
+    if getattr(args, "check", False):
+        issues = check_lockfile_staleness(root)
+        manifest = load_manifest(root)
+        if manifest and manifest.skills:
+            try:
+                graph = resolve_dependency_graph(root, manifest)
+                lock_now = load_lockfile(root, warn_migration=False)
+                for sname in graph.install_order:
+                    if sname not in lock_now.skills:
+                        issues.append(f"unpinned dependency in graph: {sname!r} is missing from {LOCKFILE_FILENAME}")
+            except DependencyError as exc:
+                issues.append(f"dependency error: {exc}")
+
+        if fmt == "json":
+            print(json.dumps({"clean": len(issues) == 0, "issues": issues}, indent=2))
+            return EXIT_PROBLEM if issues else EXIT_OK
+        if issues:
+            print(f"{LOCKFILE_FILENAME} check FAILED ({len(issues)} issue(s)):", file=sys.stderr)
+            for iss in issues:
+                print(f"  - {iss}", file=sys.stderr)
+            return EXIT_PROBLEM
+        print(f"{LOCKFILE_FILENAME} is up to date and verified (0 drift).")
+        return EXIT_OK
+
     records = load_state(root)
-    lock = load_lockfile(root)
+    manifest = load_manifest(root)
+    lock = load_lockfile(root, warn_migration=False)
+
+    graph = None
+    with contextlib.suppress(Exception):
+        graph = resolve_dependency_graph(root, manifest)
 
     if records:
         for sname, rec in sorted(records.items()):
+            gnode = graph.nodes.get(sname) if graph else None
             lock.skills[sname] = LockedSkill(
                 name=sname,
                 source=rec.source,
-                resolved_commit=rec.resolved_commit,
-                version=rec.version,
+                resolved_commit=rec.resolved_commit or (gnode.resolved_commit if gnode else ""),
+                version=gnode.version if gnode else rec.version,
                 tree_hash=rec.tree_hash,
                 strategy=rec.strategy,
                 installed_targets=rec.harnesses,
                 locked_at=rec.updated_at,
+                dependencies=dict(gnode.dependencies) if gnode else {},
+                risk_score=gnode.risk_score if gnode else 0,
+                direct=gnode.direct if gnode else True,
             )
-    else:
+    if graph:
+        for sname, gnode in sorted(graph.nodes.items()):
+            if sname in lock.skills:
+                lock.skills[sname].dependencies = dict(gnode.dependencies)
+                lock.skills[sname].risk_score = gnode.risk_score
+                lock.skills[sname].direct = gnode.direct
+                if gnode.version and lock.skills[sname].version == "1.0.0":
+                    lock.skills[sname].version = gnode.version
+            else:
+                lock.skills[sname] = LockedSkill(
+                    name=sname,
+                    source=gnode.source,
+                    resolved_commit=gnode.resolved_commit,
+                    version=gnode.version,
+                    tree_hash=gnode.tree_hash,
+                    strategy="copy",
+                    installed_targets=manifest.harnesses if manifest else [],
+                    dependencies=dict(gnode.dependencies),
+                    risk_score=gnode.risk_score,
+                    direct=gnode.direct,
+                )
+    elif not records:
         for skill_md in discover(root):
             sname = skill_md.parent.name
             if sname in lock.skills:
                 continue
             thash, _ = compute_tree_hash(skill_md.parent)
+            srep = scan_skill(skill_md.parent, offline=True)
             lock.skills[sname] = LockedSkill(
                 name=sname,
                 source=f"./{skill_md.parent.relative_to(root).as_posix()}",
@@ -818,10 +1055,15 @@ def _cmd_lock(args: argparse.Namespace) -> int:
                 tree_hash=thash,
                 strategy="copy",
                 installed_targets=[],
+                risk_score=srep.risk_score,
+                direct=True,
             )
 
     lpath = save_lockfile(root, lock)
-    print(f"wrote {lpath} ({len(lock.skills)} locked skill(s))")
+    if fmt == "json":
+        print(json.dumps(lock.to_dict(), indent=2, sort_keys=True))
+    else:
+        print(f"wrote {lpath} ({len(lock.skills)} locked skill(s))")
     return EXIT_OK
 
 
@@ -846,6 +1088,9 @@ def _cmd_sync(args: argparse.Namespace) -> int:
     force_flag = getattr(args, "force", False)
     prefer_path = getattr(args, "prefer", None)
     allow_risky = getattr(args, "allow_risky", False)
+    max_risk_score = getattr(args, "max_risk_score", None)
+    if max_risk_score is None and manifest is not None:
+        max_risk_score = manifest.max_risk_score
 
     diag = run_diagnose(root, scope=args.scope)
 
@@ -857,6 +1102,13 @@ def _cmd_sync(args: argparse.Namespace) -> int:
                 print(
                     f"error: sync blocked by static security policy on {sname!r} ({cdir}); "
                     "run `skillporter scan` to inspect findings.",
+                    file=sys.stderr,
+                )
+                return EXIT_PROBLEM
+            if srep.exceeds_risk_threshold(max_risk_score) and not allow_risky:
+                print(
+                    f"error: sync blocked by configured security.max_risk_score ({max_risk_score}) on {sname!r} "
+                    f"(risk_score {srep.risk_score}/100 > {max_risk_score})",
                     file=sys.stderr,
                 )
                 return EXIT_PROBLEM
@@ -896,35 +1148,84 @@ def _cmd_sync(args: argparse.Namespace) -> int:
 
     synced_results = []
     if manifest and manifest.skills and not prefer_path and not diag.drifted:
-        for spec in manifest.skills:
-            skill_targets = spec.harnesses or manifest.harnesses or targets
-            strategy = spec.strategy or manifest.strategy or args.strategy
-            resolved = resolve_source(spec.source, base_dir=root, ref_override=spec.ref)
-            try:
-                for sdir in resolved.skill_dirs:
-                    if sdir.name != spec.name and len(resolved.skill_dirs) > 1:
-                        continue
-                    srep = scan_skill(sdir)
-                    if srep.has_structural_escape or (not srep.passed and not allow_risky):
-                        print(
-                            f"error: sync blocked by static security policy on {sdir.name!r}",
-                            file=sys.stderr,
-                        )
-                        return EXIT_PROBLEM
-                    res = run_install(
-                        root,
-                        sdir,
-                        skill_targets,
-                        strategy=strategy,
-                        scope=args.scope,
-                        force=True,
-                        source=resolved.canonical_source,
-                        resolved_commit=resolved.resolved_commit,
-                        record_state=True,
+        # Resolve full transitive dependency graph first (detects cycles and semver conflicts)
+        try:
+            graph = resolve_dependency_graph(root, manifest)
+        except (DependencyCycleError, DependencyConflictError, DependencyError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return EXIT_PROBLEM
+
+        spec_by_name = {s.name: s for s in manifest.skills}
+        for sname in graph.install_order:
+            node = graph.nodes[sname]
+            spec = spec_by_name.get(sname)
+            skill_targets = (spec.harnesses if spec and spec.harnesses else None) or manifest.harnesses or targets
+            strategy = (spec.strategy if spec and spec.strategy else None) or manifest.strategy or args.strategy
+
+            if node.skill_dir and node.skill_dir.exists():
+                sdir = node.skill_dir
+                srep = scan_skill(sdir)
+                if srep.has_structural_escape or (not srep.passed and not allow_risky):
+                    print(
+                        f"error: sync blocked by static security policy on {sdir.name!r}",
+                        file=sys.stderr,
                     )
-                    synced_results.extend(res)
-            finally:
-                resolved.cleanup()
+                    return EXIT_PROBLEM
+                if srep.exceeds_risk_threshold(max_risk_score) and not allow_risky:
+                    print(
+                        f"error: sync blocked by configured security.max_risk_score ({max_risk_score}) "
+                        f"on {sdir.name!r} (risk_score {srep.risk_score}/100 > {max_risk_score})",
+                        file=sys.stderr,
+                    )
+                    return EXIT_PROBLEM
+                res = run_install(
+                    root,
+                    sdir,
+                    skill_targets,
+                    strategy=strategy,
+                    scope=args.scope,
+                    force=True,
+                    source=node.source,
+                    resolved_commit=node.resolved_commit,
+                    version=node.version,
+                    record_state=True,
+                    skill_name_override=sname,
+                )
+                synced_results.extend(res)
+            elif spec:
+                resolved = resolve_source(spec.source, base_dir=root, ref_override=spec.ref)
+                try:
+                    for sdir in resolved.skill_dirs:
+                        if sdir.name != spec.name and len(resolved.skill_dirs) > 1:
+                            continue
+                        srep = scan_skill(sdir)
+                        if srep.has_structural_escape or (not srep.passed and not allow_risky):
+                            print(
+                                f"error: sync blocked by static security policy on {sdir.name!r}",
+                                file=sys.stderr,
+                            )
+                            return EXIT_PROBLEM
+                        if srep.exceeds_risk_threshold(max_risk_score) and not allow_risky:
+                            print(
+                                f"error: sync blocked by configured security.max_risk_score ({max_risk_score}) "
+                                f"on {sdir.name!r} (risk_score {srep.risk_score}/100 > {max_risk_score})",
+                                file=sys.stderr,
+                            )
+                            return EXIT_PROBLEM
+                        res = run_install(
+                            root,
+                            sdir,
+                            skill_targets,
+                            strategy=strategy,
+                            scope=args.scope,
+                            force=True,
+                            source=resolved.canonical_source,
+                            resolved_commit=resolved.resolved_commit,
+                            record_state=True,
+                        )
+                        synced_results.extend(res)
+                finally:
+                    resolved.cleanup()
     else:
         canonical_by_name: dict[str, Path] = {}
         if prefer_path:
@@ -1364,7 +1665,7 @@ def _cmd_pack(args: argparse.Namespace) -> int:
 def _cmd_status(args: argparse.Namespace) -> int:
     root = Path(args.path).expanduser().resolve()
     manifest = load_manifest(root)
-    lock = load_lockfile(root)
+    lock = load_lockfile(root, warn_migration=False)
     records = load_state(root, scope=args.scope)
     diag = run_diagnose(root, scope=args.scope)
     detected = [d for d in harnesses.detect_harnesses(root) if d.installed]
@@ -1383,6 +1684,30 @@ def _cmd_status(args: argparse.Namespace) -> int:
                     f"locked {locked.tree_hash[:12]} != disk {actual_hash[:12]}"
                 )
 
+    active_harnesses = sorted(
+        set(harnesses.CORE_HARNESS_NAMES)
+        | {d.harness.name for d in detected if d.project_active}
+        | (set(manifest.harnesses) if manifest and manifest.harnesses else set())
+    )
+    all_skill_names = sorted(set(diag.skill_names) | set(lock.skills))
+    per_harness: dict[str, dict[str, str]] = {}
+    for hname in active_harnesses:
+        rep = diag.reports.get(hname)
+        if not rep:
+            continue
+        per_harness[hname] = {}
+        for sname in all_skill_names:
+            installed_here = rep.loads(sname)
+            locked_entry = lock.skills.get(sname)
+            if not installed_here:
+                per_harness[hname][sname] = "MISSING_LOCKED" if locked_entry else "MISSING"
+            elif sname in diag.drifted or any(ld.startswith(f"{sname} ") for ld in lock_drift):
+                per_harness[hname][sname] = "INSTALLED_DRIFTED"
+            elif locked_entry:
+                per_harness[hname][sname] = "INSTALLED_LOCKED"
+            else:
+                per_harness[hname][sname] = "INSTALLED_UNLOCKED"
+
     healthy = len(diag.findings) == 0 and len(lock_drift) == 0
     payload = {
         "root": str(root),
@@ -1392,11 +1717,13 @@ def _cmd_status(args: argparse.Namespace) -> int:
         "detected_harnesses": [d.harness.name for d in detected],
         "managed_skills": sorted(records),
         "discovered_skills": diag.skill_names,
+        "locked_skills": sorted(lock.skills),
+        "per_harness": per_harness,
         "drifted_skills": sorted(diag.drifted),
         "findings": diag.findings,
         "healthy": healthy,
     }
-    if args.json:
+    if _fmt_mode(args) == "json":
         print(json.dumps(payload, indent=2))
         return EXIT_OK if healthy else EXIT_PROBLEM
 
@@ -1404,9 +1731,14 @@ def _cmd_status(args: argparse.Namespace) -> int:
     print(f"Manifest ({MANIFEST_FILENAME}): {'present' if manifest else 'not initialized'}")
     print(f"Lockfile ({LOCKFILE_FILENAME}): {'present' if (root / LOCKFILE_FILENAME).is_file() else 'not generated'}")
     print(f"Detected harnesses: {', '.join(d.harness.name for d in detected) or '(none)'}")
-    print(f"Skills discovered:  {len(diag.skill_names)} ({len(records)} managed)")
+    print(f"Skills discovered:  {len(diag.skill_names)} ({len(records)} managed, {len(lock.skills)} locked)")
     print(f"Copy drift:         {len(diag.drifted)} skill(s)")
     print(f"Lockfile drift:     {len(lock_drift)} entry(ies)")
+    if per_harness and all_skill_names:
+        print("\nPer-Harness Installed vs. Locked State:")
+        for hname, smap in sorted(per_harness.items()):
+            summary_str = ", ".join(f"{s}={st}" for s, st in sorted(smap.items()))
+            print(f"  {hname:16} {summary_str}")
     if lock_drift:
         for ld in lock_drift:
             print(f"  - {ld}")
@@ -1416,6 +1748,174 @@ def _cmd_status(args: argparse.Namespace) -> int:
             print(f"  - {f}")
     print(f"\nStatus: {badge('HEALTHY' if healthy else 'NEEDS ATTENTION')}")
     return EXIT_OK if healthy else EXIT_PROBLEM
+
+
+def _cmd_sandbox(args: argparse.Namespace) -> int:
+    raw_target = (args.skill or ".").strip()
+    if raw_target == "run" and getattr(args, "target", ""):
+        raw_target = str(args.target).strip()
+    cand = Path(raw_target).expanduser()
+    if not cand.is_absolute():
+        cand = (Path.cwd() / cand).resolve()
+    if not cand.exists():
+        for smd in discover(Path.cwd()):
+            if smd.parent.name == raw_target or parse_skill(smd).name == raw_target:
+                cand = smd.parent.resolve()
+                break
+    if not cand.exists():
+        print(f"error: {raw_target!r} does not exist", file=sys.stderr)
+        return EXIT_ERROR
+
+    rep = run_sandbox(cand, runtime=getattr(args, "runtime", "auto"))
+    if _fmt_mode(args) == "json":
+        print(json.dumps(rep.to_dict(), indent=2))
+        return EXIT_OK if rep.verdict != "REJECT" else EXIT_PROBLEM
+
+    print(f"skillporter {__version__} — [EXPERIMENTAL] Dry-Run Sandbox Report")
+    print(f"Skill:              {rep.root.name} ({rep.root})")
+    print(f"Runtime:            {rep.runtime_used} (requested: {rep.runtime_requested})")
+    print(f"Filesystem mutated: {'YES' if rep.mutated_filesystem else 'NO (verified by SHA-256 tree hash)'}")
+    print(f"Network mutated:    {'YES' if rep.mutated_network else 'NO (outbound sockets disabled)'}")
+    print(f"Risk Score:         {rep.risk_score}/100 · {badge(rep.verdict)}")
+    print(f"\nProposed file writes:      {len(rep.proposed_file_writes)}")
+    for ev in rep.proposed_file_writes:
+        print(f"  - {ev.file}:{ev.line} -> {ev.detail}")
+    print(f"Proposed sensitive reads:  {len(rep.proposed_file_reads)}")
+    for ev in rep.proposed_file_reads:
+        print(f"  - {ev.file}:{ev.line} -> {ev.detail}")
+    print(f"Proposed network calls:    {len(rep.proposed_network_calls)}")
+    for ev in rep.proposed_network_calls:
+        print(f"  - {ev.file}:{ev.line} -> {ev.detail}")
+    print(f"Proposed tool invocations: {len(rep.proposed_tool_invocations)}")
+    for ev in rep.proposed_tool_invocations:
+        print(f"  - {ev.file}:{ev.line} -> {ev.detail}")
+    print(f"Proposed env accesses:     {len(rep.proposed_env_accesses)}")
+    for ev in rep.proposed_env_accesses:
+        print(f"  - {ev.file}:{ev.line} -> {ev.target}")
+    print(
+        style(
+            "\nDisclaimer: Experimental dry-run sandbox traces proposed operations without touching host state; "
+            "it reduces but does not eliminate runtime risk.",
+            DIM,
+        )
+    )
+    return EXIT_OK if rep.verdict != "REJECT" else EXIT_PROBLEM
+
+
+def _cmd_demo(args: argparse.Namespace) -> int:
+    result = run_demo()
+    if _fmt_mode(args) == "json":
+        print(json.dumps(result, indent=2))
+        return EXIT_OK
+
+    print(f"skillporter {__version__} — interactive multi-harness demo (isolated temp workspace)\n")
+    print("1. BEFORE (Diagnosing fragmented workspace with broken worktree symlink & SHA-256 drift):")
+    before = result["before"]  # type: ignore[index]
+    for f in before["findings"]:  # type: ignore[index]
+        print(f"   - {f}")
+    print("\n2. EXECUTING: skillporter doctor --fix && skillporter sync --force && skillporter lock")
+    print("\n3. BEFORE vs. AFTER DIFF:")
+    for dline in result["diff"]:  # type: ignore[index]
+        print(f"   {dline}")
+    print("\n4. AFTER (All harnesses reachable, 0 drift, 0 broken symlinks, skillporter.lock pinned):")
+    after = result["after"]  # type: ignore[index]
+    for sname, hmap in after["matrix"].items():  # type: ignore[union-attr]
+        cells_str = ", ".join(f"{h}={st}" for h, st in hmap.items())
+        print(f"   {sname:16} {cells_str}")
+    print("\nTemporary workspace cleaned up (0 files written to your current directory).")
+    return EXIT_OK
+
+
+def _cmd_explain(args: argparse.Namespace) -> int:
+    query = " ".join(args.finding).strip()
+    if not query:
+        print("error: provide a finding code or message to explain (e.g. `skillporter explain DRIFT`)", file=sys.stderr)
+        return EXIT_ERROR
+    exp = explain_finding(query)
+    if _fmt_mode(args) == "json":
+        print(json.dumps(exp.to_dict(), indent=2))
+        return EXIT_OK
+
+    print(f"{style(exp.code, BOLD, CYAN)} — {exp.title} ({exp.category})")
+    print(f"\nCause:\n  {exp.cause}")
+    print(f"\nWhy it matters:\n  {exp.impact}")
+    print(f"\nSuggested fix:\n  {exp.suggested_fix}")
+    if exp.commands:
+        print("\nRun:")
+        for cmd in exp.commands:
+            print(f"  $ {cmd}")
+    return EXIT_OK
+
+
+def _cmd_graph(args: argparse.Namespace) -> int:
+    root = Path(args.path).expanduser().resolve()
+    manifest = load_manifest(root)
+    try:
+        graph = resolve_dependency_graph(root, manifest)
+    except (DependencyCycleError, DependencyConflictError, DependencyError) as exc:
+        if _fmt_mode(args) == "json":
+            print(json.dumps({"valid": False, "error": str(exc)}, indent=2))
+        else:
+            print(f"error: {exc}", file=sys.stderr)
+        return EXIT_PROBLEM
+
+    if _fmt_mode(args) == "json":
+        payload = graph.to_dict()
+        payload["valid"] = True
+        print(json.dumps(payload, indent=2))
+        return EXIT_OK
+
+    print(f"skillporter {__version__} — resolved dependency graph ({len(graph.nodes)} node(s))\n")
+    print(graph.render_tree())
+    if graph.install_order:
+        print(f"\nTopological install order: {' -> '.join(graph.install_order)}")
+    return EXIT_OK
+
+
+def _cmd_publish(args: argparse.Namespace) -> int:
+    target = Path(args.path).expanduser().resolve()
+    try:
+        res = publish_skill(
+            target,
+            registry_url=getattr(args, "registry", None),
+            dry_run=getattr(args, "dry_run", False),
+        )
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_PROBLEM
+
+    if _fmt_mode(args) == "json":
+        print(json.dumps(res, indent=2))
+        return EXIT_OK
+
+    pkg = res["package"]  # type: ignore[index]
+    print(f"Published {pkg['slug']}@{pkg['version']} (contract v{res['contract_version']})")  # type: ignore[index]
+    print(f"  Archive:    {res['archive']} (sha256: {str(res['archive_sha256'])[:16]}...)")
+    print(f"  Provenance: {res['provenance']}")
+    print(f"  Risk score: {res['risk_score']}/100")
+    print(f"  Target:     {res['published_to']}")
+    return EXIT_OK
+
+
+def _cmd_ci_report(args: argparse.Namespace) -> int:
+    root = Path(args.path).expanduser().resolve()
+    exit_code, md, payload = generate_ci_report(root, scope=args.scope)
+    if getattr(args, "output", None):
+        out_p = Path(args.output).expanduser().resolve()
+        out_p.parent.mkdir(parents=True, exist_ok=True)
+        out_p.write_text(md, encoding="utf-8")
+
+    if getattr(args, "github_repo", None) and getattr(args, "pr", None):
+        try:
+            post_github_pr_comment(args.github_repo, int(args.pr), md)
+        except Exception as exc:
+            print(f"warning: failed to post GitHub PR comment: {exc}", file=sys.stderr)
+
+    if _fmt_mode(args) == "json":
+        print(json.dumps(payload, indent=2))
+    else:
+        print(md, end="")
+    return exit_code
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1434,6 +1934,7 @@ def build_parser() -> argparse.ArgumentParser:
     d.add_argument("path", nargs="?", default=".", help="repo root (default: .)")
     d.add_argument("--harness", action="append", help="limit to specific harness(es) or 'all' (repeatable)")
     d.add_argument("--scope", choices=["project", "user"], default="project")
+    d.add_argument("--format", choices=["text", "json"], default="")
     d.add_argument("--json", action="store_true", help="machine-readable output")
     d.set_defaults(func=_cmd_diagnose)
 
@@ -1448,12 +1949,16 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--path", default=".", help="repo root (default: .)")
     a.add_argument("--adapt", action="store_true", help="also emit adapted rule files (.mdc, .instructions.md)")
     a.add_argument("--dry-run", action="store_true", help="plan, validate, and scan without writing files")
+    a.add_argument("--max-risk-score", type=int, default=None, help="fail closed if skill risk score exceeds threshold")
+    a.add_argument("--engine", choices=["auto", "skillspector", "static"], default="auto")
+    a.add_argument("--offline", action="store_true", help="use built-in offline security scanner only")
     a.add_argument(
         "--allow-risky",
         action="store_true",
         help="proceed even if static security scan finds high/critical issues",
     )
     a.add_argument("--force", action="store_true", help="overwrite existing installations")
+    a.add_argument("--format", choices=["text", "json"], default="")
     a.add_argument("--json", action="store_true", help="machine-readable output")
     a.set_defaults(func=_cmd_add)
 
@@ -1483,16 +1988,73 @@ def build_parser() -> argparse.ArgumentParser:
         u.set_defaults(func=_cmd_uninstall)
 
     # validate
-    v = sub.add_parser("validate", help="validate SKILL.md files against the Agent Skills spec")
+    v = sub.add_parser("validate", help="validate SKILL.md files against the Agent Skills spec and compute risk score")
     v.add_argument("path", nargs="?", default=".")
+    v.add_argument("--format", choices=["text", "json", "sarif"], default="")
+    v.add_argument("--max-risk-score", type=int, default=None)
+    v.add_argument("--engine", choices=["auto", "skillspector", "static"], default="auto")
+    v.add_argument("--offline", action="store_true")
     v.add_argument("--json", action="store_true")
     v.set_defaults(func=_cmd_validate)
 
     # scan
-    sc = sub.add_parser("scan", help="run static security and supply-chain checks on skills")
+    sc = sub.add_parser("scan", help="run security and supply-chain checks (0-100 risk score, JSON/SARIF)")
     sc.add_argument("path", nargs="?", default=".")
+    sc.add_argument("--format", choices=["text", "json", "sarif"], default="")
+    sc.add_argument("--max-risk-score", type=int, default=None)
+    sc.add_argument("--engine", choices=["auto", "skillspector", "static"], default="auto")
+    sc.add_argument("--offline", action="store_true")
     sc.add_argument("--json", action="store_true")
     sc.set_defaults(func=_cmd_scan)
+
+    # sandbox
+    sb = sub.add_parser("sandbox", help="[experimental] run opt-in dry-run behavioral sandbox on a skill")
+    sb.add_argument("skill", nargs="?", default="run", help="'run <skill>' or direct skill path")
+    sb.add_argument("target", nargs="?", default="", help="skill path when invoked as `sandbox run <skill>`")
+    sb.add_argument("--runtime", choices=["auto", "wasm", "gvisor", "dry-run"], default="auto")
+    sb.add_argument("--format", choices=["text", "json"], default="")
+    sb.add_argument("--json", action="store_true")
+    sb.set_defaults(func=_cmd_sandbox)
+
+    # demo
+    dm = sub.add_parser("demo", help="run a 60-second zero-residue demo resolving broken symlinks & drift")
+    dm.add_argument("--format", choices=["text", "json"], default="")
+    dm.add_argument("--json", action="store_true")
+    dm.set_defaults(func=_cmd_demo)
+
+    # explain
+    ex = sub.add_parser("explain", help="translate any diagnostic, lockfile, or security finding into plain English")
+    ex.add_argument("finding", nargs="+", help="finding code (e.g. DRIFT, BROKEN, sec-prompt-override) or message")
+    ex.add_argument("--format", choices=["text", "json"], default="")
+    ex.add_argument("--json", action="store_true")
+    ex.set_defaults(func=_cmd_explain)
+
+    # graph
+    gr = sub.add_parser("graph", help="visualize and verify the resolved skill dependency graph")
+    gr.add_argument("path", nargs="?", default=".")
+    gr.add_argument("--format", choices=["text", "json"], default="")
+    gr.add_argument("--json", action="store_true")
+    gr.set_defaults(func=_cmd_graph)
+
+    # publish
+    pub = sub.add_parser("publish", help="validate, security-gate, pack, and publish a skill to the registry")
+    pub.add_argument("path", nargs="?", default=".")
+    pub.add_argument("--registry", default=None, help="custom registry index path or URL")
+    pub.add_argument("--dry-run", action="store_true", help="verify registry client contract without publishing")
+    pub.add_argument("--format", choices=["text", "json"], default="")
+    pub.add_argument("--json", action="store_true")
+    pub.set_defaults(func=_cmd_publish)
+
+    # ci-report
+    cir = sub.add_parser("ci-report", help="generate a Markdown/JSON PR diagnostic & security report")
+    cir.add_argument("path", nargs="?", default=".")
+    cir.add_argument("--scope", choices=["project", "user"], default="project")
+    cir.add_argument("--output", default=None, help="write Markdown report to file")
+    cir.add_argument("--github-repo", default=None, help="owner/repo to comment on when --pr is set")
+    cir.add_argument("--pr", type=int, default=None, help="PR number to post comment to")
+    cir.add_argument("--format", choices=["markdown", "json", "text"], default="")
+    cir.add_argument("--json", action="store_true")
+    cir.set_defaults(func=_cmd_ci_report)
 
     # matrix
     m = sub.add_parser("matrix", help="print the 19-harness compatibility matrix")
@@ -1536,16 +2098,23 @@ def build_parser() -> argparse.ArgumentParser:
         "--preview-adapt",
         choices=["cursor-mdc", "copilot-instructions", "windsurf-rules", "continue-rules", "aider-conventions"],
     )
+    ins.add_argument("--format", choices=["text", "json", "sarif"], default="")
     ins.add_argument("--json", action="store_true")
     ins.set_defaults(func=_cmd_inspect)
 
     # sync
-    sy = sub.add_parser("sync", help="synchronize skills across harnesses or from skillporter.yaml")
+    sy = sub.add_parser("sync", help="synchronize skills (and transitive dependencies) across harnesses")
     sy.add_argument("path", nargs="?", default=".")
     sy.add_argument("--harness", action="append")
     sy.add_argument("--strategy", choices=["copy", "symlink"], default="copy")
     sy.add_argument("--scope", choices=["project", "user"], default="project")
     sy.add_argument("--prefer", help="authoritative skill path when resolving content drift")
+    sy.add_argument(
+        "--max-risk-score",
+        type=int,
+        default=None,
+        help="fail closed if skill risk score exceeds threshold",
+    )
     sy.add_argument(
         "--allow-risky",
         action="store_true",
@@ -1562,16 +2131,19 @@ def build_parser() -> argparse.ArgumentParser:
     up.set_defaults(func=_cmd_update)
 
     # rollback
-    rb = sub.add_parser("rollback", help="restore a skill to its previous backup snapshot")
-    rb.add_argument("skill", help="skill name to roll back")
+    rb = sub.add_parser("rollback", help="restore a skill (and its dependency graph) to its previous backup snapshot")
+    rb.add_argument("skill", help="skill name to roll back (or 'all')")
     rb.add_argument("--backup-id", default="")
     rb.add_argument("--scope", choices=["project", "user"], default="project")
     rb.add_argument("--path", default=".")
     rb.set_defaults(func=_cmd_rollback)
 
     # lock
-    lk = sub.add_parser("lock", help="generate or update deterministic skillporter.lock")
+    lk = sub.add_parser("lock", help="generate, update, or verify (--check) deterministic skillporter.lock")
     lk.add_argument("path", nargs="?", default=".")
+    lk.add_argument("--check", action="store_true", help="fail with exit code 1 if lockfile is stale or drifted")
+    lk.add_argument("--format", choices=["text", "json"], default="")
+    lk.add_argument("--json", action="store_true")
     lk.set_defaults(func=_cmd_lock)
 
     # doctor
@@ -1601,9 +2173,10 @@ def build_parser() -> argparse.ArgumentParser:
     mcp_p.set_defaults(func=lambda _a: run_mcp_stdio())
 
     # status
-    st_p = sub.add_parser("status", help="show unified workspace manifest, lockfile, harness, and drift status")
+    st_p = sub.add_parser("status", help="show unified workspace manifest, lockfile, per-harness, and drift status")
     st_p.add_argument("path", nargs="?", default=".")
     st_p.add_argument("--scope", choices=["project", "user"], default="project")
+    st_p.add_argument("--format", choices=["text", "json"], default="")
     st_p.add_argument("--json", action="store_true")
     st_p.set_defaults(func=_cmd_status)
 
@@ -1618,6 +2191,12 @@ KNOWN_COMMANDS = (
     "remove",
     "validate",
     "scan",
+    "sandbox",
+    "demo",
+    "explain",
+    "graph",
+    "publish",
+    "ci-report",
     "matrix",
     "detect",
     "init",
@@ -1656,7 +2235,10 @@ def main(argv: list[str] | None = None) -> int:
     if not getattr(args, "command", None):
         parser.print_help()
         return EXIT_OK
-    return int(args.func(args))
+    rc = int(args.func(args))
+    with contextlib.suppress(Exception):
+        record_telemetry_event(Path.cwd(), str(args.command), rc)
+    return rc
 
 
 def entrypoint() -> None:
