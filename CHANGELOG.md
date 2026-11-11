@@ -4,15 +4,17 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [Semantic Versioning](https://semver.org/).
 
-## [2.0.0] - 2026-11-11
+## [2.0.1] - 2026-11-11
 
-### Security & Reliability Hardening (Multi-Agent Audit)
-- **Path Traversal Guard (`install.py`, `harnesses.py`)**: Added `validate_skill_name_segment()` across `install`, `uninstall`, and `rollback_skill` and path validation in `load_adapter_file()` to prevent `../` or backslash traversal outside harness roots.
-- **Staged Directory Replacement & Full Transaction Restoration (`install.py`, `atomic.py`)**: Replaced in-place `shutil.rmtree` with staged swaps in `.skillporter/tmp/txn-<id>/` and `workspace_lock()` advisory locking; partial failures now restore pre-existing overwritten destinations as well as removing newly created ones.
-- **Archive Decompression Bomb & Git Clone Hardening (`sources.py`)**: Enforced streaming byte/entry caps (`MAX_ARCHIVE_FILES = 1000`, `MAX_SINGLE_FILE_BYTES = 10 MiB`, `MAX_TOTAL_ARCHIVE_BYTES = 50 MiB`), Windows backslash traversal rejection, git ref option-injection guards, and `git clone -c protocol.ext.allow=never -c core.fsmonitor=false -c core.symlinks=false`.
-- **Stop-at-Skill-Root Discovery & Symlink Loop Protection (`frontmatter.py`, `security.py`)**: `discover()` stops recursing once `SKILL.md` is found in a directory and tracks `(st_dev, st_ino)` inodes; `compute_tree_hash()` uses `os.walk(..., followlinks=False)`.
-- **Line-Anchored YAML Frontmatter & Multi-Copy Validation (`frontmatter.py`, `diagnose.py`)**: Fixed inline `---` splitting, UTF-8 BOM handling, and tab-indentation detection (`frontmatter-tab-indentation`); `diagnose()` now validates every discovered copy of a skill and exposes explicit `FOUND` / `VALID` / `COMPATIBLE` / `INSTALLED` / `VERIFIED` / `UNVERIFIED` / `MISSING` states in `skillporter doctor`.
-- **Sync Drift Protection (`cli.py`)**: `skillporter sync` refuses to overwrite drifted copies without `--force`, and syncs from the newest copy after snapshotting backups when `--force` is passed.
+### Security & Reliability Hardening (Multi-Agent Audit & Release Gate)
+- **MCP Workspace Boundary (`mcp_server.py`)**: Added `MCPBoundaryError` and `resolve_mcp_path()` constraining all MCP tool file operations to the active workspace root (`Path.cwd()` or `SKILLPORTER_MCP_ROOT`).
+- **Adapted Rule Path & YAML Escaping (`formats.py`)**: Validated frontmatter `name` in `_safe_adapted_name()` against path traversal (`../`), collapsed multiline descriptions in `_sanitize_single_line()` to prevent YAML key injection, and added `assess_adaptation_limitations()`.
+- **Multi-Skill Batch Transactions & Crash Recovery Journal (`install.py`, `atomic.py`, `state.py`)**: Added `install_many()` for atomic multi-skill batch rollbacks, write-ahead `journal.json` recovery (`recover_interrupted_transactions()`) verified against real subprocess `SIGKILL`, re-entrant cross-platform `workspace_lock()`, and SHA-256 backup integrity verification before `rollback_skill()`.
+- **Path Traversal Guard (`install.py`, `harnesses.py`)**: Added `validate_skill_name_segment()` across `install`, `uninstall`, and `rollback_skill` and path validation in `load_adapter_file()`.
+- **Archive Decompression Bomb, Duplicate Entry & Git Clone Hardening (`sources.py`)**: Enforced streaming byte/entry caps (`MAX_ARCHIVE_FILES = 1000`, `MAX_SINGLE_FILE_BYTES = 10 MiB`, `MAX_TOTAL_ARCHIVE_BYTES = 50 MiB`), duplicate/case-colliding entry rejection, Windows backslash traversal rejection, git ref option-injection guards, and `git clone -c protocol.ext.allow=never -c core.fsmonitor=false -c core.symlinks=false`.
+- **Unified Workspace Status & Sync Drift Protection (`cli.py`)**: Added `skillporter status` (checking manifest and `skillporter.lock` SHA-256 drift), explainable security remediations in `skillporter scan`, and `--prefer <path>` conflict resolution in `skillporter sync`.
+
+## [2.0.0] - 2026-11-11
 
 ### Added
 - **Universal 19-Harness Adapter Catalog**: Evidence-based support (`NATIVE`, `COMPATIBLE`, `ADAPTED`) and verification tracking for Claude Code, OpenAI Codex, Cursor, GitHub Copilot, Gemini CLI, Google Antigravity, Windsurf, Cline, Roo Code, OpenCode, Zed, Replit Agent, JetBrains Junie, Hermes Agent, OpenClaw, OpenHands, Goose, Continue, and Aider.
