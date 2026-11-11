@@ -2,27 +2,27 @@
 
 Skillporter is designed so you never need to manually manage virtualenvs just to install or audit agent skills. All distribution channels execute the single authoritative Python core.
 
-## 1. Zero-Install Runners (`npx` and `uvx`)
+## 1. Zero-Install Runners (`uvx` and `npx`)
 
 ```bash
-# Run directly from GitHub via npx (no global install needed)
-npx github:Shanmukh-l33t/skillporter diagnose .
+# Run directly from PyPI via uvx (no global install needed)
+uvx skillporter diagnose .
 
-# Run directly from GitHub via uvx
-uvx --from git+https://github.com/Shanmukh-l33t/skillporter skillporter diagnose .
+# Run via npx
+npx github:Shanmukh-l33t/skillporter diagnose .
 ```
 
 ## 2. Global CLI Installation (PEP 668 Safe)
 
 ```bash
+# via uv tool (from PyPI)
+uv tool install skillporter
+
+# via pipx (from PyPI)
+pipx install skillporter
+
 # Universal 1-liner (downloads standalone skillporter.pyz to /usr/local/bin/skillporter)
 curl -fsSL https://raw.githubusercontent.com/Shanmukh-l33t/skillporter/main/install.sh | sh
-
-# via uv tool (from GitHub)
-uv tool install git+https://github.com/Shanmukh-l33t/skillporter
-
-# via pipx (from GitHub)
-pipx install git+https://github.com/Shanmukh-l33t/skillporter
 ```
 
 ## 3. Standalone Single-File Zipapp & Executables

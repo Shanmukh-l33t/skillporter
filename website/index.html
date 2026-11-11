@@ -41,14 +41,14 @@
 
       <div class="install-box">
         <div class="install-tabs" role="tablist">
-          <button class="install-tab active" data-cmd="npx github:Shanmukh-l33t/skillporter add anthropics/skills --skill pdf --harness all">npx</button>
-          <button class="install-tab" data-cmd="uvx --from git+https://github.com/Shanmukh-l33t/skillporter skillporter diagnose .">uvx</button>
+          <button class="install-tab active" data-cmd="uvx skillporter add anthropics/skills --skill pdf --harness all">uvx (PyPI)</button>
+          <button class="install-tab" data-cmd="uv tool install skillporter && skillporter diagnose .">uv tool</button>
+          <button class="install-tab" data-cmd="npx github:Shanmukh-l33t/skillporter add anthropics/skills --skill pdf --harness all">npx</button>
           <button class="install-tab" data-cmd="curl -fsSL https://raw.githubusercontent.com/Shanmukh-l33t/skillporter/main/install.sh | sh">curl install</button>
-          <button class="install-tab" data-cmd="uv tool install git+https://github.com/Shanmukh-l33t/skillporter">uv tool</button>
           <button class="install-tab" data-cmd="uses: Shanmukh-l33t/skillporter@v2">GitHub Action</button>
         </div>
         <div class="install-cmd-row">
-          <code id="install-cmd-text">npx github:Shanmukh-l33t/skillporter add anthropics/skills --skill pdf --harness all</code>
+          <code id="install-cmd-text">uvx skillporter add anthropics/skills --skill pdf --harness all</code>
           <button id="copy-cmd-btn" class="btn-copy">Copy</button>
         </div>
       </div>
