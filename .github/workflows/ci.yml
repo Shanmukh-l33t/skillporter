@@ -11,13 +11,10 @@ permissions:
 
 jobs:
   test:
-    name: test (py${{ matrix.python-version }})
+    name: test (${{ matrix.os }}, py${{ matrix.python-version }})
     strategy:
       fail-fast: false
       matrix:
-        # 3.9 is declared supported (requires-python >=3.9) but Ubuntu 26.04
-        # runners no longer ship it. Cover it on ubuntu-22.04 rather than
-        # silently dropping support.
         include:
           - python-version: "3.9"
             os: ubuntu-22.04
@@ -29,6 +26,10 @@ jobs:
             os: ubuntu-latest
           - python-version: "3.13"
             os: ubuntu-latest
+          - python-version: "3.12"
+            os: macos-latest
+          - python-version: "3.12"
+            os: windows-latest
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -45,18 +46,28 @@ jobs:
         run: python -m pytest tests/ -q
 
   self-check:
-    name: dogfood (validate shipped skill)
+    name: dogfood (validate, scan, standalone & npx)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
       - run: pip install -e .
       - name: Validate every SKILL.md in the repo
         run: skillporter validate .
+      - name: Static security scan on shipped skills
+        run: skillporter scan .
       - name: Harness matrix renders
         run: skillporter matrix
+      - name: Build standalone zipapp & verify NPX wrapper
+        run: |
+          python scripts/build_standalone.py
+          python dist/skillporter.pyz --version
+          node npm/bin/skillporter.js matrix --json > /dev/null
 
   secrets:
     name: secret scan

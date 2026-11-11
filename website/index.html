@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Skillporter — ONE SKILL. EVERY AGENT.</title>
+  <meta name="description" content="The universal package manager, validator, static security scanner, and cross-harness synchronizer for AI-agent skills across 19+ harnesses." />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="container nav-row">
+      <a href="#" class="brand">
+        <span class="brand-mark">▪</span>
+        <span class="brand-name">SKILLPORTER</span>
+        <span class="version-pill">v2.0.0</span>
+      </a>
+      <nav class="nav-links">
+        <a href="#problem">Why</a>
+        <a href="#harnesses">19 Harnesses</a>
+        <a href="#features">Lifecycle</a>
+        <a href="#security">Security</a>
+        <a href="#docs">Docs</a>
+        <a href="#roadmap">Roadmap</a>
+      </nav>
+      <div class="nav-actions">
+        <button id="theme-toggle" class="btn-ghost" aria-label="Toggle theme">Light / Dark</button>
+        <a href="https://github.com/Shanmukh-l33t/skillporter" target="_blank" rel="noopener" class="btn-primary">GitHub →</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- 1. HERO -->
+    <section class="hero container">
+      <div class="eyebrow">OPEN-SOURCE AGENT SKILL PACKAGE MANAGER · ZERO DEPENDENCIES</div>
+      <h1 class="hero-title">ONE SKILL.<br />EVERY AGENT.</h1>
+      <p class="hero-subtitle">
+        Install, validate, security-scan, and synchronize <code>SKILL.md</code> packages across Claude Code, OpenAI Codex, Cursor, Copilot, Gemini CLI, Windsurf, Hermes, OpenClaw, and 11 more harnesses — without fragile symlinks or silent content drift.
+      </p>
+
+      <div class="install-box">
+        <div class="install-tabs" role="tablist">
+          <button class="install-tab active" data-cmd="uvx skillporter add anthropics/skills --skill pdf --harness all">uvx</button>
+          <button class="install-tab" data-cmd="npx skillporter add anthropics/skills --skill pdf --harness all">npx</button>
+          <button class="install-tab" data-cmd="uv tool install skillporter && skillporter diagnose .">uv tool</button>
+          <button class="install-tab" data-cmd="claude mcp add skillporter -- uvx skillporter mcp">Claude MCP</button>
+          <button class="install-tab" data-cmd="uses: Shanmukh-l33t/skillporter@v2">GitHub Action</button>
+        </div>
+        <div class="install-cmd-row">
+          <code id="install-cmd-text">uvx skillporter add anthropics/skills --skill pdf --harness all</code>
+          <button id="copy-cmd-btn" class="btn-copy">Copy</button>
+        </div>
+      </div>
+
+      <!-- 4. INTERACTIVE TERMINAL DEMO -->
+      <div class="terminal-card">
+        <div class="terminal-header">
+          <div class="terminal-dots">
+            <span class="dot red"></span>
+            <span class="dot yellow"></span>
+            <span class="dot green"></span>
+          </div>
+          <div class="terminal-tabs">
+            <button class="term-mode active" data-term="add">skillporter add</button>
+            <button class="term-mode" data-term="diagnose">skillporter diagnose</button>
+            <button class="term-mode" data-term="scan">skillporter scan</button>
+            <button class="term-mode" data-term="matrix">skillporter matrix</button>
+          </div>
+          <div class="terminal-meta">bash · 88×24</div>
+        </div>
+        <pre id="terminal-output" class="terminal-body"></pre>
+      </div>
+    </section>
+
+    <!-- 2. PROBLEM & SOLUTION -->
+    <section id="problem" class="section container">
+      <div class="section-header">
+        <span class="section-tag">THE FRAGMENTATION PROBLEM</span>
+        <h2>Every agent reads a different directory. Symlinks break. Copies drift.</h2>
+      </div>
+      <div class="grid-2">
+        <div class="panel panel-bad">
+          <h3>Before Skillporter</h3>
+          <ul class="clean-list">
+            <li>Claude Code reads <code>.claude/skills/</code> and ignores <code>.agents/skills/</code>.</li>
+            <li>Codex, Gemini CLI, and Zed read <code>.agents/skills/</code> and ignore <code>.claude/skills/</code>.</li>
+            <li>Hand-made symlinks break inside Docker build contexts, <code>git worktree</code>, and Windows clones.</li>
+            <li>Copying into both <code>.agents/skills/</code> and <code>.cursor/skills/</code> makes Cursor load every skill twice.</li>
+            <li>Editing one copy leaves other harnesses silently running stale instructions.</li>
+          </ul>
+        </div>
+        <div class="panel panel-good">
+          <h3>With Skillporter v2.0</h3>
+          <ul class="clean-list">
+            <li><strong>Smart Deduplication</strong>: Writes <code>.agents/skills</code> once for 14 compatible harnesses.</li>
+            <li><strong>SHA-256 Drift Detection</strong>: Flags <code>DRIFT</code> in CI the moment two copies diverge.</li>
+            <li><strong>Static Supply-Chain Gate</strong>: Scans for secrets, prompt injection, hidden Unicode, and <code>curl | sh</code> before install.</li>
+            <li><strong>Deterministic Lockfile</strong>: Pins exact Git commits and SHA-256 tree hashes in <code>skillporter.lock</code>.</li>
+            <li><strong>Transactional Rollback</strong>: Snapshots prior versions to <code>.skillporter/backups/</code> for instant <code>skillporter rollback</code>.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. SUPPORTED HARNESSES -->
+    <section id="harnesses" class="section container">
+      <div class="section-header">
+        <span class="section-tag">EVIDENCE-BASED COMPATIBILITY</span>
+        <h2>19 Verified AI-Agent Harnesses</h2>
+        <p class="section-desc">Every path is sourced directly from upstream vendor documentation and guarded by regression tests.</p>
+      </div>
+
+      <div class="filter-bar">
+        <button class="filter-btn active" data-filter="all">All (19)</button>
+        <button class="filter-btn" data-filter="coding">Coding Agents (15)</button>
+        <button class="filter-btn" data-filter="autonomous">Autonomous Agents (4)</button>
+        <button class="filter-btn" data-filter="shared">Reads .agents/skills (14)</button>
+      </div>
+
+      <div class="table-wrap">
+        <table class="harness-table">
+          <thead>
+            <tr>
+              <th>Harness</th>
+              <th>Category</th>
+              <th>Support</th>
+              <th>Verification</th>
+              <th>Primary Project Path</th>
+              <th>Primary User Path</th>
+            </tr>
+          </thead>
+          <tbody id="harness-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 5. FEATURE OVERVIEW -->
+    <section id="features" class="section container">
+      <div class="section-header">
+        <span class="section-tag">COMPLETE LIFECYCLE</span>
+        <h2>Built like a real package manager.</h2>
+      </div>
+      <div class="grid-3">
+        <div class="feature-card">
+          <div class="feature-code">skillporter add</div>
+          <h3>Universal Source Resolver</h3>
+          <p>Install from <code>owner/repo</code>, GitHub subdirectories, branches, tags, commit SHAs, Git URLs, hardened ZIP/tar archives, or local folders.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-code">skillporter diagnose</div>
+          <h3>Reachability &amp; Drift Matrix</h3>
+          <p>Detects missing harness paths, broken worktree symlinks, Cursor duplicate loading, and SHA-256 content drift across copied directories.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-code">skillporter sync &amp; lock</div>
+          <h3>Manifest &amp; Lockfile</h3>
+          <p>Declare team skills in <code>skillporter.yaml</code> and pin exact commits and SHA-256 tree digests in <code>skillporter.lock</code>.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-code">skillporter rollback</div>
+          <h3>Transactional Backups</h3>
+          <p>Failed multi-harness installs automatically roll back. Managed updates snapshot prior versions into <code>.skillporter/backups/</code>.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-code">--adapt</div>
+          <h3>Controlled Format Adaptation</h3>
+          <p>Preview and generate Cursor <code>.mdc</code> rules, Copilot <code>.instructions.md</code>, Windsurf rules, Continue rules, and Aider conventions.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-code">skillporter mcp</div>
+          <h3>Native In-Agent MCP Server</h3>
+          <p>Zero-dependency stdio JSON-RPC 2.0 MCP server so Claude Code, Codex, Cursor, and Hermes can diagnose and sync skills from chat.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. SECURITY & COMPATIBILITY -->
+    <section id="security" class="section container">
+      <div class="section-header">
+        <span class="section-tag">SUPPLY-CHAIN PROTECTION</span>
+        <h2>Treat third-party skills as untrusted code.</h2>
+        <p class="section-desc">Skills inject instructions into your agent's context and ship executable scripts. Skillporter scans every file before installation.</p>
+      </div>
+      <div class="grid-2">
+        <div class="panel">
+          <h3>Static Security Assessment (<code>skillporter scan</code>)</h3>
+          <ul class="clean-list">
+            <li><code>sec-prompt-override</code> — Detects prompt-injection directives attempting to override system/user rules.</li>
+            <li><code>sec-hidden-unicode</code> — Catches zero-width and bidirectional Unicode smuggling in <code>SKILL.md</code>.</li>
+            <li><code>sec-curl-pipe-sh</code> &amp; <code>sec-reverse-shell</code> — Flags RCE and raw socket payloads in scripts and Markdown.</li>
+            <li><code>sec-private-key</code>, <code>sec-aws-key</code>, <code>sec-github-token</code> — Prevents committing or distributing leaked credentials.</li>
+            <li><code>sec-symlink-escape</code> &amp; <code>sec-path-traversal</code> — Blocks Zip-Slip, Tar-Slip, and symlinks resolving outside the skill root.</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>Explicit Trust Boundaries</h3>
+          <ul class="clean-list">
+            <li><strong>Zero Script Execution</strong>: Cloning, unpacking, validating, and installing never execute bundled scripts.</li>
+            <li><strong>Ownership Verification</strong>: Unmanaged directories are never overwritten without explicit <code>--force</code>.</li>
+            <li><strong>Declarative Adapter SDK</strong>: Custom harness files (<code>load_adapter_file</code>) parse JSON data only—never arbitrary code.</li>
+            <li><strong>Honest Labeling</strong>: Reports are explicitly marked <code>STATIC_SECURITY_ASSESSMENT</code>; static checks never claim runtime guarantees.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- 7 & 9. DOCS & ROADMAP -->
+    <section id="docs" class="section container">
+      <div class="section-header">
+        <span class="section-tag">DOCUMENTATION &amp; ARCHITECTURE</span>
+        <h2>Explore the Documentation</h2>
+      </div>
+      <div class="grid-3">
+        <a class="doc-link" href="../docs/getting-started/README.md">
+          <strong>Getting Started →</strong>
+          <span>Zero-install quickstart with uvx and npx.</span>
+        </a>
+        <a class="doc-link" href="../docs/harnesses/README.md">
+          <strong>19-Harness Directory →</strong>
+          <span>Exact paths, precedence, and upstream doc links.</span>
+        </a>
+        <a class="doc-link" href="../docs/commands/README.md">
+          <strong>CLI Reference →</strong>
+          <span>All 20 lifecycle commands, flags, and exit codes.</span>
+        </a>
+        <a class="doc-link" href="../docs/security/README.md">
+          <strong>Security Model →</strong>
+          <span>Supply-chain rules, static scan codes, and archive safety.</span>
+        </a>
+        <a class="doc-link" href="../docs/configuration/README.md">
+          <strong>Manifest &amp; Lockfile →</strong>
+          <span>Deterministic team sync with skillporter.yaml.</span>
+        </a>
+        <a class="doc-link" href="../docs/adapters/README.md">
+          <strong>Adapter SDK →</strong>
+          <span>Register custom or internal agent harnesses safely.</span>
+        </a>
+      </div>
+    </section>
+
+    <section id="roadmap" class="section container">
+      <div class="section-header">
+        <span class="section-tag">PRODUCT EVOLUTION</span>
+        <h2>Three Generations of Skillporter</h2>
+      </div>
+      <div class="grid-3">
+        <div class="panel">
+          <div class="version-pill">GEN 1 · SHIPPED (v2.0)</div>
+          <h3>Skillporter Manager</h3>
+          <p>Local-first zero-dependency CLI, 19-harness adapter catalog, SHA-256 drift detection, static security scanner, manifest/lockfile, transactional rollback, NPX/UVX launchers, and native MCP server.</p>
+        </div>
+        <div class="panel">
+          <div class="version-pill">GEN 2 · IN DESIGN</div>
+          <h3>Skillporter Ecosystem</h3>
+          <p>Public FastAPI skill registry index, immutable content-addressed release tarballs verified with <code>provenance.json</code>, and automated headless harness discovery runners.</p>
+        </div>
+        <div class="panel">
+          <div class="version-pill">GEN 3 · FUTURE</div>
+          <h3>Skillporter Platform</h3>
+          <p>Private organization skill registries, centralized security policy enforcement, version pinning governance, and fleet-wide repository synchronization.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer container">
+    <div>SKILLPORTER v2.0.0 · MIT License · Built by Shanmukh Dheekonda</div>
+    <div>
+      <a href="https://github.com/Shanmukh-l33t/skillporter">GitHub</a> ·
+      <a href="../ARCHITECTURE.md">Architecture</a> ·
+      <a href="../SECURITY.md">Security</a> ·
+      <a href="../CHANGELOG.md">Changelog</a>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

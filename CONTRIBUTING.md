@@ -1,47 +1,44 @@
-# Contributing
+# Contributing to Skillporter
 
-Thanks for helping. This project optimises for *correct* over *large*.
+Thanks for helping build the universal package manager for AI-agent skills. Skillporter optimizes for **verified correctness, zero runtime dependencies, and supply-chain safety**.
 
-## Before you start
+## Before You Start
 
-- Open an issue describing the problem before a large change.
-- For a new harness, link its **official documentation** for the skill path.
-  Unverified paths must be marked `verified=False` in
-  `skillporter/harnesses.py`.
+- Open an issue describing the bug or feature before starting a large architectural change.
+- For a new or updated harness adapter, you **must** link its official vendor documentation proving the exact skill discovery path and precedence.
+- Never mark an unverified path as `DOCUMENTATION_VERIFIED`, `INTEGRATION_TESTED`, or `RUNTIME_VERIFIED`; use `UNVERIFIED` until confirmed against upstream docs or runtime tests.
 
-## Development setup
+## Development Setup
 
 ```bash
 git clone https://github.com/Shanmukh-l33t/skillporter
 cd skillporter
-python -m venv .venv
-.venv/bin/pip install -e ".[dev]"
+env -u PYTHONPATH python3 -m venv .venv
+env -u PYTHONPATH .venv/bin/pip install -e ".[dev]"
 ```
 
-## Required before a PR is accepted
+## Required Quality Gates Before Opening a PR
 
 ```bash
-.venv/bin/python -m pytest tests/ -q   # all tests pass
-.venv/bin/ruff check .                 # no lint errors
+env -u PYTHONPATH .venv/bin/python -m pytest tests/ -v   # all 60+ tests must pass
+env -u PYTHONPATH .venv/bin/ruff check .                 # zero lint errors
+env -u PYTHONPATH .venv/bin/python -m skillporter validate .
+env -u PYTHONPATH .venv/bin/python -m skillporter scan .
 ```
 
-Both must be clean. A PR that skips either will be sent back.
+## Adding a New Harness Adapter
 
-## Adding a harness
+1. Add the `Harness` entry to `HARNESSES` in `skillporter/harnesses.py` with:
+   - `support_status` (`NATIVE`, `COMPATIBLE`, `ADAPTED`, `PARTIAL`, `UNSUPPORTED`, `UNVERIFIED`)
+   - `verification_level` and `verified_date`
+   - `docs` pointing to the official vendor documentation page
+   - `paths` (listing the primary install path first, and marking secondary compatibility reads with `is_compatibility=True`)
+   - `detection` rules (`binaries`, `user_dirs`, `project_markers`, `env_vars`)
+2. Add path assertions in `tests/test_v2_ecosystem.py` so path drift is caught in CI.
+3. Update the compatibility table in `README.md` and `docs/harnesses/README.md`.
 
-1. Add the entry to `HARNESSES` in `skillporter/harnesses.py`, with `docs=`
-   pointing at the vendor page you verified the path on.
-2. Add the path assertion to `test_matrix_paths_match_published_docs` so drift
-   is caught.
-3. Update the compatibility table in `README.md`.
+## Engineering Rules
 
-## Style
-
-- No new runtime dependencies. The CLI must run on a bare Python install.
-- Type hints on public functions.
-- Every bug you fix gets a regression test that fails before the fix.
-- Keep `SKILL.md` under ~5k tokens; move detail into `references/`.
-
-## Commit messages
-
-Conventional Commits: `feat:`, `fix:`, `docs:`, `test:`, `chore:`.
+- **Zero runtime dependencies**: The core library (`skillporter/`) must use the Python 3.9+ standard library only.
+- **Never execute untrusted code**: Source resolution, archive extraction, and custom adapter loading must never run `eval`, `exec`, or downloaded scripts.
+- **Conventional Commits**: Use `feat:`, `fix:`, `docs:`, `test:`, `ci:`, `chore:`.

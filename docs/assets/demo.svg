@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 510" width="880" height="510">
+  <style>
+    .bg { fill: #0d1117; rx: 10px; stroke: #30363d; stroke-width: 1.5px; }
+    .bar { fill: #161b22; }
+    .txt { font-family: 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', Consolas, monospace; font-size: 13px; fill: #c9d1d9; }
+    .dim { fill: #8b949e; }
+    .cyan { fill: #58a6ff; font-weight: bold; }
+    .green { fill: #3fb950; font-weight: bold; }
+    .yellow { fill: #d29922; font-weight: bold; }
+    .red { fill: #f85149; font-weight: bold; }
+    .cmd { fill: #f0f6fc; font-weight: bold; }
+  </style>
+  <rect class="bg" x="1" y="1" width="878" height="508" rx="10"/>
+  <path class="bar" d="M 1 11 Q 1 1 11 1 L 869 1 Q 879 1 879 11 L 879 38 L 1 38 Z"/>
+  <circle cx="22" cy="20" r="6" fill="#ff5f56"/>
+  <circle cx="42" cy="20" r="6" fill="#ffbd2e"/>
+  <circle cx="62" cy="20" r="6" fill="#27c93f"/>
+  <text x="440" y="24" text-anchor="middle" class="txt dim">skillporter — ONE SKILL. EVERY AGENT.</text>
+
+  <text x="24" y="68" class="txt"><tspan class="green">$</tspan> <tspan class="cmd">npx skillporter diagnose .</tspan></text>
+  <text x="24" y="92" class="txt dim">skillporter 2.0.0 — diagnosing /workspace/my-agent-repo (scope: project)</text>
+  <text x="24" y="118" class="txt">SKILL          claude-code     codex           cursor          windsurf</text>
+  <text x="24" y="136" class="txt dim">--------------------------------------------------------------------------</text>
+  <text x="24" y="156" class="txt">sec-auditor    <tspan class="green">yes</tspan>             <tspan class="red">MISSING</tspan>         <tspan class="green">yes</tspan>             <tspan class="red">MISSING</tspan></text>
+  <text x="24" y="176" class="txt">api-reviewer   <tspan class="green">yes</tspan>             <tspan class="yellow">DRIFT</tspan>           <tspan class="yellow">DRIFT</tspan>           <tspan class="red">MISSING</tspan></text>
+
+  <text x="24" y="206" class="txt">findings:</text>
+  <text x="24" y="226" class="txt">  - <tspan class="yellow">skill 'api-reviewer' has content drift across copies: .agents/skills/api-reviewer (8f91c2a0), .claude/skills/api-reviewer (e41209b1)</tspan></text>
+  <text x="24" y="246" class="txt">  - <tspan class="red">skill 'sec-auditor' is not visible to: codex, windsurf (visible to: claude-code, cursor)</tspan></text>
+
+  <text x="24" y="284" class="txt"><tspan class="green">$</tspan> <tspan class="cmd">npx skillporter add Shanmukh-l33t/skillporter --harness all</tspan></text>
+  <text x="24" y="308" class="txt cyan">SKILLPORTER</text>
+  <text x="24" y="330" class="txt">Source: github:Shanmukh-l33t/skillporter   Commit: ceb64c65cf5b</text>
+  <text x="24" y="350" class="txt">Validation: <tspan class="green">PASSED</tspan>   Security assessment (static): <tspan class="green">0 critical/high findings</tspan></text>
+  <text x="24" y="370" class="txt">Plan: 3 destination(s) across 8 detected harnesses (5 shared via .agents/skills)</text>
+
+  <text x="24" y="400" class="txt">Claude Code            <tspan class="green">SUCCESS</tspan>  (copy via .claude/skills)</text>
+  <text x="24" y="420" class="txt">OpenAI Codex           <tspan class="green">SUCCESS</tspan>  (copy via .agents/skills)</text>
+  <text x="24" y="440" class="txt">Cursor / Gemini / Zed  <tspan class="green">SUCCESS</tspan>  (shared path .agents/skills deduplicated)</text>
+  <text x="24" y="460" class="txt">Windsurf               <tspan class="green">SUCCESS</tspan>  (copy via .windsurf/skills)</text>
+  <text x="24" y="488" class="txt"><tspan class="green">Installation verified.</tspan></text>
+</svg>

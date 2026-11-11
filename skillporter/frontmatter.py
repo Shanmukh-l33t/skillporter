@@ -232,8 +232,8 @@ def validate(doc: SkillDoc) -> list[Issue]:
 
 
 def discover(root: Path) -> list[Path]:
-    """Find every SKILL.md under *root*, skipping VCS and virtualenv trees."""
-    skip = {".git", "node_modules", ".venv", "venv", "__pycache__", ".tox", ".mypy_cache"}
+    """Find every SKILL.md under *root*, skipping VCS, virtualenv, and backup trees."""
+    skip = {".git", "node_modules", ".venv", "venv", "__pycache__", ".tox", ".mypy_cache", ".skillporter"}
     found: list[Path] = []
     for path in sorted(root.rglob("SKILL.md")):
         if any(part in skip for part in path.parts):

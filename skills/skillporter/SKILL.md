@@ -1,77 +1,64 @@
 ---
 name: skillporter
-description: Diagnose and fix Agent Skill installation across Claude Code, Codex, Cursor, Hermes and OpenClaw. Use when a skill does not activate, when sharing one skill across multiple harnesses, or when setting up a repo so every agent finds its skills.
+description: Universal package manager, reachability diagnostician, spec validator, and static security scanner for Agent Skills across 19 AI harnesses (Claude Code, Codex, Cursor, Copilot, Gemini CLI, Windsurf, Cline, Roo Code, OpenCode, Zed, Replit, Junie, Antigravity, Hermes, OpenClaw, OpenHands, Goose, Continue, Aider). Use when installing a skill across multiple agents, diagnosing why a skill does not activate, checking for content drift, or scanning a skill for security risks.
 license: MIT
-compatibility: Requires Python 3.9+. No network access needed.
+compatibility: Requires Python 3.9+. Zero external runtime dependencies.
 metadata:
   author: Shanmukh Dheekonda
-  version: "1.0.0"
+  version: "2.0.0"
 ---
 
 # skillporter
 
-Every agent harness reads skills from a different directory, so a skill written
-for one is silently invisible to the others. This skill uses the `skillporter`
-CLI to find out which harnesses can actually see each skill and to fix it
-portably.
+**ONE SKILL. EVERY AGENT.**
+
+Every AI agent harness reads skills from a different directory (`.claude/skills`, `.agents/skills`, `.github/skills`, `.windsurf/skills`, `$HERMES_HOME/skills`, `~/.openclaw/skills`, etc.). `skillporter` detects which harnesses you use, validates `SKILL.md` compliance, scans for supply-chain and prompt-injection risks, installs skills portably without duplicate loading, and catches SHA-256 content drift across copies.
 
 ## When to use
 
-- A skill "doesn't work" in Codex/Cursor/Claude Code even though the file exists.
-- The user has symlinks between `.claude/skills` and `.agents/skills` that break.
-- Setting up a repository so multiple harnesses share one skill source.
-- Validating `SKILL.md` frontmatter before publishing.
+- Installing a skill from GitHub (`owner/repo`), an archive, or a local folder into one or all installed agent harnesses.
+- Diagnosing why a skill does not activate in Claude Code, Codex, Cursor, Copilot, Windsurf, Hermes, or OpenClaw.
+- Checking whether copied skills across `.claude/skills` and `.agents/skills` have drifted out of sync.
+- Auditing a third-party skill for embedded secrets, prompt injection, or risky shell scripts before installation.
+- Locking and synchronizing a team's skill set with `skillporter.yaml` and `skillporter.lock`.
 
-## When not to use
+## Core Workflow
 
-- The user only uses one harness and nothing is broken.
-- The problem is skill *content* quality, not installation or discovery.
-- The task is about MCP servers or plugin packaging (different mechanism).
-
-## Prerequisites
-
-`skillporter` must be installed (`pip install skillporter`) or run from a
-checkout. Verify with `skillporter --version` before relying on it.
-
-## Workflow
-
-1. **Diagnose first, never guess.**
+1. **Detect installed harnesses and diagnose current reachability:**
    ```bash
+   skillporter detect .
    skillporter diagnose .
    ```
-   Read the matrix. A `MISSING` cell is the reason a skill is not activating.
 
-2. **Check the harness paths** if the user disputes the result:
+2. **Inspect and security-scan a skill before installing:**
    ```bash
-   skillporter matrix
+   skillporter inspect owner/repository
+   skillporter scan path/to/skill
    ```
-   Paths marked `expected` are unverified — say so rather than asserting them.
 
-3. **Fix with an explicit install.**
+3. **Add or synchronize skills across harnesses:**
    ```bash
-   skillporter install path/to/skill --harness codex
+   # One-command install from GitHub or local path to all detected harnesses
+   skillporter add owner/repository --harness all
+
+   # Synchronize existing repo skills or skillporter.yaml across harnesses
+   skillporter sync
    ```
-   Prefer `--strategy copy` (default) when the repo is used in Docker or CI;
-   use `--strategy symlink` only for local-only workflows.
 
-4. **Re-run `diagnose`** and confirm the cell flipped to `yes`. Never report
-   success from the install output alone.
-
-5. **Validate spec compliance** before publishing a skill:
+4. **Verify reachability, spec compliance, and zero drift:**
    ```bash
+   skillporter diagnose .
    skillporter validate .
+   ```
+
+5. **Update or roll back:**
+   ```bash
+   skillporter update
+   skillporter rollback <skill-name>
    ```
 
 ## Rules
 
-- Always run `diagnose` before and after a change; report only verified state.
-- Never hand-create symlinks when `install` will do it correctly.
-- Do not modify a user's source skill directory — installs write only into
-  harness directories.
-- Exit code 1 means findings; surface them instead of silencing the command.
-
-## Verification
-
-Success is `diagnose` showing `yes` for every harness the user cares about, and
-`validate` exiting 0. If a harness still shows `MISSING`, read the location
-column — the path, not the skill, is usually the problem.
+- Always run `skillporter diagnose .` before and after modifying harness skill directories.
+- Prefer `--strategy copy` (default) for repositories used in Docker, CI, or git worktrees.
+- Never bypass `skillporter scan` findings (`--allow-risky`) without reading the exact file and line reported.

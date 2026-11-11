@@ -1,0 +1,15 @@
+{
+  "name": "skillporter",
+  "version": "2.0.0",
+  "description": "ONE SKILL. EVERY AGENT. Diagnose, validate, security-scan, and synchronize Agent Skills across 19 AI harnesses.",
+  "author": {
+    "name": "Shanmukh Dheekonda",
+    "url": "https://github.com/Shanmukh-l33t"
+  },
+  "homepage": "https://github.com/Shanmukh-l33t/skillporter",
+  "repository": "https://github.com/Shanmukh-l33t/skillporter",
+  "license": "MIT",
+  "keywords": ["agent-skills", "claude-code", "codex", "cursor", "hermes", "openclaw", "security"],
+  "skills": "./skills/skillporter",
+  "commands": "./.claude/commands"
+}

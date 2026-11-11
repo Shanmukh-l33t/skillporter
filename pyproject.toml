@@ -4,13 +4,27 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "skillporter"
-version = "1.0.0"
-description = "Diagnose and fix Agent Skill installation across Claude Code, Codex, Cursor, Hermes and OpenClaw."
+version = "2.0.0"
+description = "ONE SKILL. EVERY AGENT. Universal package manager, validator, security scanner, and synchronizer for AI-agent skills across 19+ harnesses."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
 authors = [{ name = "Shanmukh Dheekonda" }]
-keywords = ["agent-skills", "claude-code", "codex", "cursor", "hermes", "openclaw", "mcp", "developer-tools"]
+keywords = [
+  "agent-skills",
+  "claude-code",
+  "codex",
+  "cursor",
+  "windsurf",
+  "github-copilot",
+  "gemini-cli",
+  "hermes",
+  "openclaw",
+  "openhands",
+  "goose",
+  "mcp",
+  "developer-tools",
+]
 classifiers = [
   "Development Status :: 5 - Production/Stable",
   "Environment :: Console",
@@ -21,6 +35,7 @@ classifiers = [
   "Programming Language :: Python :: 3 :: Only",
   "Topic :: Software Development :: Build Tools",
   "Topic :: Software Development :: Quality Assurance",
+  "Topic :: Security",
 ]
 dependencies = []
 

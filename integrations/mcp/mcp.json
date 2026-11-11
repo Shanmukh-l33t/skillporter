@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "skillporter": {
+      "command": "uvx",
+      "args": ["skillporter", "mcp"]
+    }
+  }
+}

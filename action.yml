@@ -1,0 +1,57 @@
+name: "Skillporter — Validate, Scan & Diagnose Agent Skills"
+description: "Validate SKILL.md compliance, run static security checks, and verify cross-harness reachability."
+author: "Shanmukh Dheekonda"
+branding:
+  icon: "shield"
+  color: "blue"
+
+inputs:
+  command:
+    description: "Skillporter command to execute (validate, scan, diagnose, doctor)"
+    required: false
+    default: "validate"
+  path:
+    description: "Path to repository or skill directory"
+    required: false
+    default: "."
+  harnesses:
+    description: "Comma-separated harness IDs for diagnose (e.g. claude-code,codex,cursor)"
+    required: false
+    default: ""
+  run-security-scan:
+    description: "Also execute `skillporter scan` static supply-chain security check"
+    required: false
+    default: "true"
+  python-version:
+    description: "Python version to use"
+    required: false
+    default: "3.12"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install Skillporter
+      shell: bash
+      run: |
+        python -m pip install --upgrade pip
+        pip install "${{ github.action_path }}"
+
+    - name: Run Skillporter Primary Check
+      shell: bash
+      run: |
+        if [ "${{ inputs.command }}" = "diagnose" ] && [ -n "${{ inputs.harnesses }}" ]; then
+          skillporter diagnose "${{ inputs.path }}" --harness "${{ inputs.harnesses }}"
+        else
+          skillporter ${{ inputs.command }} "${{ inputs.path }}"
+        fi
+
+    - name: Run Static Security Assessment
+      if: ${{ inputs.run-security-scan == 'true' && inputs.command != 'scan' }}
+      shell: bash
+      run: |
+        skillporter scan "${{ inputs.path }}"
