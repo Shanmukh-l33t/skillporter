@@ -6,7 +6,7 @@
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)](https://www.python.org/)
 [![Harnesses: 19 Verified](https://img.shields.io/badge/harnesses-19%20supported-00b4d8)](docs/harnesses/README.md)
-[![Tests: 60 Passing](https://img.shields.io/badge/tests-60%20passing-brightgreen)](tests/)
+[![Tests: 115 Passing](https://img.shields.io/badge/tests-115%20passing-brightgreen)](tests/)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-0-success)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 

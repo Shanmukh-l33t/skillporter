@@ -234,6 +234,29 @@ def plan_install(
     return plan
 
 
+def _verify_no_escaping_symlinks(src: Path) -> None:
+    """Reject any skill tree containing a symlink that resolves outside *src* (or is broken).
+
+    Structural filesystem escapes must NEVER be copied onto disk, even when
+    ``--allow-risky`` or ``--force`` is passed.
+    """
+    resolved_src = src.resolve()
+    for dirpath, dirnames, filenames in os.walk(src, followlinks=False):
+        cdir = Path(dirpath)
+        for name in [*dirnames, *filenames]:
+            entry = cdir / name
+            if entry.is_symlink():
+                raw_link = os.readlink(entry)
+                try:
+                    target = entry.resolve()
+                    target.relative_to(resolved_src)
+                except (ValueError, OSError) as exc:
+                    raise InstallError(
+                        f"refusing to install {src.name!r}: symlink {entry.relative_to(src)} -> {raw_link!r} "
+                        "escapes skill root"
+                    ) from exc
+
+
 def _stage_and_copy_skill(
     src: Path,
     dest: Path,
@@ -244,6 +267,7 @@ def _stage_and_copy_skill(
     replaced_in_txn: list[tuple[Path, Path]],
 ) -> str:
     """Copy *src* to *dest* via a staging directory, preserving prior *dest* for rollback."""
+    _verify_no_escaping_symlinks(src)
     existed = dest.exists() or dest.is_symlink()
     if existed:
         if dest.is_symlink():

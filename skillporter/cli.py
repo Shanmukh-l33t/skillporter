@@ -55,7 +55,7 @@ def _resolve_target_harnesses(
     scope: str = "project",
     default_detected: bool = True,
 ) -> list[str]:
-    """Resolve ``--harness`` arguments, supporting ``all`` and auto-detection."""
+    """Resolve ``--harness`` arguments, supporting ``all``, ``detected``, and auto-detection."""
     if raw_harnesses:
         expanded: list[str] = []
         for item in raw_harnesses:
@@ -64,15 +64,19 @@ def _resolve_target_harnesses(
                 if not tok:
                     continue
                 if tok == "all":
+                    all_scoped = [
+                        n
+                        for n in harnesses.names()
+                        if (harnesses.get(n).project_paths if scope == "project" else harnesses.get(n).user_paths)
+                    ]
+                    expanded.extend(all_scoped)
+                elif tok == "detected":
                     detected = [
                         d.harness.name
                         for d in harnesses.detect_harnesses(root)
                         if d.installed and (d.harness.project_paths if scope == "project" else d.harness.user_paths)
                     ]
-                    if detected:
-                        expanded.extend(detected)
-                    else:
-                        expanded.extend(["claude-code", "codex", "cursor"])
+                    expanded.extend(detected if detected else ["claude-code", "codex", "cursor"])
                 else:
                     expanded.append(harnesses.get(tok).name)
         seen: list[str] = []
@@ -329,7 +333,16 @@ def _cmd_add(args: argparse.Namespace) -> int:
             print(f"  {sec_info} informational/medium finding(s)")
             print(f"  {sec_critical + sec_high} critical/high finding(s)")
 
-        if (sec_critical > 0 or sec_high > 0) and not args.allow_risky and not args.force:
+        has_structural_escape = any(r.has_structural_escape for r in sec_reports.values())
+        if has_structural_escape:
+            print(
+                "\nerror: installation blocked by structural filesystem escape "
+                "(escaping symlinks or path traversal cannot be overridden with --allow-risky or --force)",
+                file=sys.stderr,
+            )
+            return EXIT_PROBLEM
+
+        if (sec_critical > 0 or sec_high > 0) and not args.allow_risky:
             print(
                 "\nerror: installation blocked by static security policy "
                 "(re-run with --allow-risky after reviewing `skillporter scan` output)",
@@ -455,10 +468,16 @@ def _cmd_uninstall(args: argparse.Namespace) -> int:
 
 def _cmd_validate(args: argparse.Namespace) -> int:
     target = Path(args.path).expanduser()
+    if not target.exists():
+        print(f"error: {target} does not exist", file=sys.stderr)
+        return EXIT_ERROR
     files = [target] if target.name == "SKILL.md" else discover(target)
     if not files:
-        print(f"error: no SKILL.md under {target}", file=sys.stderr)
-        return EXIT_ERROR
+        if getattr(args, "json", False):
+            print(json.dumps({"valid": True, "files": {}}, indent=2))
+        else:
+            print(f"no SKILL.md found under {target} (0 errors).")
+        return EXIT_OK
 
     problems = 0
     json_out = {}
@@ -691,8 +710,16 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
         return EXIT_ERROR
 
     try:
+        skill_dirs = resolved.skill_dirs
+        if getattr(args, "skill", None):
+            wanted = {s.strip() for s in args.skill}
+            skill_dirs = [d for d in skill_dirs if d.name in wanted]
+            if not skill_dirs:
+                print(f"error: requested skill(s) {sorted(wanted)} not found in {args.source}", file=sys.stderr)
+                return EXIT_ERROR
+
         items = []
-        for sdir in resolved.skill_dirs:
+        for sdir in skill_dirs:
             pkg = inspect_skill_dir(sdir)
             doc = pkg.skill_doc or parse_skill(sdir / "SKILL.md")
             issues = validate(doc)
@@ -814,11 +841,44 @@ def _latest_tree_mtime_ns(skill_dir: Path) -> int:
 def _cmd_sync(args: argparse.Namespace) -> int:
     root = Path(args.path).expanduser().resolve()
     manifest = load_manifest(root)
+    lock = load_lockfile(root)
     targets = _resolve_target_harnesses(args.harness, root, scope=args.scope, default_detected=True)
     force_flag = getattr(args, "force", False)
     prefer_path = getattr(args, "prefer", None)
+    allow_risky = getattr(args, "allow_risky", False)
 
     diag = run_diagnose(root, scope=args.scope)
+
+    # 1. Security scan every discovered skill copy before syncing or updating lockfile
+    for sname, copies in sorted(diag.skill_copies.items()):
+        for cdir in copies:
+            srep = scan_skill(cdir)
+            if srep.has_structural_escape or (not srep.passed and not allow_risky):
+                print(
+                    f"error: sync blocked by static security policy on {sname!r} ({cdir}); "
+                    "run `skillporter scan` to inspect findings.",
+                    file=sys.stderr,
+                )
+                return EXIT_PROBLEM
+
+    # 2. Check lockfile drift before overwriting skillporter.lock
+    if (root / LOCKFILE_FILENAME).is_file() and not force_flag and not prefer_path:
+        lock_mismatches: list[str] = []
+        for sname, locked in sorted(lock.skills.items()):
+            for cdir in diag.skill_copies.get(sname, []):
+                actual_hash, _ = compute_tree_hash(cdir)
+                if locked.tree_hash and actual_hash != locked.tree_hash:
+                    lock_mismatches.append(f"{sname} ({cdir}): locked {locked.tree_hash[:8]} != disk {actual_hash[:8]}")
+        if lock_mismatches:
+            print(
+                "error: on-disk skill content differs from skillporter.lock; refusing to re-lock without --force:",
+                file=sys.stderr,
+            )
+            for lm in lock_mismatches:
+                print(f"  - {lm}", file=sys.stderr)
+            return EXIT_PROBLEM
+
+    # 3. Check copy drift across harnesses
     if diag.drifted and not force_flag and not prefer_path:
         print(
             "error: content drift detected across existing skill copies; refusing to overwrite without --force:",
@@ -844,6 +904,13 @@ def _cmd_sync(args: argparse.Namespace) -> int:
                 for sdir in resolved.skill_dirs:
                     if sdir.name != spec.name and len(resolved.skill_dirs) > 1:
                         continue
+                    srep = scan_skill(sdir)
+                    if srep.has_structural_escape or (not srep.passed and not allow_risky):
+                        print(
+                            f"error: sync blocked by static security policy on {sdir.name!r}",
+                            file=sys.stderr,
+                        )
+                        return EXIT_PROBLEM
                     res = run_install(
                         root,
                         sdir,
@@ -876,7 +943,6 @@ def _cmd_sync(args: argparse.Namespace) -> int:
             if len(copies) == 1 or sname not in diag.drifted:
                 canonical_by_name[sname] = copies[0]
                 continue
-            # Drifted copies under --force: compare tree-wide mtime_ns
             ranked = sorted(copies, key=_latest_tree_mtime_ns, reverse=True)
             if _latest_tree_mtime_ns(ranked[0]) == _latest_tree_mtime_ns(ranked[1]):
                 print(
@@ -904,7 +970,6 @@ def _cmd_sync(args: argparse.Namespace) -> int:
             )
             synced_results.extend(res)
 
-    # Update lockfile automatically if present or if manifest exists
     if (root / LOCKFILE_FILENAME).exists() or manifest is not None:
         _cmd_lock(argparse.Namespace(path=str(root)))
 
@@ -915,12 +980,18 @@ def _cmd_sync(args: argparse.Namespace) -> int:
 
 def _cmd_update(args: argparse.Namespace) -> int:
     root = Path(args.path).expanduser().resolve()
+    target_arg = (args.skill or "").strip()
+    if target_arg in (".", "./") or (target_arg and Path(target_arg).expanduser().is_dir()):
+        if target_arg not in ("", ".", "./"):
+            root = Path(target_arg).expanduser().resolve()
+        target_arg = ""
+
     records = load_state(root, scope=args.scope)
     if not records:
         print("no managed skills recorded in .skillporter/state.json to update.")
         return EXIT_OK
 
-    names = [args.skill] if args.skill else sorted(records)
+    names = [target_arg] if target_arg else sorted(records)
     updated_count = 0
     for sname in names:
         rec = records.get(sname)
@@ -972,32 +1043,71 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
     root = Path(args.path).expanduser().resolve()
     diag = run_diagnose(root, only=args.harness or None, scope=args.scope)
     detected = [d for d in harnesses.detect_harnesses(root) if d.installed]
+    lock = load_lockfile(root)
 
     if args.fix and diag.skills:
-        # Remove broken symlinks first
         for rep in diag.reports.values():
             for loc in rep.locations:
                 for blink in loc.broken_links:
                     bp = Path(blink)
                     if bp.is_symlink():
                         bp.unlink(missing_ok=True)
-        # Re-sync discovered skills across active/checked harnesses
         active_proj = {d.harness.name for d in detected if d.project_active}
         targets = args.harness or sorted({"claude-code", "codex", "cursor"} | active_proj)
         for skill_md in diag.skills:
             sname = skill_md.parent.name
             copies = diag.skill_copies.get(sname, [skill_md.parent])
-            newest_dir = max(copies, key=lambda d: (d / "SKILL.md").stat().st_mtime)
-            run_install(
-                root,
-                newest_dir,
-                targets,
-                strategy="copy",
-                scope=args.scope,
-                force=True,
-                record_state=True,
-            )
+            locked_entry = lock.skills.get(sname)
+
+            # Filter for copies that pass static security scan AND (when locked) match lockfile hash
+            clean_copies: list[Path] = []
+            for cdir in copies:
+                srep = scan_skill(cdir)
+                if not srep.passed or srep.has_structural_escape:
+                    continue
+                if locked_entry and locked_entry.tree_hash:
+                    chash, _ = compute_tree_hash(cdir)
+                    if chash != locked_entry.tree_hash:
+                        continue
+                clean_copies.append(cdir)
+
+            if not clean_copies:
+                # Never spread a tampered or security-blocked copy across harnesses
+                continue
+
+            best_dir = max(clean_copies, key=_latest_tree_mtime_ns)
+            with contextlib.suppress(InstallError):
+                run_install(
+                    root,
+                    best_dir,
+                    targets,
+                    strategy="copy",
+                    scope=args.scope,
+                    force=True,
+                    record_state=True,
+                )
         diag = run_diagnose(root, only=targets, scope=args.scope)
+
+    # Check static security and lockfile integrity across all discovered copies
+    for sname, copies in sorted(diag.skill_copies.items()):
+        locked_entry = lock.skills.get(sname)
+        for cdir in copies:
+            rel_c = cdir.relative_to(root).as_posix() if cdir.is_relative_to(root) else str(cdir)
+            srep = scan_skill(cdir)
+            if not srep.passed or srep.has_structural_escape:
+                codes = ", ".join(sorted({f.code for f in srep.findings if f.severity in ("CRITICAL", "HIGH")}))
+                msg = f"security: {sname!r} at {rel_c} blocked by static scan ({codes})"
+                if msg not in diag.findings:
+                    diag.findings.append(msg)
+            if locked_entry and locked_entry.tree_hash:
+                chash, _ = compute_tree_hash(cdir)
+                if chash != locked_entry.tree_hash:
+                    lmsg = (
+                        f"lockfile drift: {sname!r} at {rel_c} ({chash[:8]}) "
+                        f"differs from skillporter.lock ({locked_entry.tree_hash[:8]})"
+                    )
+                    if lmsg not in diag.findings:
+                        diag.findings.append(lmsg)
 
     active_names = (
         [harnesses.get(h).name for h in args.harness]
@@ -1026,6 +1136,10 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
         )
 
     remediations: list[str] = []
+    if any("security:" in f for f in diag.findings):
+        remediations.append("skillporter scan .         # inspect and remediate security findings")
+    if any("lockfile drift:" in f for f in diag.findings):
+        remediations.append("skillporter rollback <skill>  # or `skillporter lock` if edit was intentional")
     if diag.drifted:
         remediations.append("skillporter sync --force   # reconcile drifted copies (snapshots backup first)")
     if any("not visible to:" in f or "broken symlink" in f for f in diag.findings):
@@ -1074,13 +1188,14 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
             print("\nRecommended fixes:")
             for cmd in remediations:
                 print(f"  $ {cmd}")
+        print(f"\nStatus: {badge('UNHEALTHY')} ({len(diag.findings)} issue(s) found).")
         return EXIT_PROBLEM
-    print("\nStatus: HEALTHY (all checked skills reachable, valid, and in sync).")
+    print(f"\nStatus: {badge('HEALTHY')} (all checked skills reachable, valid, and in sync).")
     return EXIT_OK
 
 
 def _cmd_info(args: argparse.Namespace) -> int:
-    target = args.target.strip()
+    target = (args.target or ".").strip()
     # 1. Check if target is a known harness adapter
     try:
         h = harnesses.get(target)
@@ -1131,36 +1246,118 @@ def _cmd_info(args: argparse.Namespace) -> int:
         print(f"\nInstall:     skillporter add {pkg.slug}")
         return EXIT_OK
     except KeyError:
-        print(f"error: {target!r} is neither a registered harness nor a known registry package", file=sys.stderr)
-        return EXIT_ERROR
+        pass
+
+    # 3. Check local skill by name or local directory path
+    cwd = Path.cwd().resolve()
+    cand_path = Path(target).expanduser()
+    if not cand_path.is_absolute():
+        cand_path = (cwd / cand_path).resolve()
+
+    matched_skill_md: Path | None = None
+    if (cand_path / "SKILL.md").is_file():
+        matched_skill_md = cand_path / "SKILL.md"
+    elif cand_path.is_dir():
+        found = discover(cand_path)
+        if found:
+            matched_skill_md = found[0]
+        else:
+            if args.json:
+                print(json.dumps({"type": "workspace", "root": str(cand_path), "skills": []}, indent=2))
+            else:
+                print(f"Workspace:   {cand_path} (0 skills discovered)")
+            return EXIT_OK
+    else:
+        for smd in discover(cwd):
+            if smd.parent.name == target or parse_skill(smd).name == target:
+                matched_skill_md = smd
+                break
+
+    if matched_skill_md is not None:
+        doc = parse_skill(matched_skill_md)
+        thash, _ = compute_tree_hash(matched_skill_md.parent)
+        info_payload = {
+            "type": "local-skill",
+            "name": doc.name or matched_skill_md.parent.name,
+            "path": str(matched_skill_md.parent),
+            "description": doc.description,
+            "license": doc.frontmatter.get("license", ""),
+            "tree_hash": thash,
+        }
+        if args.json:
+            print(json.dumps(info_payload, indent=2))
+            return EXIT_OK
+        print(f"Skill:       {info_payload['name']}")
+        print(f"Path:        {info_payload['path']}")
+        print(f"Description: {info_payload['description']}")
+        print(f"SHA-256:     {thash[:16]}...")
+        return EXIT_OK
+
+    print(
+        f"error: {target!r} is not a registered harness, registry package, or local skill",
+        file=sys.stderr,
+    )
+    return EXIT_ERROR
 
 
 def _cmd_pack(args: argparse.Namespace) -> int:
-    skill_dir = Path(args.path).expanduser().resolve()
+    raw_target = args.path.strip()
+    cand = Path(raw_target).expanduser()
+    if not cand.is_absolute():
+        cand = (Path.cwd() / cand).resolve()
     out_dir = Path(args.out).expanduser().resolve()
+
+    skill_dirs: list[Path] = []
+    if (cand / "SKILL.md").is_file():
+        skill_dirs = [cand]
+    elif cand.is_dir():
+        seen_names: set[str] = set()
+        for smd in discover(cand):
+            if smd.parent.name not in seen_names:
+                seen_names.add(smd.parent.name)
+                skill_dirs.append(smd.parent)
+        if not skill_dirs:
+            print(f"no SKILL.md found under {cand}")
+            return EXIT_OK
+    else:
+        for smd in discover(Path.cwd()):
+            if smd.parent.name == raw_target or parse_skill(smd).name == raw_target:
+                skill_dirs = [smd.parent]
+                break
+
+    if not skill_dirs:
+        print(f"error: {args.path!r} does not contain SKILL.md", file=sys.stderr)
+        return EXIT_ERROR
+
+    packed_items = []
     try:
-        rel = pack_skill(skill_dir, out_dir)
+        for sdir in skill_dirs:
+            rel = pack_skill(sdir, out_dir)
+            packed_items.append(rel)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_ERROR
+
     if args.json:
+        first = packed_items[0]
         print(
             json.dumps(
                 {
-                    "skill": rel.skill_name,
-                    "version": rel.version,
-                    "archive": str(rel.archive_path),
-                    "provenance": str(rel.provenance_path),
-                    "archive_sha256": rel.archive_sha256,
-                    "tree_hash": rel.tree_hash,
+                    "skill": first.skill_name,
+                    "version": first.version,
+                    "archive": str(first.archive_path),
+                    "provenance": str(first.provenance_path),
+                    "archive_sha256": first.archive_sha256,
+                    "tree_hash": first.tree_hash,
                 },
                 indent=2,
             )
         )
         return EXIT_OK
-    print(f"packed {rel.skill_name}@{rel.version}:")
-    print(f"  archive:    {rel.archive_path} (sha256: {rel.archive_sha256[:16]}...)")
-    print(f"  provenance: {rel.provenance_path}")
+    for rel in packed_items:
+        print(f"packed {rel.skill_name}@{rel.version}:")
+        print(f"  archive:    {rel.archive_path} (sha256: {rel.archive_sha256[:16]}...)")
+        print(f"  provenance: {rel.provenance_path}")
     return EXIT_OK
 
 
@@ -1334,6 +1531,7 @@ def build_parser() -> argparse.ArgumentParser:
     # inspect
     ins = sub.add_parser("inspect", help="inspect a local or remote skill package before installing")
     ins.add_argument("source", help="local path, archive, or GitHub owner/repo")
+    ins.add_argument("--skill", action="append", help="select specific skill name(s) from a multi-skill repo")
     ins.add_argument(
         "--preview-adapt",
         choices=["cursor-mdc", "copilot-instructions", "windsurf-rules", "continue-rules", "aider-conventions"],
@@ -1348,6 +1546,11 @@ def build_parser() -> argparse.ArgumentParser:
     sy.add_argument("--strategy", choices=["copy", "symlink"], default="copy")
     sy.add_argument("--scope", choices=["project", "user"], default="project")
     sy.add_argument("--prefer", help="authoritative skill path when resolving content drift")
+    sy.add_argument(
+        "--allow-risky",
+        action="store_true",
+        help="proceed even if static security scan finds high/critical issues",
+    )
     sy.add_argument("--force", action="store_true", help="overwrite drifted copies after snapshotting backups")
     sy.set_defaults(func=_cmd_sync)
 
@@ -1381,8 +1584,8 @@ def build_parser() -> argparse.ArgumentParser:
     doc.set_defaults(func=_cmd_doctor)
 
     # info
-    inf = sub.add_parser("info", help="show detailed metadata for a harness adapter or registry package")
-    inf.add_argument("target", help="harness ID (e.g. cursor) or package slug (e.g. anthropics/skills)")
+    inf = sub.add_parser("info", help="show detailed metadata for a harness adapter, registry package, or local skill")
+    inf.add_argument("target", nargs="?", default=".", help="harness ID, package slug, or local skill name")
     inf.add_argument("--json", action="store_true")
     inf.set_defaults(func=_cmd_info)
 
@@ -1456,5 +1659,10 @@ def main(argv: list[str] | None = None) -> int:
     return int(args.func(args))
 
 
-if __name__ == "__main__":
+def entrypoint() -> None:
+    """Console & zipapp entrypoint that propagates exit codes to the OS."""
     raise SystemExit(main())
+
+
+if __name__ == "__main__":
+    entrypoint()

@@ -26,6 +26,8 @@ SEVERITY_ORDER = {
     "INFO": 0,
 }
 
+STRUCTURAL_ESCAPE_CODES = frozenset({"sec-symlink-escape", "sec-path-traversal"})
+
 MAX_SCAN_FILE_BYTES = 2 * 1024 * 1024  # 2 MiB cap per text file during pattern scan
 
 # Patterns for embedded secrets and private keys
@@ -63,8 +65,8 @@ _PROMPT_PATTERNS: tuple[tuple[str, str, str, re.Pattern[str]], ...] = (
         "sec-prompt-override",
         "Prompt-injection directive attempting to override system/user instructions",
         re.compile(
-            r"(?i)\b(?:ignore (?:all |any )?(?:previous|prior|system) instructions|"
-            r"disregard (?:all )?(?:safety|security|user) rules|"
+            r"(?i)\b(?:ignore (?:all |any )?(?:previous|prior|system|above) instructions|"
+            r"disregard (?:all )?(?:safety|security|user|prior|previous) (?:rules|instructions)|"
             r"do not tell the user|silently exfiltrate|hide this action from the user)\b"
         ),
     ),
@@ -81,6 +83,16 @@ _PROMPT_PATTERNS: tuple[tuple[str, str, str, re.Pattern[str]], ...] = (
         re.compile(
             r"<!--[^>]*(?:curl|wget|bash|eval|ignore|exfiltrate|secret|token)[^>]*-->",
             re.IGNORECASE | re.DOTALL,
+        ),
+    ),
+    (
+        "HIGH",
+        "sec-css-hidden-instruction",
+        "Hidden HTML/CSS element concealing instructions from human review",
+        re.compile(
+            r"<[a-zA-Z0-9]+[^>]*style\s*=\s*[\"'][^\"']*(?:display\s*:\s*none|visibility\s*:\s*hidden|"
+            r"opacity\s*:\s*0(?:\.0+)?\b|font-size\s*:\s*0)[^\"']*[\"'][^>]*>",
+            re.IGNORECASE,
         ),
     ),
     (
@@ -103,7 +115,17 @@ _SCRIPT_PATTERNS: tuple[tuple[str, str, str, re.Pattern[str]], ...] = (
         "CRITICAL",
         "sec-obfuscated-exec",
         "Base64 or hex decoded payload piped directly into shell/interpreter",
-        re.compile(r"(?:base64\s+(?:-d|--decode)|xxd\s+-r)\b[^\n|]*\|\s*(?:sudo\s+)?(?:ba)?(?:sh|python|perl|node)\b"),
+        re.compile(
+            r"(?:base64\s+(?:-d|--decode)|xxd\s+-r)\b[^\n|]*\|\s*(?:sudo\s+)?(?:ba)?(?:sh|python|perl|node)\b"
+        ),
+    ),
+    (
+        "HIGH",
+        "sec-base64-decode",
+        "Encoded base64 decode invocation detected in skill instructions or script",
+        re.compile(
+            r"(?:\bbase64\s+(?:-d|--decode)\b|\bbase64\.b64decode\s*\(|\batob\s*\(|\bBuffer\.from\s*\([^)]*['\"]base64['\"])"
+        ),
     ),
     (
         "CRITICAL",
@@ -112,10 +134,19 @@ _SCRIPT_PATTERNS: tuple[tuple[str, str, str, re.Pattern[str]], ...] = (
         re.compile(r"(?:/dev/tcp/\d|nc\s+-e\s+/bin/|bash\s+-i\s+>&\s+/dev/tcp/|socat\s+.*exec:)"),
     ),
     (
+        "CRITICAL",
+        "sec-env-exfil",
+        "Outbound network call transmitting environment variables or secrets",
+        re.compile(
+            r"(?:urlopen|requests\.(?:get|post|put)|httpx\.(?:get|post)|fetch\s*\(|(?:curl|wget)\b)"
+            r"[^\n]*(?:os\.environ|process\.env\b|\bgetenv\s*\()"
+        ),
+    ),
+    (
         "HIGH",
         "sec-credential-harvest",
         "Access to sensitive host credential stores (~/.ssh, ~/.aws, /etc/shadow)",
-        re.compile(r"(?:~/\.ssh/id_|~/\.aws/credentials|/etc/shadow|\.npmrc|\.pypirc)"),
+        re.compile(r"(?:~/\.ssh/id_|/\.ssh/id_rsa|~/\.aws/credentials|/etc/shadow|\.npmrc|\.pypirc)"),
     ),
     (
         "HIGH",
@@ -124,10 +155,15 @@ _SCRIPT_PATTERNS: tuple[tuple[str, str, str, re.Pattern[str]], ...] = (
         re.compile(r"\b(?:curl\b[^\n]*(?:-d|--data|--data-binary)\s+@|wget\b[^\n]*--post-file)"),
     ),
     (
-        "MEDIUM",
+        "HIGH",
         "sec-dynamic-eval",
-        "Dynamic code execution (eval / exec / shell=True) in bundled script",
-        re.compile(r"\b(?:eval\s*\(|exec\s*\(|subprocess\.[A-Za-z_]+\([^)]*shell\s*=\s*True)"),
+        "Dynamic or inline shell/code execution (os.system / eval / exec / shell=True / python -c)",
+        re.compile(
+            r"(?:\b(?:eval|exec|os\.system|os\.popen|pty\.spawn)\s*\(|"
+            r"subprocess\.[A-Za-z_]+\([^)]*shell\s*=\s*True|"
+            r"\b(?:python[23]?|node|perl|ruby)\s+-(?:c|e)\s+[\"'][^\"']*"
+            r"(?:os\.system|os\.popen|subprocess|socket|urllib|http|child_process|eval|exec|__import__))"
+        ),
     ),
     (
         "LOW",
@@ -148,6 +184,7 @@ _REMEDIATIONS: dict[str, str] = {
     "sec-prompt-override": "Remove instruction-override directives; skills must not subvert user or system boundaries.",
     "sec-hidden-unicode": "Strip zero-width and bidirectional override Unicode characters from the file.",
     "sec-html-comment-instruction": "Remove hidden imperative shell/override instructions from HTML comments.",
+    "sec-css-hidden-instruction": "Remove hidden display:none / visibility:hidden HTML blocks from SKILL.md.",
     "sec-markdown-path-traversal": (
         "Keep Markdown file references inside the skill root (e.g. references/FILE.md, no '../')."
     ),
@@ -155,13 +192,16 @@ _REMEDIATIONS: dict[str, str] = {
         "Do not pipe remote downloads directly into a shell; download, verify a SHA-256 checksum, and inspect first."
     ),
     "sec-obfuscated-exec": "Remove base64/hex-decoded pipe-to-shell execution; write transparent, auditable scripts.",
+    "sec-base64-decode": "Replace base64-encoded payloads with plain, inspectable text or source files.",
     "sec-reverse-shell": "Remove raw socket / reverse-shell commands from the skill package.",
+    "sec-env-exfil": "Do not transmit os.environ or process.env over outbound network requests.",
     "sec-credential-harvest": (
         "Remove reads targeting host credential stores (~/.ssh, ~/.aws, /etc/shadow, .npmrc, .pypirc)."
     ),
     "sec-data-exfil": "Remove outbound HTTP POST commands that upload local host files.",
-    "sec-dynamic-eval": "Avoid eval(), exec(), or subprocess(..., shell=True); pass argument lists without a shell.",
+    "sec-dynamic-eval": "Avoid os.system(), eval(), exec(), or inline 'python -c' shell execution.",
     "sec-symlink-escape": "Remove symlinks that resolve outside the skill root directory.",
+    "sec-broken-symlink": "Remove or fix broken symlinks inside the skill directory.",
     "sec-path-traversal": "Remove '..' path traversal segments from file paths.",
     "sec-binary-artifact": "Replace compiled binary blobs with auditable source scripts in scripts/.",
     "sec-script-outside-scripts-dir": "Move executable scripts into the standard scripts/ subdirectory.",
@@ -222,6 +262,11 @@ class SecurityReport:
         return sum(1 for f in self.findings if f.severity in ("LOW", "INFO"))
 
     @property
+    def has_structural_escape(self) -> bool:
+        """Return True if any finding is a filesystem symlink/path escape (never overridable by --allow-risky)."""
+        return any(f.code in STRUCTURAL_ESCAPE_CODES for f in self.findings)
+
+    @property
     def passed(self) -> bool:
         """Default policy: pass if there are no CRITICAL or HIGH findings."""
         return self.critical_count == 0 and self.high_count == 0
@@ -239,6 +284,7 @@ class SecurityReport:
                 "it does not guarantee runtime safety."
             ),
             "passed": self.passed,
+            "has_structural_escape": self.has_structural_escape,
             "tree_hash": self.tree_hash,
             "counts": {
                 "critical": self.critical_count,
@@ -252,12 +298,7 @@ class SecurityReport:
 
 
 def compute_tree_hash(skill_dir: Path) -> tuple[str, dict[str, str]]:
-    """Compute a deterministic SHA-256 content hash for a skill directory.
-
-    Uses ``os.walk(..., followlinks=False)`` so directory symlinks are hashed as
-    links and never followed into infinite cycles.
-    Returns ``(overall_sha256_hex, {relative_posix_path: file_sha256_hex})``.
-    """
+    """Compute a deterministic SHA-256 content hash for a skill directory."""
     skill_dir = skill_dir.resolve()
     file_hashes: dict[str, str] = {}
     overall = hashlib.sha256()
@@ -296,6 +337,45 @@ def compute_tree_hash(skill_dir: Path) -> tuple[str, dict[str, str]]:
     return overall.hexdigest(), file_hashes
 
 
+def _check_symlink_safety(
+    link_path: Path, resolved_root: Path, rel: str, is_dir: bool = False
+) -> SecurityFinding | None:
+    """Inspect a symlink inside a skill directory.
+
+    * If it points outside *resolved_root* AND the target exists on the host
+      (e.g. ``/etc/shadow``, ``/root/.ssh``, ``../secret.txt``), return CRITICAL ``sec-symlink-escape``.
+    * If it is a dangling/broken link to a non-existent path, return MEDIUM ``sec-broken-symlink``.
+    """
+    raw_target = os.readlink(link_path)
+    try:
+        target = link_path.resolve()
+        target.relative_to(resolved_root)
+        if not link_path.exists():
+            return SecurityFinding(
+                "MEDIUM",
+                "sec-broken-symlink",
+                rel,
+                f"Broken symlink inside skill directory ({raw_target})",
+            )
+        return None
+    except (ValueError, OSError):
+        candidate = (link_path.parent / raw_target) if not os.path.isabs(raw_target) else Path(raw_target)
+        if os.path.lexists(candidate):
+            kind = "Directory symlink" if is_dir else "Symlink"
+            return SecurityFinding(
+                "CRITICAL",
+                "sec-symlink-escape",
+                rel,
+                f"{kind} points outside skill root ({raw_target})",
+            )
+        return SecurityFinding(
+            "MEDIUM",
+            "sec-broken-symlink",
+            rel,
+            f"Broken symlink pointing to non-existent target ({raw_target})",
+        )
+
+
 def scan_skill(skill_dir: Path) -> SecurityReport:
     """Run static security and supply-chain checks on a skill directory."""
     raw_root = Path(skill_dir)
@@ -309,26 +389,19 @@ def scan_skill(skill_dir: Path) -> SecurityReport:
         return report
 
     for dirpath, dirnames, filenames in os.walk(raw_root, followlinks=False):
-        dirnames[:] = sorted(d for d in dirnames if d not in {".git", "__pycache__", ".venv", "node_modules"})
+        dirnames[:] = sorted(
+            d for d in dirnames if d not in {".git", "__pycache__", ".venv", "node_modules", ".skillporter"}
+        )
         current_dir = Path(dirpath)
 
         for dname in list(dirnames):
             dpath = current_dir / dname
             rel_d = dpath.relative_to(raw_root).as_posix()
             if dpath.is_symlink():
-                try:
-                    target = dpath.resolve()
-                    target.relative_to(resolved_root)
-                except (ValueError, OSError):
-                    report.findings.append(
-                        SecurityFinding(
-                            "CRITICAL",
-                            "sec-symlink-escape",
-                            rel_d,
-                            f"Directory symlink points outside skill root ({os.readlink(dpath)})",
-                        )
-                    )
-                    dirnames.remove(dname)
+                finding = _check_symlink_safety(dpath, resolved_root, rel_d, is_dir=True)
+                if finding is not None:
+                    report.findings.append(finding)
+                dirnames.remove(dname)
 
         for fname in sorted(filenames):
             fpath = current_dir / fname
@@ -341,18 +414,9 @@ def scan_skill(skill_dir: Path) -> SecurityReport:
                 continue
 
             if fpath.is_symlink():
-                try:
-                    target = fpath.resolve()
-                    target.relative_to(resolved_root)
-                except (ValueError, OSError):
-                    report.findings.append(
-                        SecurityFinding(
-                            "CRITICAL",
-                            "sec-symlink-escape",
-                            rel,
-                            f"Symlink points outside skill root ({os.readlink(fpath)})",
-                        )
-                    )
+                finding = _check_symlink_safety(fpath, resolved_root, rel, is_dir=False)
+                if finding is not None:
+                    report.findings.append(finding)
                 continue
 
             if fpath.suffix.lower() in {".exe", ".dll", ".so", ".dylib", ".bin", ".pyc"}:
@@ -383,8 +447,6 @@ def scan_skill(skill_dir: Path) -> SecurityReport:
             except OSError:
                 continue
 
-            # Strip a single leading UTF-8 BOM at byte 0 so legitimate BOM files do not
-            # trigger sec-hidden-unicode, while mid-file \ufeff or zero-width chars still do.
             if text.startswith("\ufeff"):
                 text = text[1:]
 
@@ -407,11 +469,11 @@ def scan_skill(skill_dir: Path) -> SecurityReport:
                         report.findings.append(SecurityFinding(sev, code, rel, msg, line=idx))
                 for sev, code, msg, pat in _SCRIPT_PATTERNS:
                     if pat.search(line):
-                        effective_sev = sev if (is_script or sev == "CRITICAL") else "INFO"
+                        effective_sev = sev if (is_script or sev in ("CRITICAL", "HIGH")) else "INFO"
                         report.findings.append(SecurityFinding(effective_sev, code, rel, msg, line=idx))
                 if is_markdown:
                     for sev, code, msg, pat in _PROMPT_PATTERNS:
-                        if pat == _PROMPT_PATTERNS[2][3]:
+                        if code == "sec-html-comment-instruction":
                             continue
                         if pat.search(line):
                             report.findings.append(SecurityFinding(sev, code, rel, msg, line=idx))
@@ -428,14 +490,13 @@ def scan_skill(skill_dir: Path) -> SecurityReport:
                         )
                     )
 
-            # Also check backslash-continued logical lines for multi-line command evasion
             if "\\\n" in text or "\\\r\n" in text:
                 joined_text = re.sub(r"\\\r?\n[ \t]*", " ", text)
                 existing_codes = {f.code for f in report.findings if f.file == rel}
                 for l_idx, jline in enumerate(joined_text.splitlines(), start=1):
                     for sev, code, msg, pat in _SCRIPT_PATTERNS:
                         if code not in existing_codes and pat.search(jline):
-                            effective_sev = sev if (is_script or sev == "CRITICAL") else "INFO"
+                            effective_sev = sev if (is_script or sev in ("CRITICAL", "HIGH")) else "INFO"
                             report.findings.append(SecurityFinding(effective_sev, code, rel, msg, line=l_idx))
                             existing_codes.add(code)
 

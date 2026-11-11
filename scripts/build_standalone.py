@@ -35,7 +35,7 @@ def build_artifacts(repo_root: Path | None = None) -> dict[str, str]:
         staging,
         target=pyz_path,
         interpreter="/usr/bin/env python3",
-        main="skillporter.cli:main",
+        main="skillporter.cli:entrypoint",
         compressed=True,
     )
     pyz_path.chmod(pyz_path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)

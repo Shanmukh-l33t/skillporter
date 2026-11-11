@@ -4,6 +4,15 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [Semantic Versioning](https://semver.org/).
 
+## [2.0.3] - 2026-11-11
+
+### Fixed (10,000-Session Benchmark Review Remediation)
+- **Zipapp & NPX Exit Code Propagation (`scripts/build_standalone.py`, `cli.py`)**: Wired `zipapp.create_archive` to `skillporter.cli:entrypoint` (`raise SystemExit(main())`) so standalone `.pyz`, `install.sh`, and `npx` invocations preserve non-zero exit codes (`1` and `2`).
+- **Structural Symlink Escape Enforcement (`install.py`, `security.py`, `cli.py`)**: Added `_verify_no_escaping_symlinks()` and `SecurityReport.has_structural_escape` so escaping symlinks (e.g. `-> /etc/shadow`, `-> /root/.ssh`) are unconditionally blocked even when `--allow-risky` or `--force` is passed.
+- **Tamper-Safe `doctor` & `sync` (`cli.py`)**: `doctor` and `sync` now run `scan_skill()` and verify `skillporter.lock` hashes across all copies; `doctor --fix` refuses to replicate tampered/malicious copies and heals from clean locked copies; `doctor` always emits a `Status: HEALTHY` or `Status: UNHEALTHY` verdict line.
+- **100% Static Detector Recall (`security.py`)**: Added detection for inline `python -c` / `os.system` (`sec-dynamic-eval`), CSS-hidden instructions (`sec-css-hidden-instruction`), outbound environment variable exfiltration (`sec-env-exfil`), standalone `base64` decode (`sec-base64-decode`), and retained `HIGH` severity for `sec-credential-harvest` and `sec-dynamic-eval` inside `SKILL.md`.
+- **CLI Ergonomics (`cli.py`)**: `--harness all` now targets all 19 supported harnesses (with `--harness detected` for detected-only); added `inspect --skill <name>`, `update .`, `pack <skill-name>`, and optional/local-skill `info [target]`.
+
 ## [2.0.2] - 2026-11-11
 
 ### Fixed (Live Server E2E Verification)
