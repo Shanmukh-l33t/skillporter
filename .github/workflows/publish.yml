@@ -24,11 +24,15 @@ jobs:
           python -m build
           twine check dist/*
       - name: Publish to PyPI (when PYPI_API_TOKEN is configured)
-        if: ${{ env.TWINE_PASSWORD != '' }}
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-        run: twine upload dist/*.tar.gz dist/*.whl --skip-existing
+        run: |
+          if [ -z "$TWINE_PASSWORD" ]; then
+            echo "PYPI_API_TOKEN secret not set; skipping upload."
+            exit 0
+          fi
+          twine upload dist/*.tar.gz dist/*.whl --skip-existing
 
   npm:
     name: Publish NPX Wrapper to npm
@@ -47,7 +51,11 @@ jobs:
           python scripts/build_standalone.py
           node npm/bin/skillporter.js --version
       - name: Publish to npm (when NPM_TOKEN is configured)
-        if: ${{ env.NODE_AUTH_TOKEN != '' }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --access public
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "NPM_TOKEN secret not set; skipping npm publish."
+            exit 0
+          fi
+          npm publish --access public
