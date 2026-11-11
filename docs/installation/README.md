@@ -8,8 +8,8 @@ Skillporter is designed so you never need to manually manage virtualenvs just to
 # Run directly from PyPI via uvx (no global install needed)
 uvx skillporter diagnose .
 
-# Run via npx
-npx github:Shanmukh-l33t/skillporter diagnose .
+# Run via npx from npm (or github:Shanmukh-l33t/skillporter)
+npx @shanmukhdheekonda/skillporter diagnose .
 ```
 
 ## 2. Global CLI Installation (PEP 668 Safe)

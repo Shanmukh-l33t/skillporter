@@ -54,7 +54,8 @@ uvx skillporter diagnose .
 uv tool install skillporter
 pipx install skillporter
 
-# 3. Run via npx directly from GitHub (or `npx skillporter` once npm 2FA is completed)
+# 3. Run via npx from npm (or directly from GitHub)
+npx @shanmukhdheekonda/skillporter diagnose .
 npx github:Shanmukh-l33t/skillporter diagnose .
 
 # 4. Install globally via curl (Linux/macOS — bypasses PEP 668 externally-managed-environment)
