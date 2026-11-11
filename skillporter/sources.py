@@ -73,6 +73,27 @@ def _find_skill_dirs(search_root: Path) -> list[Path]:
     return found
 
 
+def _unsafe_member_name(name: str) -> str:
+    """Return a reason string when an archive member name is unsafe, else "".
+
+    Both separators are normalised before checking: on POSIX ``Path("..\\..\\x").parts``
+    yields a single opaque component (backslash is a valid filename character), so a
+    Windows-style traversal entry slips past a naive ``.. in Path(name).parts`` check.
+    The same archive is traversal on Windows, so the guard must be platform-independent.
+    """
+    raw = name.replace("\\", "/")
+    if raw.startswith("/") or raw.startswith("//"):
+        return "absolute path"
+    if len(raw) > 1 and raw[1] == ":":  # C:\ or C:/
+        return "drive-qualified path"
+    parts = [p for p in raw.split("/") if p not in ("", ".")]
+    if ".." in parts:
+        return "path traversal"
+    if "\x00" in raw:
+        return "NUL byte in name"
+    return ""
+
+
 def safe_extract_zip(archive_path: Path, dest_dir: Path) -> Path:
     """Extract a ZIP archive into *dest_dir*, rejecting path traversal (Zip-Slip) and symlinks."""
     dest_dir = dest_dir.resolve()
@@ -80,8 +101,9 @@ def safe_extract_zip(archive_path: Path, dest_dir: Path) -> Path:
     with zipfile.ZipFile(archive_path, "r") as zf:
         for info in zf.infolist():
             name = info.filename
-            if name.startswith(("/", "\\")) or ".." in Path(name).parts:
-                raise SourceError(f"unsafe archive path {name!r} in {archive_path} (path traversal rejected)")
+            reason = _unsafe_member_name(name)
+            if reason:
+                raise SourceError(f"unsafe archive path {name!r} in {archive_path} ({reason} rejected)")
             # UNIX symlink mode check (0o120000 in external_attr >> 16)
             mode = (info.external_attr >> 16) & 0o170000
             if mode == 0o120000:
@@ -101,8 +123,9 @@ def safe_extract_tar(archive_path: Path, dest_dir: Path) -> Path:
     dest_dir.mkdir(parents=True, exist_ok=True)
     with tarfile.open(archive_path, "r:*") as tf:
         for member in tf.getmembers():
-            if member.name.startswith(("/", "\\")) or ".." in Path(member.name).parts:
-                raise SourceError(f"unsafe tar path {member.name!r} in {archive_path} (path traversal rejected)")
+            reason = _unsafe_member_name(member.name)
+            if reason:
+                raise SourceError(f"unsafe tar path {member.name!r} in {archive_path} ({reason} rejected)")
             if member.issym() or member.islnk() or member.isdev() or member.isfifo():
                 raise SourceError(
                     f"unsafe special/symlink entry {member.name!r} in {archive_path} (rejected by security policy)"
