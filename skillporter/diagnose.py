@@ -43,6 +43,7 @@ class Location:
     broken_links: list[str] = field(default_factory=list)
     is_bridge: bool = False
     skill_hashes: dict[str, str] = field(default_factory=dict)
+    duplicate_paths: dict[str, list[str]] = field(default_factory=dict)
 
     @property
     def status(self) -> str:
@@ -187,6 +188,7 @@ def scan_location(
     except (PermissionError, OSError):
         return loc
 
+    seen_in_loc: dict[str, list[str]] = {}
     for entry in entries:
         if entry.name.startswith("."):
             continue
@@ -195,6 +197,7 @@ def scan_location(
             continue
         if (entry / _SKILL_FILE).is_file():
             loc.skill_dirs.append(entry.name)
+            seen_in_loc.setdefault(entry.name, []).append(entry.name)
             thash, _ = compute_tree_hash(entry)
             if thash:
                 loc.skill_hashes[entry.name] = thash
@@ -203,11 +206,17 @@ def scan_location(
         if entry.is_dir() and recursive:
             for nested in discover(entry):
                 sname = nested.parent.name
+                rel_sub = nested.parent.relative_to(resolved).as_posix()
+                seen_in_loc.setdefault(sname, []).append(rel_sub)
                 if sname not in loc.skill_dirs:
                     loc.skill_dirs.append(sname)
                 thash, _ = compute_tree_hash(nested.parent)
                 if thash:
                     loc.skill_hashes[sname] = thash
+
+    for sname, rel_list in seen_in_loc.items():
+        if len(rel_list) > 1:
+            loc.duplicate_paths[sname] = rel_list
     return loc
 
 
@@ -276,7 +285,11 @@ def diagnose(
             report.locations.append(loc)
             report.reachable_skills.update(loc.skill_dirs)
             for sname in loc.skill_dirs:
-                seen_in_harness.setdefault(sname, []).append(loc.raw_path)
+                if sname in loc.duplicate_paths:
+                    for sub_rel in loc.duplicate_paths[sname]:
+                        seen_in_harness.setdefault(sname, []).append(f"{loc.raw_path}/{sub_rel}")
+                else:
+                    seen_in_harness.setdefault(sname, []).append(loc.raw_path)
 
         for sname, raw_paths in seen_in_harness.items():
             if len(raw_paths) > 1:

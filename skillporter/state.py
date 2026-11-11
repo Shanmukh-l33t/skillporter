@@ -5,7 +5,7 @@ Tracks every Skillporter-managed installation in ``.skillporter/state.json``
   * skill name, source, resolved commit, version, and SHA-256 tree hash
   * installed target destinations and harnesses
   * ownership verification (so unmanaged user files are never silently clobbered)
-  * automatic backup snapshots under ``.skillporter/backups/<skill>/<id>/``
+  * crash-safe staged backup snapshots under ``.skillporter/backups/<skill>/<id>/``
     supporting transactional restore and ``skillporter rollback <skill>``.
 """
 
@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -190,7 +191,7 @@ def snapshot_skill_for_rollback(
     scope: str = "project",
     home: Path | None = None,
 ) -> BackupEntry | None:
-    """Copy an existing skill tree into ``.skillporter/backups/<skill>/<id>`` before modifying it."""
+    """Copy an existing skill tree into ``.skillporter/backups/<skill>/<id>/<skill>`` atomically."""
     if not existing_dir.exists() or existing_dir.is_symlink():
         return None
     tree_hash, _ = compute_tree_hash(existing_dir)
@@ -198,10 +199,23 @@ def snapshot_skill_for_rollback(
         return None
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     backup_id = f"{ts}-{tree_hash[:12]}"
-    bdir = state_dir(root, scope=scope, home=home) / "backups" / skill_name / backup_id / skill_name
+    sdir = state_dir(root, scope=scope, home=home)
+    bdir = sdir / "backups" / skill_name / backup_id / skill_name
+    if bdir.exists():
+        existing_bhash, _ = compute_tree_hash(bdir)
+        if existing_bhash != tree_hash:
+            shutil.rmtree(bdir, ignore_errors=True)
+
     if not bdir.exists():
         bdir.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(existing_dir, bdir, symlinks=False)
+        tmp_stage = bdir.parent / f".stage-{uuid.uuid4().hex[:8]}"
+        try:
+            shutil.copytree(existing_dir, tmp_stage, symlinks=True)
+            shutil.move(str(tmp_stage), str(bdir))
+        except BaseException:
+            shutil.rmtree(tmp_stage, ignore_errors=True)
+            raise
+
     return BackupEntry(
         backup_id=backup_id,
         version=record.version if record else "1.0.0",
@@ -226,6 +240,7 @@ def record_installation(
     resolved_commit: str = "",
     version: str = "1.0.0",
     backup_entry: BackupEntry | None = None,
+    backup_entries: list[BackupEntry] | None = None,
     home: Path | None = None,
 ) -> ManagedSkillRecord:
     """Record or update a managed skill installation in state.json."""
@@ -234,9 +249,16 @@ def record_installation(
     tree_hash, _ = compute_tree_hash(skill_dir)
 
     history: list[BackupEntry] = list(existing.history) if existing else []
-    if backup_entry and all(b.tree_hash != backup_entry.tree_hash for b in history):
-        history.append(backup_entry)
-        history = history[-10:]  # keep most recent 10 snapshots
+    candidates: list[BackupEntry] = []
+    if backup_entry:
+        candidates.append(backup_entry)
+    if backup_entries:
+        candidates.extend(backup_entries)
+
+    for cand in candidates:
+        if all(b.tree_hash != cand.tree_hash for b in history):
+            history.append(cand)
+    history = history[-10:]  # keep most recent 10 snapshots
 
     merged_harnesses = sorted(set((existing.harnesses if existing else []) + list(harnesses)))
     merged_dests = sorted(

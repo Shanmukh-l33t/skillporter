@@ -83,6 +83,12 @@ _PROMPT_PATTERNS: tuple[tuple[str, str, str, re.Pattern[str]], ...] = (
             re.IGNORECASE | re.DOTALL,
         ),
     ),
+    (
+        "HIGH",
+        "sec-markdown-path-traversal",
+        "Markdown link or reference points outside the skill root via '..'",
+        re.compile(r"\]\(\s*(?:\.\./|\.\.\\)"),
+    ),
 )
 
 # Patterns for risky shell/script execution
@@ -384,6 +390,17 @@ def scan_skill(skill_dir: Path) -> SecurityReport:
                             _PROMPT_PATTERNS[2][2],
                         )
                     )
+
+            # Also check backslash-continued logical lines for multi-line command evasion
+            if "\\\n" in text or "\\\r\n" in text:
+                joined_text = re.sub(r"\\\r?\n[ \t]*", " ", text)
+                existing_codes = {f.code for f in report.findings if f.file == rel}
+                for l_idx, jline in enumerate(joined_text.splitlines(), start=1):
+                    for sev, code, msg, pat in _SCRIPT_PATTERNS:
+                        if code not in existing_codes and pat.search(jline):
+                            effective_sev = sev if (is_script or sev == "CRITICAL") else "INFO"
+                            report.findings.append(SecurityFinding(effective_sev, code, rel, msg, line=l_idx))
+                            existing_codes.add(code)
 
     tree_hash, file_hashes = compute_tree_hash(resolved_root)
     report.tree_hash = tree_hash

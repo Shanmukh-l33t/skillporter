@@ -12,6 +12,7 @@ drops straight into CI.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import difflib
 import json
 import sys
@@ -797,11 +798,25 @@ def _cmd_lock(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _latest_tree_mtime_ns(skill_dir: Path) -> int:
+    """Return the maximum modification timestamp (in ns) across all files in *skill_dir*."""
+    latest = 0
+    for fpath in skill_dir.rglob("*"):
+        if fpath.is_symlink():
+            continue
+        with contextlib.suppress(OSError):
+            ns = fpath.stat().st_mtime_ns
+            if ns > latest:
+                latest = ns
+    return latest
+
+
 def _cmd_sync(args: argparse.Namespace) -> int:
     root = Path(args.path).expanduser().resolve()
     manifest = load_manifest(root)
     targets = _resolve_target_harnesses(args.harness, root, scope=args.scope, default_detected=True)
     force_flag = getattr(args, "force", False)
+    prefer_path = getattr(args, "prefer", None)
 
     synced_results = []
     if manifest and manifest.skills:
@@ -828,9 +843,8 @@ def _cmd_sync(args: argparse.Namespace) -> int:
             finally:
                 resolved.cleanup()
     else:
-        # Check for content drift across copies before blindly overwriting
         diag = run_diagnose(root, scope=args.scope)
-        if diag.drifted and not force_flag:
+        if diag.drifted and not force_flag and not prefer_path:
             print(
                 "error: content drift detected across existing skill copies; refusing to overwrite without --force:",
                 file=sys.stderr,
@@ -839,22 +853,39 @@ def _cmd_sync(args: argparse.Namespace) -> int:
                 locs = ", ".join(f"{p} ({h[:8]})" for p, h in sorted(phashes.items()))
                 print(f"  - {sname}: {locs}", file=sys.stderr)
             print(
-                "Re-run `skillporter sync --force` to synchronize from the most recently modified copy "
+                "Re-run `skillporter sync --force` (or `--prefer <path>`) to synchronize "
                 "(existing copies are snapshotted to .skillporter/backups/ first).",
                 file=sys.stderr,
             )
             return EXIT_PROBLEM
 
-        # Discover canonical skills in the repo (preferring newest mtime when multiple copies exist)
         canonical_by_name: dict[str, Path] = {}
-        for skill_md in discover(root):
-            sname = skill_md.parent.name
-            if sname not in canonical_by_name:
-                canonical_by_name[sname] = skill_md.parent
+        if prefer_path:
+            pref = Path(prefer_path).expanduser()
+            if not pref.is_absolute():
+                pref = (root / pref).resolve()
+            if (pref / "SKILL.md").is_file():
+                canonical_by_name[pref.name] = pref
             else:
-                prev_md = canonical_by_name[sname] / "SKILL.md"
-                if skill_md.stat().st_mtime > prev_md.stat().st_mtime:
-                    canonical_by_name[sname] = skill_md.parent
+                for smd in discover(pref):
+                    canonical_by_name[smd.parent.name] = smd.parent
+
+        for sname, copies in sorted(diag.skill_copies.items()):
+            if sname in canonical_by_name:
+                continue
+            if len(copies) == 1 or sname not in diag.drifted:
+                canonical_by_name[sname] = copies[0]
+                continue
+            # Drifted copies under --force: compare tree-wide mtime_ns
+            ranked = sorted(copies, key=_latest_tree_mtime_ns, reverse=True)
+            if _latest_tree_mtime_ns(ranked[0]) == _latest_tree_mtime_ns(ranked[1]):
+                print(
+                    f"error: drifted copies of {sname!r} have identical modification timestamps; "
+                    "pass `--prefer <path>` to specify the authoritative copy.",
+                    file=sys.stderr,
+                )
+                return EXIT_PROBLEM
+            canonical_by_name[sname] = ranked[0]
 
         if not canonical_by_name:
             print(f"no skills or {MANIFEST_FILENAME} found under {root}")
@@ -1259,6 +1290,7 @@ def build_parser() -> argparse.ArgumentParser:
     sy.add_argument("--harness", action="append")
     sy.add_argument("--strategy", choices=["copy", "symlink"], default="copy")
     sy.add_argument("--scope", choices=["project", "user"], default="project")
+    sy.add_argument("--prefer", help="authoritative skill path when resolving content drift")
     sy.add_argument("--force", action="store_true", help="overwrite drifted copies after snapshotting backups")
     sy.set_defaults(func=_cmd_sync)
 

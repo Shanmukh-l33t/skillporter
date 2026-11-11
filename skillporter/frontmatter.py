@@ -73,6 +73,10 @@ def _unquote(value: str) -> str:
     value = value.strip()
     if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
         return value[1:-1]
+    # Strip trailing inline YAML comment on unquoted scalars (e.g. `name: foo  # comment`)
+    for idx, ch in enumerate(value):
+        if ch == "#" and idx > 0 and value[idx - 1] in (" ", "\t"):
+            return value[:idx].rstrip()
     return value
 
 
@@ -325,6 +329,32 @@ def validate(doc: SkillDoc) -> list[Issue]:
                 category="harness-compatibility",
             )
         )
+
+    known_fields = {
+        "name",
+        "description",
+        "license",
+        "compatibility",
+        "metadata",
+        "allowed-tools",
+        "context",
+        "hooks",
+        "triggers",
+        "paths",
+        "version",
+        "author",
+        "homepage",
+    }
+    for key in sorted(fm):
+        if key not in known_fields:
+            issues.append(
+                Issue(
+                    "warning",
+                    "unknown-frontmatter-field",
+                    f"unrecognized frontmatter field {key!r} (check for typos)",
+                    category="recommendation",
+                )
+            )
 
     body = doc.body.strip()
     if not body:

@@ -2,7 +2,7 @@
 
 Resolves skill packages from:
   * Local directories (single skill or multi-skill repository)
-  * Local ZIP / tar.gz archives (with strict Zip-Slip and symlink escape protection)
+  * Local ZIP / tar.gz archives (with strict Zip-Slip, duplicate-entry, symlink, and bomb protection)
   * GitHub shorthand: ``owner/repo``, ``github:owner/repo``, ``owner/repo/subpath@ref``
   * Full GitHub tree URLs: ``https://github.com/owner/repo/tree/<ref>/<subpath>``
   * Arbitrary Git URLs: ``https://...``, ``git@...``, ``file://...``
@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import posixpath
 import re
 import shutil
 import subprocess
@@ -125,13 +126,7 @@ def _validate_git_ref(ref: str) -> str:
 
 
 def _unsafe_member_name(name: str) -> str:
-    """Return a reason string when an archive member name is unsafe, else "".
-
-    Both separators are normalised before checking: on POSIX ``Path("..\\..\\x").parts``
-    yields a single opaque component (backslash is a valid filename character), so a
-    Windows-style traversal entry slips past a naive ``.. in Path(name).parts`` check.
-    The same archive is traversal on Windows, so the guard must be platform-independent.
-    """
+    """Return a reason string when an archive member name is unsafe, else ""."""
     raw = name.replace("\\", "/")
     if raw.startswith("/") or raw.startswith("//"):
         return "absolute path"
@@ -145,6 +140,14 @@ def _unsafe_member_name(name: str) -> str:
     return ""
 
 
+def _normalized_archive_key(name: str) -> str:
+    """Return a normalized, case-folded POSIX path key for duplicate/collision detection."""
+    raw = name.replace("\\", "/").rstrip("/")
+    if not raw or raw == ".":
+        return ""
+    return posixpath.normpath(raw).lower()
+
+
 def safe_extract_zip(
     archive_path: Path,
     dest_dir: Path,
@@ -153,7 +156,7 @@ def safe_extract_zip(
     max_file_bytes: int = MAX_SINGLE_FILE_BYTES,
     max_total_bytes: int = MAX_TOTAL_ARCHIVE_BYTES,
 ) -> Path:
-    """Extract a ZIP archive into *dest_dir*, rejecting path traversal, symlinks, and zip bombs."""
+    """Extract a ZIP archive into *dest_dir*, rejecting path traversal, duplicates, symlinks, and zip bombs."""
     dest_dir = dest_dir.resolve()
     dest_dir.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(archive_path, "r") as zf:
@@ -162,19 +165,26 @@ def safe_extract_zip(
             raise SourceError(
                 f"archive {archive_path} contains {len(infos)} entries (exceeds limit of {max_files})"
             )
+        seen_files: set[str] = set()
         for info in infos:
             name = info.filename
             reason = _unsafe_member_name(name)
             if reason:
                 raise SourceError(f"unsafe archive path {name!r} in {archive_path} ({reason} rejected)")
-            # UNIX symlink mode check (0o120000 in external_attr >> 16)
             mode = (info.external_attr >> 16) & 0o170000
             if mode == 0o120000:
                 raise SourceError(f"unsafe symlink entry {name!r} in {archive_path} (archive symlinks rejected)")
-            if info.file_size > max_file_bytes:
+            if info.file_size < 0 or info.file_size > max_file_bytes:
                 raise SourceError(
                     f"archive member {name!r} exceeds maximum allowed size ({max_file_bytes} bytes)"
                 )
+            if not info.is_dir():
+                nkey = _normalized_archive_key(name)
+                if nkey in seen_files:
+                    raise SourceError(
+                        f"duplicate or case-colliding archive entry {name!r} in {archive_path}"
+                    )
+                seen_files.add(nkey)
             target = (dest_dir / name).resolve()
             try:
                 target.relative_to(dest_dir)
@@ -188,7 +198,7 @@ def safe_extract_zip(
                 target.mkdir(parents=True, exist_ok=True)
                 continue
             target.parent.mkdir(parents=True, exist_ok=True)
-            with zf.open(info.filename) as src, open(target, "wb") as out:
+            with zf.open(info) as src, open(target, "wb") as out:
                 _copy_bounded(
                     src,
                     out,
@@ -208,7 +218,7 @@ def safe_extract_tar(
     max_file_bytes: int = MAX_SINGLE_FILE_BYTES,
     max_total_bytes: int = MAX_TOTAL_ARCHIVE_BYTES,
 ) -> Path:
-    """Extract a tar archive into *dest_dir*, rejecting path traversal, symlinks/devices, and tar bombs."""
+    """Extract a tar archive into *dest_dir*, rejecting path traversal, duplicates, symlinks/devices, and tar bombs."""
     dest_dir = dest_dir.resolve()
     dest_dir.mkdir(parents=True, exist_ok=True)
     with tarfile.open(archive_path, "r:*") as tf:
@@ -217,18 +227,28 @@ def safe_extract_tar(
             raise SourceError(
                 f"archive {archive_path} contains {len(members)} entries (exceeds limit of {max_files})"
             )
+        seen_files: set[str] = set()
         for member in members:
             reason = _unsafe_member_name(member.name)
             if reason:
                 raise SourceError(f"unsafe tar path {member.name!r} in {archive_path} ({reason} rejected)")
-            if member.issym() or member.islnk() or member.isdev() or member.isfifo():
+            if member.issym() or member.islnk() or member.isdev() or member.isfifo() or not (
+                member.isfile() or member.isdir()
+            ):
                 raise SourceError(
                     f"unsafe special/symlink entry {member.name!r} in {archive_path} (rejected by security policy)"
                 )
-            if member.size > max_file_bytes:
+            if member.size < 0 or member.size > max_file_bytes:
                 raise SourceError(
                     f"archive member {member.name!r} exceeds maximum allowed size ({max_file_bytes} bytes)"
                 )
+            if member.isfile():
+                nkey = _normalized_archive_key(member.name)
+                if nkey in seen_files:
+                    raise SourceError(
+                        f"duplicate or case-colliding tar entry {member.name!r} in {archive_path}"
+                    )
+                seen_files.add(nkey)
             target = (dest_dir / member.name).resolve()
             try:
                 target.relative_to(dest_dir)
@@ -276,13 +296,11 @@ def _git_clone(url: str, ref: str = "", subpath: str = "", raw_spec: str = "", k
             "clone",
             "--quiet",
         ]
-        # Use shallow clone when ref is empty or looks like branch/tag, full clone for commit SHA
         is_sha = bool(ref and re.fullmatch(r"[0-9a-fA-F]{7,40}", ref))
         if not is_sha:
             cmd.extend(["--depth", "1"])
             if ref:
                 cmd.extend(["--branch", ref])
-        # "--" terminates option parsing: a URL can never be read as a flag.
         cmd.extend(["--", url, str(repo_dir)])
 
         proc = subprocess.run(
@@ -372,7 +390,6 @@ def resolve_source(spec: str, *, base_dir: Path | None = None, ref_override: str
         return _git_clone(git_url, ref=ref, subpath=subpath, raw_spec=spec, kind="github")
 
     # 2. Check arbitrary git URL (https://, http://, git@, file://) before Path()
-    # so file:// URIs on Windows are never misinterpreted as relative drive paths.
     if spec.startswith(("https://", "http://", "git@", "file://")):
         url_part, _, frag_ref = spec.partition("@") if not spec.startswith("git@") else (spec, "", "")
         if "#" in url_part:

@@ -1,4 +1,4 @@
-"""Transactional Skill Installation, Planning, Ownership, and Rollback Engine.
+"""Transactional Skill Installation, Planning, Crash Recovery, Ownership & Rollback.
 
 Supports two primary strategies:
   * ``copy``    — Real directories. Survives Docker builds, CI, and git archives.
@@ -8,17 +8,19 @@ Key guarantees:
   1. Shared destinations (such as ``.agents/skills`` shared by Codex, Cursor,
      Gemini CLI, Zed, Antigravity, OpenHands, and Goose) are written ONCE per run.
   2. Existing unmanaged files are never silently overwritten without ``--force``.
-  3. Directory replacements are staged via ``.skillporter/tmp/`` so interrupted
-     writes never leave half-copied skill trees, and if any target in a
-     multi-harness transaction fails, both newly created AND overwritten
-     destinations are restored to their exact pre-transaction state.
+  3. Directory replacements are staged via ``.skillporter/tmp/`` with an atomic
+     ``journal.json`` write-ahead log so interrupted writes or ``SIGKILL`` crashes
+     can be automatically recovered via ``recover_interrupted_transactions()``.
   4. All skill names are validated as single safe path segments so ``install``,
      ``uninstall``, and ``rollback`` can never escape harness skill roots.
+  5. Rollback verifies the backup's SHA-256 content tree hash before restoring
+     so a corrupted backup directory can never overwrite a working installation.
 """
 
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import shutil
 import uuid
@@ -30,7 +32,9 @@ from .atomic import atomic_write_text, workspace_lock
 from .diagnose import resolve_path
 from .formats import render_adapted_skill
 from .frontmatter import parse_skill
+from .security import compute_tree_hash
 from .state import (
+    BackupEntry,
     is_managed_destination,
     load_state,
     record_installation,
@@ -69,6 +73,68 @@ def validate_skill_name_segment(skill_name: str, base: Path | None = None) -> st
         if candidate.parent.resolve() != resolved_base:
             raise InstallError(f"skill destination {candidate} escapes harness directory {resolved_base}")
     return clean
+
+
+def recover_interrupted_transactions(
+    root: Path,
+    *,
+    scope: str = "project",
+    home: Path | None = None,
+) -> list[str]:
+    """Recover any orphaned transaction directories left behind by a prior hard crash (SIGKILL).
+
+    Must be called while holding ``workspace_lock(root)`` or acquires it.
+    Returns a list of human-readable recovery actions performed.
+    """
+    root = Path(root).resolve()
+    sdir_root = state_dir(root, scope=scope, home=home)
+    tmp_parent = sdir_root / "tmp"
+    if not tmp_parent.is_dir():
+        return []
+
+    recovered: list[str] = []
+    with workspace_lock(root):
+        for txn_dir in sorted(tmp_parent.iterdir()):
+            if not txn_dir.is_dir() or not txn_dir.name.startswith("txn-"):
+                continue
+            journal_file = txn_dir / "journal.json"
+            if journal_file.is_file():
+                try:
+                    jdata = json.loads(journal_file.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    jdata = {}
+                replaced = jdata.get("replaced", []) if isinstance(jdata, dict) else []
+                for item in reversed(replaced):
+                    if not isinstance(item, dict):
+                        continue
+                    dest_p = Path(str(item.get("dest", "")))
+                    prev_p = Path(str(item.get("prev", "")))
+                    if (prev_p.exists() or prev_p.is_symlink()) and not (dest_p.exists() or dest_p.is_symlink()):
+                        dest_p.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.move(str(prev_p), str(dest_p))
+                        recovered.append(f"restored interrupted destination {dest_p} from {prev_p.name}")
+            shutil.rmtree(txn_dir, ignore_errors=True)
+        with contextlib.suppress(OSError):
+            if not any(tmp_parent.iterdir()):
+                tmp_parent.rmdir()
+    return recovered
+
+
+def _write_txn_journal(
+    txn_tmp_root: Path,
+    created_in_txn: list[Path],
+    replaced_in_txn: list[tuple[Path, Path]],
+    pending_pair: tuple[Path, Path] | None = None,
+) -> None:
+    all_replaced = list(replaced_in_txn)
+    if pending_pair is not None:
+        all_replaced.append(pending_pair)
+    payload = {
+        "pid": os.getpid(),
+        "created": [str(p) for p in created_in_txn],
+        "replaced": [{"dest": str(d), "prev": str(prv)} for d, prv in all_replaced],
+    }
+    atomic_write_text(txn_tmp_root / "journal.json", json.dumps(payload, indent=2) + "\n")
 
 
 @dataclass
@@ -120,7 +186,7 @@ def plan_install(
 ) -> InstallPlan:
     """Compute an installation plan without modifying the filesystem."""
     root = root.resolve()
-    skill_names = [ validate_skill_name_segment(d.name) for d in skill_dirs ]
+    skill_names = [validate_skill_name_segment(d.name) for d in skill_dirs]
     plan = InstallPlan(
         root=root,
         scope=scope,
@@ -174,6 +240,7 @@ def _stage_and_copy_skill(
     *,
     force: bool,
     txn_tmp_root: Path,
+    created_in_txn: list[Path],
     replaced_in_txn: list[tuple[Path, Path]],
 ) -> str:
     """Copy *src* to *dest* via a staging directory, preserving prior *dest* for rollback."""
@@ -198,6 +265,7 @@ def _stage_and_copy_skill(
     dest.parent.mkdir(parents=True, exist_ok=True)
     if existed:
         prev_slot = txn_tmp_root / f"prev-{uuid.uuid4().hex[:10]}"
+        _write_txn_journal(txn_tmp_root, created_in_txn, replaced_in_txn, pending_pair=(dest, prev_slot))
         shutil.move(str(dest), str(prev_slot))
         replaced_in_txn.append((dest, prev_slot))
 
@@ -211,6 +279,7 @@ def _stage_and_link_skill(
     *,
     force: bool,
     txn_tmp_root: Path,
+    created_in_txn: list[Path],
     replaced_in_txn: list[tuple[Path, Path]],
 ) -> str:
     if os.name == "nt":
@@ -233,6 +302,7 @@ def _stage_and_link_skill(
     if existed:
         txn_tmp_root.mkdir(parents=True, exist_ok=True)
         prev_slot = txn_tmp_root / f"prev-{uuid.uuid4().hex[:10]}"
+        _write_txn_journal(txn_tmp_root, created_in_txn, replaced_in_txn, pending_pair=(dest, prev_slot))
         shutil.move(str(dest), str(prev_slot))
         replaced_in_txn.append((dest, prev_slot))
 
@@ -281,12 +351,13 @@ def install(
     written: dict[Path, str] = {}
     created_in_txn: list[Path] = []
     replaced_in_txn: list[tuple[Path, Path]] = []
-    backup_entry = None
+    backup_entries: list[BackupEntry] = []
 
     sdir_root = state_dir(root, scope=scope, home=home)
     txn_tmp_root = sdir_root / "tmp" / f"txn-{uuid.uuid4().hex[:12]}"
 
     with workspace_lock(root):
+        recover_interrupted_transactions(root, scope=scope, home=home)
         existing_records = load_state(root, scope=scope, home=home) if record_state else {}
         existing_record = existing_records.get(skill_name)
 
@@ -315,10 +386,12 @@ def install(
                     )
                     continue
 
-                if record_state and dest.exists() and not dest.is_symlink() and backup_entry is None:
-                    backup_entry = snapshot_skill_for_rollback(
+                if record_state and dest.exists() and not dest.is_symlink():
+                    bentry = snapshot_skill_for_rollback(
                         root, skill_name, dest, existing_record, scope=scope, home=home
                     )
+                    if bentry and all(b.tree_hash != bentry.tree_hash for b in backup_entries):
+                        backup_entries.append(bentry)
 
                 existed_before = dest.exists() or dest.is_symlink()
                 try:
@@ -328,6 +401,7 @@ def install(
                             dest,
                             force=force,
                             txn_tmp_root=txn_tmp_root,
+                            created_in_txn=created_in_txn,
                             replaced_in_txn=replaced_in_txn,
                         )
                     else:
@@ -336,6 +410,7 @@ def install(
                             dest,
                             force=force,
                             txn_tmp_root=txn_tmp_root,
+                            created_in_txn=created_in_txn,
                             replaced_in_txn=replaced_in_txn,
                         )
                 except InstallError as exc:
@@ -397,7 +472,7 @@ def install(
                 scope=scope,
                 resolved_commit=resolved_commit,
                 version=inferred_version,
-                backup_entry=backup_entry,
+                backup_entries=backup_entries,
                 home=home,
             )
 
@@ -420,6 +495,7 @@ def uninstall(
     removed_dests: set[str] = set()
 
     with workspace_lock(root):
+        recover_interrupted_transactions(root, scope=scope, home=home)
         for target in targets:
             h = harnesses.get(target)
             paths = h.project_paths if scope == "project" else h.user_paths
@@ -466,50 +542,60 @@ def rollback_skill(
     """Restore a skill to its previous backup snapshot across all tracked destinations."""
     root = root.resolve()
     skill_name = validate_skill_name_segment(skill_name)
-    records = load_state(root, scope=scope, home=home)
-    rec = records.get(skill_name)
-    if not rec or not rec.history:
-        raise InstallError(f"no backup history available to roll back skill {skill_name!r}")
 
-    chosen = None
-    if backup_id:
-        for entry in reversed(rec.history):
-            if entry.backup_id == backup_id or entry.backup_id.startswith(backup_id):
-                chosen = entry
-                break
-        if not chosen:
-            raise InstallError(f"backup {backup_id!r} not found for skill {skill_name!r}")
-    else:
-        chosen = rec.history[-1]
+    with workspace_lock(root):
+        recover_interrupted_transactions(root, scope=scope, home=home)
+        records = load_state(root, scope=scope, home=home)
+        rec = records.get(skill_name)
+        if not rec or not rec.history:
+            raise InstallError(f"no backup history available to roll back skill {skill_name!r}")
 
-    bdir = Path(chosen.backup_dir)
-    if not bdir.is_dir():
-        raise InstallError(f"backup directory {bdir} is missing on disk")
+        chosen = None
+        if backup_id:
+            for entry in reversed(rec.history):
+                if entry.backup_id == backup_id or entry.backup_id.startswith(backup_id):
+                    chosen = entry
+                    break
+            if not chosen:
+                raise InstallError(f"backup {backup_id!r} not found for skill {skill_name!r}")
+        else:
+            chosen = rec.history[-1]
 
-    targets = rec.harnesses or ["claude-code", "codex", "cursor"]
-    results = install(
-        root,
-        bdir,
-        targets,
-        strategy="copy",
-        scope=scope,
-        force=True,
-        home=home,
-        source=chosen.source,
-        resolved_commit=chosen.resolved_commit,
-        version=chosen.version,
-        record_state=False,
-        skill_name_override=skill_name,
-    )
-    for r in results:
-        if r.action == "created":
-            r.action = "rolled-back"
-        r.detail = f"restored backup {chosen.backup_id}"
+        bdir = Path(chosen.backup_dir)
+        if not bdir.is_dir():
+            raise InstallError(f"backup directory {bdir} is missing on disk")
 
-    rec.tree_hash = chosen.tree_hash
-    rec.version = chosen.version
-    rec.resolved_commit = chosen.resolved_commit
-    if chosen == rec.history[-1]:
-        rec.history.pop()
-    save_state(root, records, scope=scope, home=home)
-    return results
+        actual_hash, _ = compute_tree_hash(bdir)
+        if chosen.tree_hash and actual_hash != chosen.tree_hash:
+            raise InstallError(
+                f"backup {chosen.backup_id!r} for skill {skill_name!r} is corrupted "
+                f"(expected sha256 {chosen.tree_hash[:12]}, got {actual_hash[:12] or 'empty'})"
+            )
+
+        targets = rec.harnesses or ["claude-code", "codex", "cursor"]
+        results = install(
+            root,
+            bdir,
+            targets,
+            strategy="copy",
+            scope=scope,
+            force=True,
+            home=home,
+            source=chosen.source,
+            resolved_commit=chosen.resolved_commit,
+            version=chosen.version,
+            record_state=False,
+            skill_name_override=skill_name,
+        )
+        for r in results:
+            if r.action == "created":
+                r.action = "rolled-back"
+            r.detail = f"restored backup {chosen.backup_id}"
+
+        rec.tree_hash = chosen.tree_hash
+        rec.version = chosen.version
+        rec.resolved_commit = chosen.resolved_commit
+        if chosen == rec.history[-1]:
+            rec.history.pop()
+        save_state(root, records, scope=scope, home=home)
+        return results

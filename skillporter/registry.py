@@ -167,7 +167,7 @@ def load_catalog(registry_url: str | None = None) -> list[RegistryPackage]:
             # Bounded read: an unbounded resp.read() lets a hostile registry
             # exhaust memory. Cap at 1 MiB and reject larger payloads outright.
             _MAX_REGISTRY_BYTES = 1 << 20
-            with urllib.request.urlopen(url, timeout=5) as resp:  # noqa: S310
+            with urllib.request.urlopen(url, timeout=5) as resp:  # noqa: S310  # nosec B310
                 body = resp.read(_MAX_REGISTRY_BYTES + 1)
             if len(body) > _MAX_REGISTRY_BYTES:
                 raise ValueError(f"registry payload exceeds {_MAX_REGISTRY_BYTES} bytes; refusing to parse")
