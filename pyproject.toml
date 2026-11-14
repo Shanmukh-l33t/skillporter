@@ -59,12 +59,11 @@ packages = [
   "skillporter",
   "skillporter.commands",
   "skillporter.bundled_skill",
-  "skillporter.bundled_skill.skillporter",
 ]
 
 [tool.setuptools.package-data]
 skillporter = ["py.typed"]
-"skillporter.bundled_skill.skillporter" = ["SKILL.md"]
+"skillporter.bundled_skill" = ["SKILL_TEMPLATE.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

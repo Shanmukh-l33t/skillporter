@@ -832,14 +832,10 @@ def _resolve_bundled_self_skill_dir() -> tuple[Path, tempfile.TemporaryDirectory
     if (repo_candidate / "SKILL.md").is_file():
         return repo_candidate, None
 
-    pkg_bundled = Path(__file__).resolve().parents[1] / "bundled_skill" / "skillporter"
-    if (pkg_bundled / "SKILL.md").is_file():
-        return pkg_bundled, None
-
     try:
         res_text = (
-            importlib.resources.files("skillporter.bundled_skill.skillporter")
-            .joinpath("SKILL.md")
+            importlib.resources.files("skillporter.bundled_skill")
+            .joinpath("SKILL_TEMPLATE.md")
             .read_text(encoding="utf-8")
         )
         tmp_ctx = tempfile.TemporaryDirectory(prefix="skillporter-self-skill-")
