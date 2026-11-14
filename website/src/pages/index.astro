@@ -130,10 +130,36 @@ const actionExample = `- uses: actions/checkout@v4
     lock-check: "true"
     max-risk-score: "30"`;
 
+const instructionsExample = `# Read-only report: overlap, conflicts, outdated paths, unclassified lines
+skillporter consolidate
+
+# Back up the originals, then write one canonical source and the native files
+skillporter consolidate --apply
+
+# Which instructions will Cursor actually load, and at what token cost?
+skillporter context --harness cursor`;
+
+const policyExample = `# skillporter.policy.yaml, committed with the repository
+block_severity: HIGH
+max_risk_score: 30
+banned_capabilities:
+  - network
+approved_sources:
+  - Shanmukh-l33t/*
+
+# Read what changes before accepting an update
+skillporter update --check`;
+
+const authoringExample = `skillporter new release-notes --with-tests
+skillporter lint ./release-notes --strict
+skillporter preview ./release-notes --harness cursor
+skillporter test ./release-notes
+skillporter suggest`;
+
 const mcpExample = `# Install the official Skillporter skill into your detected coding agents
 skillporter self-skill install --harness detected
 
-# Or register the workspace-bounded MCP server (read-only by default; 13 tools)
+# Or register the workspace-bounded MCP server (read-only by default; 18 tools)
 claude mcp add skillporter -- uvx skillporter mcp`;
 
 const problems = [
@@ -480,6 +506,69 @@ const structuredData = [
             <Transcript recording="lock-check-drift" title="lockfile check, after one copy was edited" wrap />
             <Transcript recording="rollback-dry-run" title="the snapshot taken before the overwrite" wrap />
           </div>
+        </article>
+
+        <article class="feature">
+          <div class="feature__text">
+            <h3>One set of instructions for every agent</h3>
+            <p>
+              Most projects end up with <code class="ic">CLAUDE.md</code>, <code class="ic">AGENTS.md</code>,
+              Cursor rules and a Copilot file that repeat each other and slowly disagree.
+              <code class="ic">consolidate</code> finds them, reports overlap and contradictions, and keeps one canonical
+              source. It needs no installed skills.
+            </p>
+            <ul class="ticks">
+              <li>Read-only by default, with a backup and <code class="ic">--rollback</code> before anything is rewritten</li>
+              <li>Refuses to apply contradictory rules, and keeps code blocks, tables and lines it cannot classify</li>
+              <li>Path-scoped rule files are left alone, and hand edits to generated files are detected</li>
+            </ul>
+            <a class="arrow-link" href="/docs/instructions">Instruction files and context</a>
+          </div>
+          <CodeFrame code={instructionsExample} lang="bash" title="instruction files" copy="skillporter consolidate" />
+        </article>
+
+        <article class="feature feature--flip">
+          <div class="feature__text">
+            <h3>Capabilities, policy and readable updates</h3>
+            <p>
+              A skill can declare what it needs, and Skillporter compares that with what static analysis finds in its
+              files. A project policy decides which sources, capabilities and risk levels are allowed, and
+              <code class="ic">update --check</code> shows the added files, new capabilities and new findings before you accept a
+              version.
+            </p>
+            <p>
+              Declarations are audited, not enforced. A harness still runs whatever a skill contains, and a clean scan does
+              not prove a skill is safe.
+            </p>
+            <a class="arrow-link" href="/docs/policy">Policy and update review</a>
+          </div>
+          <CodeFrame code={policyExample} lang="yaml" title="project policy" />
+        </article>
+
+        <article class="feature">
+          <div class="feature__text">
+            <h3>Author, test and measure</h3>
+            <p>
+              <code class="ic">new</code>, <code class="ic">lint</code> and <code class="ic">preview</code> scaffold a skill,
+              check it and show what each harness receives. <code class="ic">test</code> runs the prompts in
+              <code class="ic">skill.test.yaml</code> against the description. <code class="ic">suggest</code> and
+              <code class="ic">insights</code> analyze the project locally and estimate context cost.
+            </p>
+            <p>
+              Offline tests are lexical, and token figures are estimates. Neither predicts what a model will do, and usage
+              is never reported unless you record it.
+            </p>
+            <p class="feature__links">
+              <a class="arrow-link" href="/docs/authoring">Authoring and testing</a>
+              <a class="arrow-link" href="/docs/insights">Suggestions and insights</a>
+            </p>
+          </div>
+          <CodeFrame
+            code={authoringExample}
+            lang="bash"
+            title="authoring workflow"
+            copy="skillporter lint ./release-notes"
+          />
         </article>
 
         <article class="feature feature--wide">

@@ -17,126 +17,84 @@ from .diagnose import diagnose
 from .instructions import discover_instruction_files
 from .manifest import load_manifest
 
+CATALOG_NOTE = (
+    "Hand-curated from the upstream repository's public skill listing. Not an endorsement, "
+    "not scanned, and not version-pinned: `skillporter add` scans before installing."
+)
+
 
 @dataclass(frozen=True)
 class CuratedRecommendation:
-    """One curated skill recommendation rule backed by concrete stack signals."""
+    """One curated recommendation backed by a concrete stack signal.
+
+    Third-party entries carry no version, scan result, or risk score: Skillporter has not
+    scanned or pinned them. Those facts only exist after `skillporter add` runs the scanner.
+    """
 
     id: str
     title: str
     source: str
-    version: str
     required_any_signals: tuple[str, ...]
     problem_solved: str
-    harnesses: tuple[str, ...]
-    security_scanned: bool = True
-    risk_score: int = 0
-    limitations: str = "Upstream repository requires static security scan on install (`skillporter add`)."
+    limitations: str = CATALOG_NOTE
     install_cmd: str = ""
+    bundled: bool = False
 
 
 _CURATED_RULES: tuple[CuratedRecommendation, ...] = (
     CuratedRecommendation(
-        id="nextjs-react",
-        title="Vercel Next.js & React Engineering Skills",
+        id="react-best-practices",
+        title="Vercel agent skills: React and web best practices",
         source="vercel-labs/agent-skills",
-        version="1.0.0",
         required_any_signals=("nextjs", "react"),
         problem_solved=(
-            "App Router server/client boundary conventions, data fetching patterns, "
-            "and React rendering performance."
+            "Upstream ships react-best-practices, composition-patterns, web-design-guidelines "
+            "and deploy-to-vercel skills. It is general React guidance, not specific to the Next.js App Router."
         ),
-        harnesses=("claude-code", "codex", "cursor", "windsurf", "github-copilot", "gemini-cli"),
-        risk_score=0,
-        install_cmd="skillporter add vercel-labs/agent-skills",
+        install_cmd="skillporter add vercel-labs/agent-skills --skill react-best-practices",
     ),
     CuratedRecommendation(
-        id="prisma-db",
-        title="Prisma Schema & Safe Migration Workflow",
+        id="playwright-webapp-testing",
+        title="Anthropic webapp-testing skill",
         source="anthropics/skills",
-        version="1.0.0",
-        required_any_signals=("prisma", "postgresql"),
-        problem_solved=(
-            "Zero-downtime schema migrations, relation indexing, and query N+1 prevention "
-            "for Prisma and PostgreSQL."
-        ),
-        harnesses=("claude-code", "codex", "cursor", "github-copilot", "gemini-cli"),
-        risk_score=0,
-        limitations="Multi-skill repository; pass `--skill <name>` after `skillporter inspect anthropics/skills`.",
-        install_cmd="skillporter inspect anthropics/skills",
-    ),
-    CuratedRecommendation(
-        id="playwright-e2e",
-        title="Playwright End-to-End Web Testing",
-        source="anthropics/skills",
-        version="1.0.0",
-        required_any_signals=("playwright", "cypress"),
-        problem_solved="Deterministic browser locator selection, trace debugging, and flake-free E2E test authoring.",
-        harnesses=("claude-code", "codex", "cursor", "github-copilot", "gemini-cli"),
-        risk_score=0,
+        required_any_signals=("playwright",),
+        problem_solved="Upstream skill `webapp-testing` for testing local web applications with Playwright.",
         install_cmd="skillporter add anthropics/skills --skill webapp-testing",
     ),
     CuratedRecommendation(
-        id="docker-devops",
-        title="Container & Infrastructure Observability Skills",
-        source="netdata/skills",
-        version="1.0.0",
-        required_any_signals=("docker", "kubernetes", "terraform"),
-        problem_solved=(
-            "Multi-stage container hardening, Linux resource bottleneck triage, "
-            "and infrastructure observability."
-        ),
-        harnesses=("claude-code", "codex", "cursor", "windsurf", "github-copilot", "gemini-cli"),
-        risk_score=0,
-        install_cmd="skillporter add netdata/skills",
-    ),
-    CuratedRecommendation(
-        id="python-engineering",
-        title="Python Packaging, Pytest & Refactoring Skills",
+        id="jetbrains-kotlin-java",
+        title="JetBrains curated Kotlin and Java skills",
         source="JetBrains/skills",
-        version="1.0.0",
-        required_any_signals=("python", "fastapi", "django", "pytest", "jvm"),
-        problem_solved="Type-safe refactoring, test-first pytest workflows, and clean module boundaries.",
-        harnesses=("junie", "claude-code", "codex", "cursor"),
-        risk_score=0,
-        install_cmd="skillporter add JetBrains/skills",
+        required_any_signals=("jvm",),
+        problem_solved=(
+            "Upstream lists Kotlin, Java and Spring skills such as kotlin-idiomatic-refactorer-spring-aware "
+            "and gradle-kotlin-dsl-doctor. It has no Python skills."
+        ),
+        install_cmd="skillporter inspect JetBrains/skills",
     ),
     CuratedRecommendation(
-        id="ci-autonomous",
-        title="CI/CD Failure Diagnosis & Autonomous Debugging",
-        source="OpenHands/extensions",
-        version="1.0.0",
-        required_any_signals=("github-actions",),
-        problem_solved="Automated GitHub Actions workflow failure reproduction and pull-request validation.",
-        harnesses=("openhands", "codex", "claude-code", "cursor"),
-        risk_score=0,
-        install_cmd="skillporter add OpenHands/extensions",
-    ),
-    CuratedRecommendation(
-        id="search-security",
-        title="Elasticsearch, Observability & Security Analytics",
+        id="elastic-elasticsearch",
+        title="Official Elastic Elasticsearch skills",
         source="elastic/agent-skills",
-        version="1.0.0",
         required_any_signals=("elasticsearch",),
-        problem_solved="Query optimization, index mapping validation, and security log triage.",
-        harnesses=("claude-code", "cursor", "codex", "windsurf", "github-copilot", "gemini-cli"),
-        risk_score=0,
-        install_cmd="skillporter add elastic/agent-skills",
+        problem_solved=(
+            "Upstream lists elasticsearch-query-optimization, elasticsearch-index-design, "
+            "elasticsearch-esql and elasticsearch-ingest skills."
+        ),
+        install_cmd="skillporter inspect elastic/agent-skills",
     ),
     CuratedRecommendation(
         id="multi-agent-self-skill",
-        title="Official Skillporter Multi-Agent Control Skill",
+        title="Official Skillporter skill",
         source="Shanmukh-l33t/skillporter",
-        version="3.1.0",
         required_any_signals=("multi-agent", "mcp"),
         problem_solved=(
-            "Lets AI coding agents inspect, synchronize, security-scan, and consolidate "
-            "skills and instructions directly."
+            "Lets an AI coding agent run Skillporter commands such as status, scan and consolidate preview "
+            "on your behalf."
         ),
-        harnesses=("claude-code", "codex", "cursor", "hermes", "openclaw", "github-copilot", "gemini-cli"),
-        risk_score=0,
-        limitations="Write operations require confirmation or explicit flags.",
+        limitations="Bundled with this Skillporter release. Write operations still need explicit flags.",
         install_cmd="skillporter self-skill install --harness detected",
+        bundled=True,
     ),
 )
 
@@ -260,30 +218,31 @@ def recommend_skills_for_project(
         det = [d.harness.name for d in harnesses.detect_harnesses(root) if d.installed]
         active_h = det or ["claude-code", "codex", "cursor"]
 
+    all_harness_names = sorted(harnesses.HARNESSES)
     recommendations: list[dict[str, object]] = []
     for rule in _CURATED_RULES:
-        matched_sigs = [s for s in rule.required_any_signals if s in signal_map]
+        matched_sigs = [sig for sig in rule.required_any_signals if sig in signal_map]
         if not matched_sigs:
             continue
         if rule.id == "multi-agent-self-skill" and "skillporter" in installed_names:
             continue
 
-        ev_labels = [f"{signal_map[s]['label']} ({signal_map[s]['evidence']})" for s in matched_sigs]
-        compat_active = [h for h in rule.harnesses if h in active_h] or list(rule.harnesses)
-
+        ev_labels = [f"{signal_map[sig]['label']} ({signal_map[sig]['evidence']})" for sig in matched_sigs]
         recommendations.append(
             {
                 "id": rule.id,
                 "title": rule.title,
                 "source": rule.source,
-                "version": rule.version,
+                "version": None,
                 "matched_signals": matched_sigs,
                 "why_relevant": "Detected " + ", ".join(ev_labels),
                 "problem_solved": rule.problem_solved,
-                "compatible_harnesses": compat_active,
-                "all_supported_harnesses": list(rule.harnesses),
-                "security_scanned": rule.security_scanned,
-                "risk_score": rule.risk_score,
+                # SKILL.md is a shared format, so any of these harnesses can receive the skill.
+                "compatible_harnesses": list(active_h),
+                "all_supported_harnesses": all_harness_names,
+                "security_scanned": False,
+                "risk_score": None,
+                "scan_status": "bundled" if rule.bundled else "not scanned (runs on `skillporter add`)",
                 "limitations": rule.limitations,
                 "install_command": rule.install_cmd or f"skillporter add {rule.source}",
             }

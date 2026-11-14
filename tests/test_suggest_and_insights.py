@@ -32,13 +32,18 @@ def test_suggest_analyzes_local_stack_and_explains_relevance_without_network(tmp
     assert {"nextjs", "prisma", "playwright", "postgresql", "docker"} <= detected_ids
 
     recs = out["recommendations"]
-    assert len(recs) >= 3
+    # Only entries whose upstream repo is known to hold a matching skill: no Prisma or Docker keyword spam.
+    assert {r["id"] for r in recs} == {"react-best-practices", "playwright-webapp-testing"}
     for rec in recs:
         assert rec["why_relevant"]
         assert rec["problem_solved"]
         assert rec["compatible_harnesses"]
-        assert "risk_score" in rec
         assert "limitations" in rec
+        # Skillporter has not scanned or pinned third-party catalog entries, so it must not claim to have.
+        assert rec["security_scanned"] is False
+        assert rec["risk_score"] is None
+        assert rec["version"] is None
+        assert "not scanned" in rec["scan_status"]
 
     # Unrelated empty directory produces zero noisy keyword-spam recommendations
     empty_dir = tmp_path / "empty_proj"
@@ -47,6 +52,22 @@ def test_suggest_analyzes_local_stack_and_explains_relevance_without_network(tmp
     empty_out = json.loads(capsys.readouterr().out)
     assert empty_out["detected_stack"] == []
     assert empty_out["recommendations"] == []
+
+
+def test_suggest_does_not_recommend_jvm_skills_for_python_or_unrelated_projects(tmp_path, capsys):
+    py = tmp_path / "py"
+    py.mkdir()
+    (py / "pyproject.toml").write_text(
+        '[project]\nname = "x"\ndependencies = ["fastapi", "pytest"]\n', encoding="utf-8"
+    )
+    assert main(["suggest", str(py), "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["recommendations"] == []
+
+    jvm = tmp_path / "jvm"
+    jvm.mkdir()
+    (jvm / "build.gradle.kts").write_text("plugins { kotlin(\"jvm\") }\n", encoding="utf-8")
+    assert main(["suggest", str(jvm), "--json"]) == 0
+    assert [r["id"] for r in json.loads(capsys.readouterr().out)["recommendations"]] == ["jetbrains-kotlin-java"]
 
 
 def test_insights_measures_token_overhead_duplicates_and_opt_in_usage_honestly(tmp_path, capsys):

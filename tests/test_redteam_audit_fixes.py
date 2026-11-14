@@ -231,3 +231,12 @@ def test_large_instruction_analysis_completes_under_300ms(tmp_path):
 
     assert dt_cons < 0.35, f"analyze_instructions too slow: {dt_cons:.3f}s"
     assert dt_ins < 0.35, f"compute_workspace_insights too slow: {dt_ins:.3f}s"
+
+
+def test_capability_names_normalize_hyphens_spaces_and_case():
+    from skillporter.capabilities import normalize_capability_name
+
+    for raw in ("shell-exec", "Shell Exec", "SHELL_EXEC", "  shell   exec ", "shell-Exec"):
+        assert normalize_capability_name(raw) == "shell_exec", raw
+    assert normalize_capability_name("Filesystem Write") == "filesystem_write"
+    assert normalize_capability_name("netwrk") == "netwrk"  # unknown stays unknown, so lint can flag it

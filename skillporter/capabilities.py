@@ -68,7 +68,7 @@ _CAPABILITY_ALIASES: dict[str, str] = {
 
 def normalize_capability_name(raw: str) -> str:
     """Normalize hyphenated or aliased capability tokens to canonical identifiers."""
-    clean = raw.strip().lower().replace("-", "_")
+    clean = "_".join(raw.strip().lower().replace("-", " ").replace("_", " ").split())
     return _CAPABILITY_ALIASES.get(clean, clean)
 
 

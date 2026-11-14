@@ -20,6 +20,12 @@ faq:
     a: "Run skillporter export my-env.skillpack to bundle your skills, lockfile hashes and profiles into a SHA-256 verified archive (secrets and .env files are excluded), then run skillporter import my-env.skillpack on the new machine. Restoration works offline."
   - q: "Can an AI coding agent manage Skill Porter for me?"
     a: "Yes. Run skillporter self-skill install --harness detected to install the official Skillporter skill, or register skillporter mcp as a workspace-bounded Model Context Protocol server."
+  - q: "Can Skill Porter manage my CLAUDE.md, AGENTS.md and Cursor rules?"
+    a: "Yes, without any installed skill. skillporter consolidate reports overlap, contradictions, outdated paths and lines it could not classify, and writes nothing until you pass --apply. --apply backs up the originals first, refuses to apply contradictory rules, leaves path-scoped rule files alone and can be undone with --rollback."
+  - q: "What is a project policy?"
+    a: "A skillporter.policy.yaml committed with the repository. It sets approved and restricted sources, a risk ceiling, banned capabilities and allowed harnesses, and it is checked on add, install, sync, update, import, profile switches and the MCP write tools."
+  - q: "Does skillporter suggest scan or endorse the skills it recommends?"
+    a: "No. suggest reads your project files locally and matches them against a short hand-curated list of upstream repositories. Entries carry no version or risk score because nothing has been scanned. The scan runs when you install with skillporter add."
   - q: "How does rollback work?"
     a: "Installs are staged under .skillporter/tmp/ with a write-ahead journal, so a failed install restores the destinations it already wrote."
   - q: "Does Skill Porter need network access?"
@@ -93,6 +99,18 @@ skillporter import my-env.skillpack --only-detected --dry-run
 ### Can an AI coding agent manage Skill Porter for me?
 
 Yes. `skillporter self-skill install --harness detected` installs the official bundled `skillporter` skill so Claude Code, Codex, Cursor or Hermes can inspect status, move skills across harnesses, compare `.skillpack` archives and preview updates using `--dry-run` and `--json`. Alternatively, `skillporter mcp` exposes 13 workspace-bounded tools over stdio (read-only by default; pass `--allow-writes` to permit installations, exports and imports).
+
+### Can Skill Porter manage my CLAUDE.md, AGENTS.md and Cursor rules?
+
+Yes, without any installed skill. `skillporter consolidate` reports overlap, contradictions, outdated paths and lines it could not classify, and writes nothing until you pass `--apply`. `--apply` backs up the originals first, refuses to apply contradictory rules, leaves path-scoped rule files alone and can be undone with `--rollback`. Manual edits to generated files are detected by `consolidate --status`, and `--reconcile` merges them back. Directive extraction is line based, so read the preview before applying. See [Instruction files and context](/docs/instructions).
+
+### What is a project policy?
+
+A `skillporter.policy.yaml` committed with the repository. It sets approved and restricted sources, a risk ceiling, banned capabilities and allowed harnesses, and it is checked on `add`, `install`, `sync`, `update`, `import`, profile switches and the MCP write tools. `skillporter policy check` evaluates what is already installed. Capability declarations in a skill are compared with what static analysis finds, but they are an audit, not a sandbox. See [Policy and update review](/docs/policy).
+
+### Does skillporter suggest scan or endorse the skills it recommends?
+
+No. `skillporter suggest` reads your project files locally and matches them against a short hand-curated list of upstream repositories. Entries carry no version or risk score because nothing has been scanned, and they are reported as `not scanned`. The scan runs when you install with `skillporter add`. See [Suggestions and insights](/docs/insights).
 
 ### How does rollback work?
 

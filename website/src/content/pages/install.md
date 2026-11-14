@@ -105,7 +105,7 @@ codex mcp add skillporter -- uvx skillporter mcp
 
 Clients without an `mcp add` command register `uvx skillporter mcp` in `mcpServers`.
 
-Write tools stay disabled until you add `--allow-writes`. The workspace root is fixed at startup by `--root`, then `SKILLPORTER_MCP_ROOT`, then the working directory, and path arguments that leave it are rejected. [MCP integration](/docs/mcp) has the 13 tools and the boundary rules.
+Write tools stay disabled until you add `--allow-writes`. The workspace root is fixed at startup by `--root`, then `SKILLPORTER_MCP_ROOT`, then the working directory, and path arguments that leave it are rejected. [MCP integration](/docs/mcp) has the 18 tools and the boundary rules.
 
 ## Upgrade and uninstall
 

@@ -44,6 +44,11 @@ The commands above assume `uvx`; the [install page](https://www.skillporter.dev/
 | `skillporter_scan` | Read | Static security assessment of a skill directory. |
 | `skillporter_inspect` | Read | Structure, metadata and security posture of a skill package. |
 | `skillporter_matrix` | Read | The harness compatibility matrix. |
+| `skillporter_consolidate_preview` | Read | Read-only report on instruction files: overlap, conflicts, outdated references and unclassified lines. |
+| `skillporter_context` | Read | The instruction files and skills one harness loads, with estimated token cost. |
+| `skillporter_suggest` | Read | Local stack detection and curated skill suggestions. |
+| `skillporter_insights` | Read | Estimated token overhead of skills and instruction files. |
+| `skillporter_preview` | Read | The content and path a harness would receive for a skill. |
 | `skillporter_add` | Write | Resolve, scan and install a skill. |
 | `skillporter_install` | Write | Install a local skill directory. |
 | `skillporter_sync` | Write | Synchronize the workspace. |
@@ -51,7 +56,7 @@ The commands above assume `uvx`; the [install page](https://www.skillporter.dev/
 | `skillporter_export` | Write | Package the workspace skill environment into a `.skillpack` archive inside the workspace. |
 | `skillporter_import` | Write | Validate and restore a workspace `.skillpack` archive. |
 
-All 13 tools are listed to the client. If your agent harness supports `SKILL.md` directly rather than MCP, you can also install the official bundled Skillporter skill with `skillporter self-skill install --harness detected`. In the default MCP mode, calling a write tool returns an error and changes nothing:
+All 18 tools are listed to the client. Five are new read-only tools; none of them writes to the workspace. If your agent harness supports `SKILL.md` directly rather than MCP, you can also install the official bundled Skillporter skill with `skillporter self-skill install --harness detected`. In the default MCP mode, calling a write tool returns an error and changes nothing:
 
 ```text
 error: MCP write operation 'skillporter_add' is disabled by default; launch with
@@ -69,6 +74,8 @@ Only do this when you want the agent to install and remove skills on its own. Th
 - `force` only overwrites an existing destination.
 - `accept_risk` is a separate boolean, and it is recorded in the audit log.
 - Structural escapes cannot be accepted.
+- A project `skillporter.policy.yaml` is enforced on `skillporter_add` and `skillporter_install` as it is on the CLI. See [Policy and update review](../policy/README.md).
+- `skillporter_remove` works without a `harnesses` argument and removes every Skillporter-managed copy. It keeps the original source.
 
 ## Workspace boundary
 

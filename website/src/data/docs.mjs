@@ -80,6 +80,24 @@ export const DOC_SECTIONS = [
         description: 'The skillporter.yaml manifest, environment variables and local state.',
       },
       {
+        slug: 'instructions',
+        dir: 'instructions',
+        title: 'Instruction files and context',
+        description: 'Consolidate CLAUDE.md, AGENTS.md and rules files, detect manual edits and see what each agent loads.',
+      },
+      {
+        slug: 'authoring',
+        dir: 'authoring',
+        title: 'Authoring and testing skills',
+        description: 'Create, lint and preview a skill, and test whether its description triggers on the right prompts.',
+      },
+      {
+        slug: 'insights',
+        dir: 'insights',
+        title: 'Suggestions and insights',
+        description: 'Local project analysis for skill suggestions, and estimated context cost of skills and instructions.',
+      },
+      {
         slug: 'portability',
         dir: 'portability',
         title: 'Portability and profiles',
@@ -112,6 +130,12 @@ export const DOC_SECTIONS = [
         dir: 'security',
         title: 'Security model',
         description: 'Trust boundaries, what Skillporter protects, and the limits of static analysis.',
+      },
+      {
+        slug: 'policy',
+        dir: 'policy',
+        title: 'Policy and update review',
+        description: 'Capability declarations, project policy, readable update reviews and the optional AI second opinion.',
       },
       {
         slug: 'security-scanning',

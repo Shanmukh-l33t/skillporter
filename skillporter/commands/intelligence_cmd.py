@@ -59,8 +59,8 @@ def cmd_suggest(args: argparse.Namespace) -> int:
     print(f"Recommended skills ({len(recs)}):")
     for r in recs:
         h_str = ", ".join(r["compatible_harnesses"][:5])  # type: ignore[index]
-        scan_note = f"verified seed · risk {r['risk_score']}/100" if r["security_scanned"] else "scan on install"
-        print(f"\n  {action_symbol('added')} {style(str(r['title']), BOLD)} ({r['source']}@{r['version']})")
+        scan_note = str(r["scan_status"])
+        print(f"\n  {action_symbol('added')} {style(str(r['title']), BOLD)} ({r['source']})")
         print(f"      Why relevant:   {r['why_relevant']}")
         print(f"      Solves:         {r['problem_solved']}")
         print(f"      Harnesses:      {h_str}")
