@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "skillporter"
-version = "2.4.0"
-description = "AI agent skill manager for multi-agent skill synchronization, skill lifecycle management, and deterministic skill lockfile security across 19+ harnesses."
+version = "3.0.0"
+description = "Package manager, dependency resolver, and supply-chain security layer for AI agent skills across 19 harnesses."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
@@ -30,7 +30,7 @@ keywords = [
   "developer-tools",
 ]
 classifiers = [
-  "Development Status :: 5 - Production/Stable",
+  "Development Status :: 4 - Beta",
   "Environment :: Console",
   "Intended Audience :: Developers",
   "License :: OSI Approved :: MIT License",
@@ -55,7 +55,7 @@ Issues = "https://github.com/Shanmukh-l33t/skillporter/issues"
 Changelog = "https://github.com/Shanmukh-l33t/skillporter/blob/main/CHANGELOG.md"
 
 [tool.setuptools]
-packages = ["skillporter"]
+packages = ["skillporter", "skillporter.commands"]
 
 [tool.setuptools.package-data]
 skillporter = ["py.typed"]

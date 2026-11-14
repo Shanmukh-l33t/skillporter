@@ -8,14 +8,16 @@ Creates:
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import shutil
 import stat
+import subprocess
 import zipapp
 from pathlib import Path
 
 
-def build_artifacts(repo_root: Path | None = None) -> dict[str, str]:
+def build_artifacts(repo_root: Path | None = None, *, sign_key: Path | None = None) -> dict[str, str]:
     root = (repo_root or Path(__file__).resolve().parents[1]).resolve()
     pkg_src = root / "skillporter"
     dist_dir = root / "dist"
@@ -77,11 +79,23 @@ def build_artifacts(repo_root: Path | None = None) -> dict[str, str]:
             checksums[artifact.name] = digest
             sums_lines.append(f"{digest}  {artifact.name}")
 
-    (dist_dir / "SHA256SUMS.txt").write_text("\n".join(sums_lines) + "\n", encoding="utf-8")
+    sums_path = dist_dir / "SHA256SUMS.txt"
+    sums_path.write_text("\n".join(sums_lines) + "\n", encoding="utf-8")
+
+    if sign_key is not None:
+        sig_path = dist_dir / "SHA256SUMS.txt.sig"
+        subprocess.run(
+            ["openssl", "dgst", "-sha256", "-sign", str(sign_key), "-out", str(sig_path), str(sums_path)],
+            check=True,
+        )
+
     return checksums
 
 
 if __name__ == "__main__":
-    sums = build_artifacts()
+    parser = argparse.ArgumentParser(description="Build standalone Skillporter artifacts and SHA256SUMS.txt")
+    parser.add_argument("--sign-key", type=Path, default=None, help="Optional PEM private key to sign SHA256SUMS.txt")
+    parsed = parser.parse_args()
+    sums = build_artifacts(sign_key=parsed.sign_key)
     for name, sha in sums.items():
         print(f"{sha[:16]}  dist/{name}")

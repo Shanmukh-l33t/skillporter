@@ -23,7 +23,16 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-SCANNER_ENGINE_VERSION = "2.4.0"
+from .scanner_analyzers import (
+    FileSignals,
+    analyze_cross_file_chains,
+    analyze_encoded_content,
+    analyze_js_ts,
+    analyze_markdown_instructions,
+    analyze_python_ast,
+)
+
+SCANNER_ENGINE_VERSION = "3.0.0"
 
 SEVERITY_ORDER = {
     "CRITICAL": 4,
@@ -80,7 +89,22 @@ _FINDING_CATEGORIES: dict[str, str] = {
     "sec-binary-artifact": "supply_chain",
     "sec-script-outside-scripts-dir": "supply_chain",
     "sec-oversized-file": "supply_chain",
+    "sec-unreadable-file": "supply_chain",
     "sec-external-download": "supply_chain",
+    "sec-py-encoded-exec": "code_execution",
+    "sec-py-unsafe-subprocess": "code_execution",
+    "sec-py-unsafe-deserialization": "code_execution",
+    "sec-py-dynamic-import": "code_execution",
+    "sec-js-dynamic-eval": "code_execution",
+    "sec-js-child-process": "code_execution",
+    "sec-js-remote-code": "supply_chain",
+    "sec-md-hidden-comment": "prompt_injection",
+    "sec-md-secret-exfil": "data_exfiltration",
+    "sec-md-unsafe-delegation": "prompt_injection",
+    "sec-powershell-encoded": "code_execution",
+    "sec-encoded-payload": "code_execution",
+    "sec-cross-file-staged-exec": "code_execution",
+    "sec-cross-file-remote-stage": "supply_chain",
 }
 
 # Patterns for embedded secrets and private keys
@@ -168,9 +192,7 @@ _SCRIPT_PATTERNS: tuple[tuple[str, str, str, re.Pattern[str]], ...] = (
         "CRITICAL",
         "sec-obfuscated-exec",
         "Base64 or hex decoded payload piped directly into shell/interpreter",
-        re.compile(
-            r"(?:base64\s+(?:-d|--decode)|xxd\s+-r)\b[^\n|]*\|\s*(?:sudo\s+)?(?:ba)?(?:sh|python|perl|node)\b"
-        ),
+        re.compile(r"(?:base64\s+(?:-d|--decode)|xxd\s+-r)\b[^\n|]*\|\s*(?:sudo\s+)?(?:ba)?(?:sh|python|perl|node)\b"),
     ),
     (
         "HIGH",
@@ -259,7 +281,26 @@ _REMEDIATIONS: dict[str, str] = {
     "sec-path-traversal": "Remove '..' path traversal segments from file paths.",
     "sec-binary-artifact": "Replace compiled binary blobs with auditable source scripts in scripts/.",
     "sec-script-outside-scripts-dir": "Move executable scripts into the standard scripts/ subdirectory.",
-    "sec-oversized-file": "Split or compress large data assets so text files stay under 2 MiB.",
+    "sec-oversized-file": "Split or compress large data assets so text files stay under 2 MiB for full inspection.",
+    "sec-unreadable-file": "Ensure all files inside the skill directory have read permissions for complete inspection.",
+    "sec-py-encoded-exec": "Remove dynamic execution of base64/hex/compressed payloads; ship plain source code.",
+    "sec-py-unsafe-subprocess": "Pass argument lists to subprocess without shell=True.",
+    "sec-py-unsafe-deserialization": "Replace pickle/marshal deserialization with safe JSON parsing.",
+    "sec-py-dynamic-import": "Use explicit static import statements instead of dynamic import_module/__import__.",
+    "sec-js-dynamic-eval": "Avoid eval(), new Function(), and vm context execution in skill scripts.",
+    "sec-js-child-process": (
+        "Use execFile/execFileSync with explicit argument arrays instead of shell-interpreted exec."
+    ),
+    "sec-js-remote-code": "Vendor required modules locally instead of importing or evaluating remote URLs.",
+    "sec-md-hidden-comment": (
+        "Remove hidden Markdown reference comments containing imperative or override instructions."
+    ),
+    "sec-md-secret-exfil": "Remove instructions directing the agent to transmit secrets or .env values externally.",
+    "sec-md-unsafe-delegation": "Do not instruct the agent to bypass user confirmation, sandboxes, or safety gates.",
+    "sec-powershell-encoded": "Replace PowerShell -EncodedCommand payloads with plain, inspectable commands.",
+    "sec-encoded-payload": "Decode and replace obfuscated Base64/Hex command payloads with auditable source text.",
+    "sec-cross-file-staged-exec": "Eliminate multi-file staged payload decoding and dynamic execution chains.",
+    "sec-cross-file-remote-stage": "Do not download and execute unverified remote second-stage scripts.",
 }
 
 
@@ -274,18 +315,24 @@ class SecurityFinding:
     line: int = 0
     remediation: str = ""
     category: str = ""
+    confidence: str = ""
 
     def __post_init__(self) -> None:
         if not self.remediation and self.code in _REMEDIATIONS:
             self.remediation = _REMEDIATIONS[self.code]
         if not self.category:
             self.category = _FINDING_CATEGORIES.get(self.code, "supply_chain")
+        if not self.confidence:
+            self.confidence = (
+                "HIGH" if self.severity in ("CRITICAL", "HIGH") else ("MEDIUM" if self.severity == "MEDIUM" else "LOW")
+            )
 
     def to_dict(self) -> dict[str, object]:
         return {
             "severity": self.severity,
             "code": self.code,
             "category": self.category,
+            "confidence": self.confidence,
             "file": self.file,
             "line": self.line,
             "message": self.message,
@@ -295,7 +342,15 @@ class SecurityFinding:
 
 @dataclass
 class SecurityReport:
-    """Complete security assessment of a skill directory with 0-100 risk score."""
+    """Complete security assessment of a skill directory with deterministic 0-100 risk score.
+
+    Scoring formula (deterministic):
+      * Each deduplicated finding contributes a severity weight to its canonical category:
+        CRITICAL=55, HIGH=35, MEDIUM=15, LOW=5, INFO=2 (structural escapes=90).
+      * Each of the 6 category scores is capped at 100 (`min(100, sum(weights_in_category))`).
+      * Overall static `risk_score = min(100, sum(category_breakdown.values()))`.
+      * External scanner merge: `risk_score = min(100, max(computed, external_score))`.
+    """
 
     root: Path
     assessment_type: str = "STATIC_SECURITY_ASSESSMENT"
@@ -305,6 +360,29 @@ class SecurityReport:
     file_hashes: dict[str, str] = field(default_factory=dict)
     findings: list[SecurityFinding] = field(default_factory=list)
     external_score: int | None = None
+    files_scanned: int = 0
+    files_truncated: list[str] = field(default_factory=list)
+    files_unreadable: list[str] = field(default_factory=list)
+    files_binary_skipped: list[str] = field(default_factory=list)
+    external_scanner_status: str = "not_configured"
+
+    @property
+    def scan_complete(self) -> bool:
+        """Return True only when every non-binary file in the skill was read completely without truncation."""
+        return len(self.files_truncated) == 0 and len(self.files_unreadable) == 0
+
+    @property
+    def posture(self) -> str:
+        """Return explicit assessment classification without overclaiming safety."""
+        if self.has_structural_escape or self.critical_count > 0 or self.risk_score > 80:
+            return "CRITICAL_DETECTED_RISK"
+        if self.high_count > 0 or self.risk_score > 50:
+            return "HIGH_DETECTED_RISK"
+        if not self.scan_complete:
+            return "INCOMPLETE_ASSESSMENT"
+        if self.findings:
+            return "LOW_DETECTED_RISK"
+        return "NO_DETECTED_FINDINGS"
 
     @property
     def critical_count(self) -> int:
@@ -364,10 +442,10 @@ class SecurityReport:
 
     @property
     def recommendation(self) -> str:
-        """Return SkillSpector-compatible posture verdict: APPROVE, CAUTION, or REJECT."""
+        """Return posture verdict: APPROVE, CAUTION, or REJECT (incomplete scans never return APPROVE)."""
         if self.has_structural_escape or self.critical_count > 0 or self.risk_score > 50:
             return "REJECT"
-        if self.high_count > 0 or self.risk_score > 20:
+        if self.high_count > 0 or self.risk_score > 20 or not self.scan_complete:
             return "CAUTION"
         return "APPROVE"
 
@@ -395,17 +473,27 @@ class SecurityReport:
             "assessment_type": self.assessment_type,
             "engine": self.engine,
             "engine_version": self.engine_version,
+            "posture": self.posture,
+            "scan_complete": self.scan_complete,
+            "external_scanner_status": self.external_scanner_status,
             "risk_score": self.risk_score,
             "risk_level": self.risk_level,
             "recommendation": self.recommendation,
             "category_breakdown": self.category_breakdown,
             "disclaimer": (
                 "Static analysis inspects files for known dangerous patterns and integrity anomalies; "
-                "it does not guarantee runtime safety."
+                "a clean static scan does not prove or guarantee runtime safety."
             ),
             "passed": self.passed,
             "has_structural_escape": self.has_structural_escape,
             "tree_hash": self.tree_hash,
+            "completeness": {
+                "complete": self.scan_complete,
+                "files_scanned": self.files_scanned,
+                "files_truncated": list(self.files_truncated),
+                "files_unreadable": list(self.files_unreadable),
+                "files_binary_skipped": list(self.files_binary_skipped),
+            },
             "counts": {
                 "critical": self.critical_count,
                 "high": self.high_count,
@@ -491,11 +579,14 @@ def _check_symlink_safety(
         )
 
 
-def _run_external_skillspector(skill_dir: Path) -> dict[str, object] | None:
+def _run_external_skillspector(skill_dir: Path) -> tuple[str, dict[str, object] | None]:
     """Invoke NVIDIA SkillSpector CLI (`skillspector scan <dir> --no-llm --format json`) if installed."""
-    spector_bin = os.environ.get("SKILLPORTER_SPECTOR_BIN", "").strip() or shutil.which("skillspector")
+    env_bin = os.environ.get("SKILLPORTER_SPECTOR_BIN", "").strip()
+    spector_bin = (env_bin if env_bin and Path(env_bin).is_file() else None) or (
+        None if env_bin else shutil.which("skillspector")
+    )
     if not spector_bin:
-        return None
+        return ("unavailable", None)
 
     with tempfile.TemporaryDirectory(prefix="skillporter-spector-") as tmp:
         out_json = Path(tmp) / "report.json"
@@ -509,12 +600,12 @@ def _run_external_skillspector(skill_dir: Path) -> dict[str, object] | None:
                 check=False,
             )
             if out_json.is_file():
-                return json.loads(out_json.read_text(encoding="utf-8"))
+                return ("merged", json.loads(out_json.read_text(encoding="utf-8")))
             if proc.stdout.strip().startswith("{"):
-                return json.loads(proc.stdout.strip())
+                return ("merged", json.loads(proc.stdout.strip()))
         except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
-            return None
-    return None
+            return ("failed", None)
+    return ("failed", None)
 
 
 def scan_skill(
@@ -548,6 +639,8 @@ def scan_skill(
         )
         return report
 
+    signals_by_file: dict[str, FileSignals] = {}
+
     for dirpath, dirnames, filenames in os.walk(raw_root, followlinks=False):
         dirnames[:] = sorted(
             d for d in dirnames if d not in {".git", "__pycache__", ".venv", "node_modules", ".skillporter"}
@@ -580,6 +673,7 @@ def scan_skill(
                 continue
 
             if fpath.suffix.lower() in {".exe", ".dll", ".so", ".dylib", ".bin", ".pyc"}:
+                report.files_binary_skipped.append(rel)
                 report.findings.append(
                     SecurityFinding(
                         "MEDIUM",
@@ -594,24 +688,47 @@ def scan_skill(
                 with open(fpath, "rb") as bf:
                     raw_bytes = bf.read(MAX_SCAN_FILE_BYTES + 1)
                 if len(raw_bytes) > MAX_SCAN_FILE_BYTES:
+                    report.files_truncated.append(rel)
                     report.findings.append(
                         SecurityFinding(
-                            "LOW",
+                            "MEDIUM",
                             "sec-oversized-file",
                             rel,
-                            f"File exceeds {MAX_SCAN_FILE_BYTES} bytes; truncated during static pattern scan",
+                            (
+                                f"File exceeds {MAX_SCAN_FILE_BYTES} bytes; "
+                                "truncated during static scan (assessment incomplete)"
+                            ),
                         )
                     )
                     raw_bytes = raw_bytes[:MAX_SCAN_FILE_BYTES]
                 text = raw_bytes.decode("utf-8", errors="replace")
-            except OSError:
+            except OSError as exc:
+                report.files_unreadable.append(rel)
+                report.findings.append(
+                    SecurityFinding(
+                        "MEDIUM",
+                        "sec-unreadable-file",
+                        rel,
+                        (
+                            f"File could not be read during security scan "
+                            f"({exc.__class__.__name__}); assessment incomplete"
+                        ),
+                    )
+                )
                 continue
 
+            report.files_scanned += 1
             if text.startswith("\ufeff"):
                 text = text[1:]
 
-            is_script = fpath.suffix.lower() in {".sh", ".bash", ".zsh", ".py", ".js", ".ts", ".mjs", ".ps1", ".rb"}
-            is_markdown = fpath.suffix.lower() in {".md", ".mdc", ".txt"} or fpath.name == "SKILL.md"
+            suffix = fpath.suffix.lower()
+            is_py = suffix == ".py"
+            is_js_ts = suffix in {".js", ".ts", ".mjs", ".cjs", ".tsx", ".jsx"}
+            is_script = suffix in {".sh", ".bash", ".zsh", ".py", ".js", ".ts", ".mjs", ".cjs", ".ps1", ".rb"}
+            is_markdown = suffix in {".md", ".mdc", ".txt"} or fpath.name == "SKILL.md"
+
+            fsig = FileSignals(file=rel)
+            signals_by_file[rel] = fsig
 
             if is_script and not rel.startswith("scripts/"):
                 report.findings.append(
@@ -631,6 +748,12 @@ def scan_skill(
                     if pat.search(line):
                         effective_sev = sev if (is_script or sev in ("CRITICAL", "HIGH")) else "INFO"
                         report.findings.append(SecurityFinding(effective_sev, code, rel, msg, line=idx))
+                        if code == "sec-base64-decode":
+                            fsig.has_decoder = True
+                        elif code in ("sec-dynamic-eval", "sec-curl-pipe-sh", "sec-obfuscated-exec"):
+                            fsig.has_dynamic_exec = True
+                        elif code == "sec-external-download":
+                            fsig.has_network_fetch = True
                 if is_markdown:
                     for sev, code, msg, pat in _PROMPT_PATTERNS:
                         if code == "sec-html-comment-instruction":
@@ -660,9 +783,46 @@ def scan_skill(
                             report.findings.append(SecurityFinding(effective_sev, code, rel, msg, line=l_idx))
                             existing_codes.add(code)
 
+            # Language-aware & bounded encoded content analyzers
+            extra_hits = []
+            if is_py:
+                extra_hits.extend(analyze_python_ast(rel, text, fsig))
+            if is_js_ts:
+                extra_hits.extend(analyze_js_ts(rel, text, fsig))
+            if is_markdown:
+                extra_hits.extend(analyze_markdown_instructions(rel, text, fsig))
+            extra_hits.extend(analyze_encoded_content(rel, text, fsig))
+
+            for hit in extra_hits:
+                report.findings.append(
+                    SecurityFinding(
+                        severity=hit.severity,
+                        code=hit.code,
+                        file=hit.file,
+                        message=hit.message,
+                        line=hit.line,
+                        confidence=hit.confidence,
+                    )
+                )
+
+    for cross_hit in analyze_cross_file_chains(signals_by_file):
+        report.findings.append(
+            SecurityFinding(
+                severity=cross_hit.severity,
+                code=cross_hit.code,
+                file=cross_hit.file,
+                message=cross_hit.message,
+                line=cross_hit.line,
+                confidence=cross_hit.confidence,
+            )
+        )
+
     # Integrate NVIDIA SkillSpector when enabled and available
-    if not is_offline and req_engine in ("auto", "skillspector"):
-        ext = _run_external_skillspector(resolved_root)
+    if is_offline:
+        report.external_scanner_status = "offline_skipped"
+    elif req_engine in ("auto", "skillspector"):
+        ext_status, ext = _run_external_skillspector(resolved_root)
+        report.external_scanner_status = ext_status
         if isinstance(ext, dict):
             report.engine = "skillspector"
             report.engine_version = str(ext.get("engine_version") or ext.get("version") or SCANNER_ENGINE_VERSION)
@@ -671,7 +831,6 @@ def scan_skill(
                 report.external_score = int(raw_score)
             ext_findings = ext.get("findings", [])
             if isinstance(ext_findings, list):
-                existing_keys = {(f.code, f.file, f.line) for f in report.findings}
                 for ef in ext_findings:
                     if not isinstance(ef, dict):
                         continue
@@ -683,18 +842,25 @@ def scan_skill(
                         esev = "MEDIUM"
                     emsg = str(ef.get("message") or ef.get("description") or "Flagged by SkillSpector")
                     ecat = str(ef.get("category") or _FINDING_CATEGORIES.get(ecode, "supply_chain"))
-                    if (ecode, efile, eline) not in existing_keys:
-                        report.findings.append(
-                            SecurityFinding(
-                                severity=esev,
-                                code=ecode,
-                                file=efile,
-                                message=emsg,
-                                line=eline,
-                                category=ecat,
-                            )
+                    report.findings.append(
+                        SecurityFinding(
+                            severity=esev,
+                            code=ecode,
+                            file=efile,
+                            message=emsg,
+                            line=eline,
+                            category=ecat,
                         )
-                        existing_keys.add((ecode, efile, eline))
+                    )
+
+    # Deterministic deduplication of identical (code, file, line) findings (keeps highest severity)
+    deduped: dict[tuple[str, str, int], SecurityFinding] = {}
+    for f in report.findings:
+        key = (f.code, f.file, f.line)
+        prev = deduped.get(key)
+        if prev is None or SEVERITY_ORDER.get(f.severity, 0) > SEVERITY_ORDER.get(prev.severity, 0):
+            deduped[key] = f
+    report.findings = list(deduped.values())
 
     tree_hash, file_hashes = compute_tree_hash(resolved_root)
     report.tree_hash = tree_hash

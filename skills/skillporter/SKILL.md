@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires Python 3.9+. Zero external runtime dependencies.
 metadata:
   author: Shanmukh Dheekonda
-  version: "2.4.0"
+  version: "3.0.0"
 ---
 
 # skillporter

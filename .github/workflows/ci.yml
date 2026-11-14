@@ -42,11 +42,15 @@ jobs:
           pip install -e ".[dev]"
       - name: Lint
         run: ruff check .
-      - name: Tests
+      - name: Unit, Integration & Security Regression Suite
         run: python -m pytest tests/ -q
+      - name: Verify Standalone Zipapp on ${{ matrix.os }}
+        run: |
+          python scripts/build_standalone.py
+          python dist/skillporter.pyz --version
 
-  self-check:
-    name: dogfood (validate, scan, standalone & npx)
+  packaging-and-sast:
+    name: packaging, SAST & dogfood (sdist, wheel, standalone, npx, bandit)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -56,31 +60,84 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - run: pip install -e .
-      - name: Validate every SKILL.md in the repo
+      - name: Install build & security tools
+        run: |
+          python -m pip install --upgrade pip build twine bandit
+          pip install -e ".[dev]"
+      - name: Run Bandit SAST on core package
+        run: bandit -r skillporter -ll -q
+      - name: Dogfood CLI commands (validate, scan, audit, demo, explain, sandbox, graph, matrix)
         run: |
           skillporter validate .
           skillporter validate skills/skillporter --format json > /dev/null
-      - name: Static security scan on shipped skills (text & SARIF 2.1.0)
-        run: |
           skillporter scan .
           skillporter scan . --format sarif > skillporter.sarif
-      - name: Verify demo, explain, sandbox & dependency graph
-        run: |
+          skillporter audit . --json > /dev/null
           skillporter demo
           skillporter explain DRIFT
           skillporter sandbox run skills/skillporter
           skillporter graph
-      - name: Harness matrix renders
-        run: skillporter matrix
-      - name: Build standalone zipapp & verify NPX wrapper
+          skillporter matrix
+      - name: Build & validate Python wheel, sdist, standalone zipapp & npm package
         run: |
+          python -m build --outdir dist-py
+          twine check dist-py/*.tar.gz dist-py/*.whl
+          python -m venv /tmp/clean-venv
+          /tmp/clean-venv/bin/pip install --no-index --find-links dist-py skillporter
+          /tmp/clean-venv/bin/skillporter --version
           python scripts/build_standalone.py
-          python dist/skillporter.pyz --version
+          test -f dist/skillporter.pyz
+          test -f dist/SHA256SUMS.txt
+          (cd dist && sha256sum -c SHA256SUMS.txt)
+          node npm/bin/skillporter.js --version
           node npm/bin/skillporter.js matrix --json > /dev/null
+          npm pack --dry-run
+
+  installer-e2e:
+    name: standalone installer (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build release artifact, sign SHA256SUMS.txt & verify install.sh lifecycle
+        run: |
+          set -euo pipefail
+          openssl ecparam -name prime256v1 -genkey -noout -out /tmp/sp-priv.pem
+          openssl ec -in /tmp/sp-priv.pem -pubout -out /tmp/sp-pub.pem
+          python scripts/build_standalone.py --sign-key /tmp/sp-priv.pem
+          mkdir -p /tmp/release-srv/v3.0.0 /tmp/fresh-bin
+          cp dist/skillporter.pyz dist/SHA256SUMS.txt dist/SHA256SUMS.txt.sig /tmp/release-srv/v3.0.0/
+          python -m http.server 18923 --bind 127.0.0.1 --directory /tmp/release-srv &
+          SRV_PID=$!
+          trap 'kill "$SRV_PID" 2>/dev/null || true' EXIT
+          sleep 1
+          # 1. Verify OpenSSL detached signature installation succeeds on fresh runner
+          SKILLPORTER_RELEASE_BASE_URL="http://127.0.0.1:18923" \
+            SKILLPORTER_VERSION="v3.0.0" \
+            SKILLPORTER_INSTALL_DIR="/tmp/fresh-bin" \
+            SKILLPORTER_PUBLIC_KEY_FILE="/tmp/sp-pub.pem" \
+            sh install.sh
+          /tmp/fresh-bin/skillporter --version
+          /tmp/fresh-bin/skillporter demo > /dev/null
+          # 2. Verify wrong pinned SHA-256 fails closed without corrupting installed binary
+          if SKILLPORTER_RELEASE_BASE_URL="http://127.0.0.1:18923" \
+            SKILLPORTER_VERSION="v3.0.0" \
+            SKILLPORTER_INSTALL_DIR="/tmp/fresh-bin" \
+            SKILLPORTER_SHA256="0000000000000000000000000000000000000000000000000000000000000000" \
+            sh install.sh 2>/dev/null; then
+            echo "expected checksum mismatch to fail" >&2
+            exit 1
+          fi
+          /tmp/fresh-bin/skillporter --version
 
   secrets:
-    name: secret scan
+    name: secret & supply-chain scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

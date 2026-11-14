@@ -1,6 +1,6 @@
 {
   "name": "@shanmukhdheekonda/skillporter",
-  "version": "2.4.0",
+  "version": "3.0.0",
   "description": "AI agent skill manager for multi-agent skill synchronization, skill lifecycle management, and deterministic skill lockfile security across 19+ harnesses.",
   "keywords": [
     "ai-agent-skill-manager",

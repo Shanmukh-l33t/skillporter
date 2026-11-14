@@ -19,8 +19,37 @@ from pathlib import Path
 
 from . import __version__, harnesses
 from .diagnose import diagnose
-from .manifest import LOCKFILE_FILENAME, load_lockfile, load_manifest
+from .manifest import LOCKFILE_FILENAME, LockfileError, load_lockfile, load_manifest
 from .security import compute_tree_hash, scan_skill
+
+
+def _normalize_source_identity(raw_src: str, root: Path) -> str:
+    s = raw_src.strip().rstrip("/")
+    if not s:
+        return ""
+    if s.startswith("github:"):
+        s = s[len("github:") :]
+    if not s.startswith(("https://", "http://", "git@", "file://", ".", "/", "\\", "~")) and "/" in s:
+        parts = s.split("@", 1)[0].split("/")
+        if len(parts) >= 2 and ":" not in parts[0]:
+            sub = "/".join(parts[2:])
+            base_gh = f"https://github.com/{parts[0]}/{parts[1].removesuffix('.git')}.git"
+            return f"{base_gh}#{sub}" if sub else base_gh
+    if s.startswith(("https://github.com/", "http://github.com/")):
+        if "/tree/" in s:
+            prefix, _, rest = s.partition("/tree/")
+            _ref, _, sub = rest.partition("/")
+            base_gh = prefix.removesuffix(".git") + ".git"
+            return f"{base_gh}#{sub}" if sub else base_gh
+        if not s.endswith(".git") and "#" not in s:
+            return s + ".git"
+    if s.startswith((".", "/", "\\")) or (len(s) > 1 and s[1] == ":"):
+        try:
+            cand = Path(s)
+            return str((root / cand).resolve() if not cand.is_absolute() else cand.resolve())
+        except OSError:
+            return s
+    return s
 
 
 def check_lockfile_staleness(root: Path, *, scope: str = "project") -> list[str]:
@@ -30,7 +59,10 @@ def check_lockfile_staleness(root: Path, *, scope: str = "project") -> list[str]
     if not lock_path.is_file():
         return [f"missing lockfile: {LOCKFILE_FILENAME} does not exist (run `skillporter lock`)"]
 
-    lock = load_lockfile(root)
+    try:
+        lock = load_lockfile(root)
+    except LockfileError as exc:
+        return [str(exc)]
     manifest = load_manifest(root)
     diag = diagnose(root, scope=scope)
     problems: list[str] = []
@@ -42,6 +74,14 @@ def check_lockfile_staleness(root: Path, *, scope: str = "project") -> list[str]
                     f"unpinned manifest skill: {spec.name!r} is in skillporter.yaml "
                     f"but missing from {LOCKFILE_FILENAME}"
                 )
+            elif spec.source and lock.skills[spec.name].source:
+                norm_m = _normalize_source_identity(spec.source, root)
+                norm_l = _normalize_source_identity(lock.skills[spec.name].source, root)
+                if norm_m != norm_l:
+                    problems.append(
+                        f"lockfile source mismatch on {spec.name!r}: "
+                        f"skillporter.yaml has {spec.source!r} != locked {lock.skills[spec.name].source!r}"
+                    )
 
     for sname, copies in sorted(diag.skill_copies.items()):
         if sname not in lock.skills:
@@ -183,6 +223,8 @@ def post_github_pr_comment(repo: str, pr_number: int, markdown: str, token: str 
     if not tok:
         raise RuntimeError("GITHUB_TOKEN is required to post a PR comment")
     url = f"https://api.github.com/repos/{repo}/issues/{pr_number}/comments"
+    if not url.startswith("https://api.github.com/"):
+        raise ValueError("GitHub PR comment URL must target https://api.github.com/")
     body = json.dumps({"body": markdown}).encode("utf-8")
     req = urllib.request.Request(
         url,
@@ -195,5 +237,5 @@ def post_github_pr_comment(repo: str, pr_number: int, markdown: str, token: str 
             "User-Agent": f"skillporter/{__version__}",
         },
     )
-    with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310
+    with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310  # nosec B310
         return json.loads(resp.read(1 << 20).decode("utf-8"))

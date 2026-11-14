@@ -41,6 +41,7 @@ SUPPORT_STATUSES = (
 VERIFICATION_LEVELS = (
     "RUNTIME_VERIFIED",
     "INTEGRATION_TESTED",
+    "FIXTURE_TESTED",
     "DOCUMENTATION_VERIFIED",
     "UNIT_TESTED",
     "UNVERIFIED",
@@ -102,6 +103,21 @@ class Harness:
     capabilities: HarnessCapabilities = field(default_factory=HarnessCapabilities)
     detection: DetectionSpec = field(default_factory=DetectionSpec)
     limitations: tuple[str, ...] = field(default_factory=tuple)
+    raw_evidence: str = ""
+
+    @property
+    def verification_evidence(self) -> str:
+        if self.raw_evidence:
+            return self.raw_evidence
+        if self.verification_level == "RUNTIME_VERIFIED":
+            return f"Live runtime discovery verified + conformance fixture ({self.docs})"
+        if self.verification_level == "INTEGRATION_TESTED":
+            return f"Multi-harness integration & conformance suite ({self.docs})"
+        if self.verification_level == "FIXTURE_TESTED":
+            return f"19-adapter lifecycle conformance fixture + vendor docs ({self.docs})"
+        if self.verification_level == "DOCUMENTATION_VERIFIED" and self.docs:
+            return f"Official vendor documentation ({self.docs})"
+        return "Declarative adapter specification"
 
     @property
     def label(self) -> str:
@@ -255,7 +271,7 @@ HARNESSES: dict[str, Harness] = {
         display_name="GitHub Copilot",
         category="coding",
         support_status="NATIVE",
-        verification_level="DOCUMENTATION_VERIFIED",
+        verification_level="FIXTURE_TESTED",
         verified_date="2026-11-11",
         paths=(
             SkillPath(".github/skills", "project"),
@@ -291,7 +307,7 @@ HARNESSES: dict[str, Harness] = {
         display_name="Gemini CLI",
         category="coding",
         support_status="NATIVE",
-        verification_level="DOCUMENTATION_VERIFIED",
+        verification_level="FIXTURE_TESTED",
         verified_date="2026-11-11",
         paths=(
             SkillPath(".agents/skills", "project", ".agents/skills takes precedence over .gemini/skills"),
@@ -326,7 +342,7 @@ HARNESSES: dict[str, Harness] = {
         display_name="Google Antigravity",
         category="coding",
         support_status="NATIVE",
-        verification_level="DOCUMENTATION_VERIFIED",
+        verification_level="FIXTURE_TESTED",
         verified_date="2026-11-11",
         paths=(
             SkillPath(".agents/skills", "project"),
@@ -357,7 +373,7 @@ HARNESSES: dict[str, Harness] = {
         display_name="Windsurf",
         category="coding",
         support_status="NATIVE",
-        verification_level="DOCUMENTATION_VERIFIED",
+        verification_level="FIXTURE_TESTED",
         verified_date="2026-11-11",
         paths=(
             SkillPath(".windsurf/skills", "project"),
@@ -388,7 +404,7 @@ HARNESSES: dict[str, Harness] = {
         display_name="Cline",
         category="coding",
         support_status="NATIVE",
-        verification_level="DOCUMENTATION_VERIFIED",
+        verification_level="FIXTURE_TESTED",
         verified_date="2026-11-11",
         paths=(
             SkillPath(".cline/skills", "project"),
@@ -422,7 +438,7 @@ HARNESSES: dict[str, Harness] = {
         display_name="Roo Code",
         category="coding",
         support_status="NATIVE",
-        verification_level="DOCUMENTATION_VERIFIED",
+        verification_level="FIXTURE_TESTED",
         verified_date="2026-11-11",
         paths=(
             SkillPath(".roo/skills", "project"),
@@ -452,7 +468,7 @@ HARNESSES: dict[str, Harness] = {
         display_name="OpenCode",
         category="coding",
         support_status="NATIVE",
-        verification_level="DOCUMENTATION_VERIFIED",
+        verification_level="FIXTURE_TESTED",
         verified_date="2026-11-11",
         paths=(
             SkillPath(".opencode/skills", "project"),
@@ -485,7 +501,7 @@ HARNESSES: dict[str, Harness] = {
         display_name="Zed",
         category="coding",
         support_status="NATIVE",
-        verification_level="DOCUMENTATION_VERIFIED",
+        verification_level="FIXTURE_TESTED",
         verified_date="2026-11-11",
         paths=(
             SkillPath(".agents/skills", "project"),
@@ -515,7 +531,7 @@ HARNESSES: dict[str, Harness] = {
         display_name="Replit Agent",
         category="coding",
         support_status="NATIVE",
-        verification_level="DOCUMENTATION_VERIFIED",
+        verification_level="FIXTURE_TESTED",
         verified_date="2026-11-11",
         paths=(
             SkillPath(".agents/skills", "project"),
@@ -544,7 +560,7 @@ HARNESSES: dict[str, Harness] = {
         display_name="JetBrains Junie / AI Assistant",
         category="coding",
         support_status="NATIVE",
-        verification_level="DOCUMENTATION_VERIFIED",
+        verification_level="FIXTURE_TESTED",
         verified_date="2026-11-11",
         paths=(
             SkillPath(".junie/skills", "project"),
@@ -605,7 +621,7 @@ HARNESSES: dict[str, Harness] = {
         display_name="OpenClaw",
         category="autonomous",
         support_status="NATIVE",
-        verification_level="DOCUMENTATION_VERIFIED",
+        verification_level="FIXTURE_TESTED",
         verified_date="2026-11-11",
         verified=True,
         paths=(
@@ -638,7 +654,7 @@ HARNESSES: dict[str, Harness] = {
         display_name="OpenHands",
         category="autonomous",
         support_status="NATIVE",
-        verification_level="DOCUMENTATION_VERIFIED",
+        verification_level="FIXTURE_TESTED",
         verified_date="2026-11-11",
         paths=(
             SkillPath(".agents/skills", "project"),
@@ -668,7 +684,7 @@ HARNESSES: dict[str, Harness] = {
         display_name="Goose",
         category="autonomous",
         support_status="NATIVE",
-        verification_level="DOCUMENTATION_VERIFIED",
+        verification_level="FIXTURE_TESTED",
         verified_date="2026-11-11",
         paths=(
             SkillPath(".agents/skills", "project"),
@@ -697,7 +713,7 @@ HARNESSES: dict[str, Harness] = {
         display_name="Continue",
         category="coding",
         support_status="COMPATIBLE",
-        verification_level="DOCUMENTATION_VERIFIED",
+        verification_level="FIXTURE_TESTED",
         verified_date="2026-11-11",
         paths=(
             SkillPath(".continue/skills", "project"),
@@ -730,7 +746,7 @@ HARNESSES: dict[str, Harness] = {
         display_name="Aider / AiderDesk",
         category="coding",
         support_status="ADAPTED",
-        verification_level="DOCUMENTATION_VERIFIED",
+        verification_level="FIXTURE_TESTED",
         verified_date="2026-11-11",
         paths=(
             SkillPath(".aider-desk/skills", "project", "AiderDesk native skill folder"),

@@ -549,8 +549,9 @@ def test_mcp_server_jsonrpc_protocol(tmp_path):
             "jsonrpc": "2.0",
             "id": 3,
             "method": "tools/call",
-            "params": {"name": "skillporter_diagnose", "arguments": {"path": str(tmp_path)}},
-        }
+            "params": {"name": "skillporter_diagnose", "arguments": {"path": "."}},
+        },
+        workspace_root=tmp_path,
     )
     assert call_resp["result"]["isError"] is False
     payload = json.loads(call_resp["result"]["content"][0]["text"])
@@ -569,7 +570,7 @@ def test_npx_launcher_and_standalone_pyz_execute():
             check=False,
         )
         assert proc.returncode == 0, proc.stderr
-        assert "skillporter 2." in proc.stdout
+        assert "skillporter 3." in proc.stdout
 
 
 def test_source_resolution_errors_and_security_gate_blocking(tmp_path, capsys):

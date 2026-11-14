@@ -172,6 +172,7 @@ class ResolvedSkillNode:
     ref: str = ""
     resolved_commit: str = ""
     tree_hash: str = ""
+    file_hashes: dict[str, str] = field(default_factory=dict)
     risk_score: int = 0
     direct: bool = True
     skill_dir: Path | None = None
@@ -198,6 +199,14 @@ class DependencyGraph:
     nodes: dict[str, ResolvedSkillNode] = field(default_factory=dict)
     install_order: list[str] = field(default_factory=list)  # topological leaves-first order
     root_skills: list[str] = field(default_factory=list)
+    _temp_sources: list[object] = field(default_factory=list, repr=False)
+
+    def cleanup(self) -> None:
+        for res in self._temp_sources:
+            cleanup_fn = getattr(res, "cleanup", None)
+            if callable(cleanup_fn):
+                cleanup_fn()
+        self._temp_sources.clear()
 
     def to_dict(self) -> dict[str, object]:
         edges: list[dict[str, str]] = []
@@ -300,6 +309,8 @@ def _index_workspace_skills(root: Path) -> dict[str, Path]:
 def resolve_dependency_graph(
     root: Path,
     manifest=None,
+    *,
+    lockfile=None,
 ) -> DependencyGraph:
     """Resolve all direct and transitive skill dependencies for *root*."""
     from .manifest import load_manifest
@@ -308,6 +319,8 @@ def resolve_dependency_graph(
     root = Path(root).resolve()
     if manifest is None:
         manifest = load_manifest(root)
+
+    locked_skills = getattr(lockfile, "skills", {}) if lockfile is not None else {}
 
     workspace_skills = _index_workspace_skills(root)
     graph = DependencyGraph()
@@ -357,8 +370,11 @@ def resolve_dependency_graph(
 
         visiting.append(name)
         hint = spec_hints.get(name, {})
-        src = str(hint.get("source") or default_source or "").strip()
-        ref = str(hint.get("ref") or default_ref or "").strip()
+        locked_entry = locked_skills.get(name) if isinstance(locked_skills, dict) else None
+        src = str(hint.get("source") or default_source or (locked_entry.source if locked_entry else "") or "").strip()
+        # If lockfile pins a resolved git commit, always prefer the immutable commit over a mutable branch ref!
+        pinned_commit = str(getattr(locked_entry, "resolved_commit", "") or "").strip()
+        ref = pinned_commit or str(hint.get("ref") or default_ref or "").strip()
         direct_flag = bool(hint.get("direct", is_direct))
 
         skill_dir: Path | None = None
@@ -376,6 +392,7 @@ def resolve_dependency_graph(
         elif src:
             try:
                 res = resolve_source(src, base_dir=root, ref_override=ref)
+                graph._temp_sources.append(res)
                 for d in res.skill_dirs:
                     if d.name == name:
                         skill_dir = d
@@ -404,10 +421,11 @@ def resolve_dependency_graph(
         actual_version = "1.0.0"
         fm_deps: list[SkillDependency] = []
         tree_hash = ""
+        file_hashes: dict[str, str] = {}
         risk_score = 0
         if skill_dir and skill_dir.exists():
             actual_version, fm_deps = _extract_skill_version_and_deps(skill_dir)
-            tree_hash, _ = compute_tree_hash(skill_dir)
+            tree_hash, file_hashes = compute_tree_hash(skill_dir)
             risk_score = scan_skill(skill_dir, offline=True).risk_score
 
         manifest_deps: list[SkillDependency] = list(hint.get("dependencies", []))  # type: ignore[arg-type]
@@ -442,6 +460,7 @@ def resolve_dependency_graph(
             ref=ref,
             resolved_commit=resolved_commit,
             tree_hash=tree_hash,
+            file_hashes=file_hashes,
             risk_score=risk_score,
             direct=direct_flag,
             skill_dir=skill_dir,

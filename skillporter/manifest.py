@@ -14,12 +14,17 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+from . import __version__
 from .atomic import atomic_write_text
 from .resolver import SkillDependency
 
 MANIFEST_FILENAME = "skillporter.yaml"
 LOCKFILE_FILENAME = "skillporter.lock"
 MANIFEST_SCHEMA_VERSION = 2
+
+
+class LockfileError(ValueError):
+    """Raised when skillporter.lock is corrupted or uses an unsupported schema version."""
 
 _WARNED_V1_LOCKFILES: set[str] = set()
 
@@ -160,6 +165,23 @@ class LockedSkill:
     dependencies: dict[str, str] = field(default_factory=dict)
     risk_score: int = 0
     direct: bool = True
+    file_hashes: dict[str, str] = field(default_factory=dict)
+    adapter_version: str = ""
+    scope: str = "project"
+    adapt: bool = False
+    manifest_schema_version: int = MANIFEST_SCHEMA_VERSION
+
+    @property
+    def pin_state(self) -> str:
+        """Classify whether this lockfile entry is immutable or references a mutable source."""
+        if not self.tree_hash:
+            return "UNPINNED_MUTABLE"
+        if self.resolved_commit and len(self.resolved_commit) >= 7:
+            return "PINNED_COMMIT"
+        is_remote = self.source.startswith(("https://", "http://", "git@", "github:", "registry:"))
+        if is_remote and not self.resolved_commit:
+            return "UNPINNED_MUTABLE"
+        return "PINNED_CONTENT"
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -168,7 +190,13 @@ class LockedSkill:
             "resolved_commit": self.resolved_commit,
             "version": self.version,
             "tree_hash": self.tree_hash,
+            "file_hashes": {k: self.file_hashes[k] for k in sorted(self.file_hashes)},
+            "pin_state": self.pin_state,
             "strategy": self.strategy,
+            "scope": self.scope,
+            "adapt": bool(self.adapt),
+            "adapter_version": self.adapter_version or __version__,
+            "manifest_schema_version": int(self.manifest_schema_version),
             "installed_targets": sorted(set(self.installed_targets)),
             "locked_at": self.locked_at,
             "dependencies": {k: self.dependencies[k] for k in sorted(self.dependencies)},
@@ -187,7 +215,10 @@ class LockedSkill:
             for item in raw_deps:
                 sd = SkillDependency.from_any(item)
                 deps[sd.name] = sd.version
+        raw_fhashes = data.get("file_hashes", {})
+        fhashes = {str(k): str(v) for k, v in sorted(raw_fhashes.items())} if isinstance(raw_fhashes, dict) else {}
         raw_risk = data.get("risk_score", 0)
+        raw_mver = data.get("manifest_schema_version", MANIFEST_SCHEMA_VERSION)
         return cls(
             name=str(data.get("name", "")),
             source=str(data.get("source", "")),
@@ -200,6 +231,11 @@ class LockedSkill:
             dependencies=deps,
             risk_score=int(raw_risk) if isinstance(raw_risk, (int, float)) else 0,
             direct=bool(data.get("direct", True)),
+            file_hashes=fhashes,
+            adapter_version=str(data.get("adapter_version", "")),
+            scope=str(data.get("scope", "project")),
+            adapt=bool(data.get("adapt", False)),
+            manifest_schema_version=int(raw_mver) if isinstance(raw_mver, int) else MANIFEST_SCHEMA_VERSION,
         )
 
 
@@ -211,10 +247,18 @@ class Lockfile:
     generated_at: str = ""
     skills: dict[str, LockedSkill] = field(default_factory=dict)
     migrated_from_v1: bool = False
+    manifest_schema_version: int = MANIFEST_SCHEMA_VERSION
+
+    @property
+    def reproducible(self) -> bool:
+        """Return True only when every locked skill is content-hashed and free of unpinned mutable refs."""
+        return all(bool(s.tree_hash) and s.pin_state != "UNPINNED_MUTABLE" for s in self.skills.values())
 
     def to_dict(self) -> dict[str, object]:
         return {
             "schema_version": self.schema_version,
+            "manifest_schema_version": self.manifest_schema_version,
+            "reproducible": self.reproducible,
             "generated_at": self.generated_at or "1970-01-01T00:00:00Z",
             "skills": {k: v.to_dict() for k, v in sorted(self.skills.items())},
         }
@@ -458,12 +502,21 @@ def load_lockfile(root: Path, *, warn_migration: bool = True) -> Lockfile:
         return Lockfile()
     try:
         raw = json.loads(p.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return Lockfile()
+    except (OSError, json.JSONDecodeError) as exc:
+        raise LockfileError(f"corrupted {LOCKFILE_FILENAME} at {p}: {exc}") from exc
     if not isinstance(raw, dict):
-        return Lockfile()
+        raise LockfileError(f"corrupted {LOCKFILE_FILENAME} at {p}: root JSON value must be an object")
 
-    raw_ver = int(raw.get("schema_version", 1))
+    raw_ver_obj = raw.get("schema_version", 1)
+    if isinstance(raw_ver_obj, bool) or not isinstance(raw_ver_obj, int):
+        raise LockfileError(f"invalid schema_version {raw_ver_obj!r} in {LOCKFILE_FILENAME}")
+    raw_ver = raw_ver_obj
+    if raw_ver < 1 or raw_ver > MANIFEST_SCHEMA_VERSION:
+        raise LockfileError(
+            f"unsupported {LOCKFILE_FILENAME} schema_version {raw_ver} "
+            f"(supported versions: 1..{MANIFEST_SCHEMA_VERSION})"
+        )
+
     migrated = False
     if raw_ver < MANIFEST_SCHEMA_VERSION:
         migrated = True
@@ -476,16 +529,20 @@ def load_lockfile(root: Path, *, warn_migration: bool = True) -> Lockfile:
             )
 
     skills_raw = raw.get("skills", {})
+    if not isinstance(skills_raw, dict):
+        raise LockfileError(f"corrupted {LOCKFILE_FILENAME} at {p}: 'skills' must be an object")
     skills: dict[str, LockedSkill] = {}
-    if isinstance(skills_raw, dict):
-        for k, v in sorted(skills_raw.items()):
-            if isinstance(v, dict):
-                skills[k] = LockedSkill.from_dict(v)
+    for k, v in sorted(skills_raw.items()):
+        if not isinstance(v, dict):
+            raise LockfileError(f"corrupted {LOCKFILE_FILENAME} entry for {k!r}: expected object")
+        skills[k] = LockedSkill.from_dict(v)
+    raw_mver = raw.get("manifest_schema_version", MANIFEST_SCHEMA_VERSION)
     return Lockfile(
         schema_version=MANIFEST_SCHEMA_VERSION,
         generated_at=str(raw.get("generated_at", "")),
         skills=skills,
         migrated_from_v1=migrated,
+        manifest_schema_version=int(raw_mver) if isinstance(raw_mver, int) else MANIFEST_SCHEMA_VERSION,
     )
 
 

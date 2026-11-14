@@ -1,6 +1,6 @@
 {
   "name": "@shanmukhdheekonda/skillporter",
-  "version": "2.0.3",
+  "version": "3.0.0",
   "description": "ONE SKILL. EVERY AGENT. Universal package manager, validator, security scanner, and synchronizer for AI-agent skills.",
   "keywords": [
     "agent-skills",
