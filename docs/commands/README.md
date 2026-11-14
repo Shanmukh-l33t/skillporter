@@ -60,13 +60,18 @@ skillporter install ./skills/release-notes --harness claude-code --harness codex
 
 Remove a skill safely. `uninstall` is an alias with identical options. When `--harness` is omitted, it removes all Skillporter-managed installations of `<skill>` in the selected scope while preserving the original upstream source directory unless `--purge-source` is explicitly passed. A shared `.agents/skills` copy is kept while another managed harness still owns it.
 
+Without `--harness`, `remove` first prints the destinations it would delete, once per directory. In a terminal it then asks `y/N` (default no). Without a terminal it stops with exit code `2` unless you pass `-y`, so a script cannot delete by accident. `--dry-run` only previews. Passing `--harness` explicitly never prompts.
+
+After a full removal the skill is also dropped from `skillporter.yaml` and `skillporter.lock`, so a later `sync` does not reinstall it. Pass `--keep-manifest` to leave them alone. Removing only some harnesses never deletes the manifest entry.
+
 ```bash
-skillporter remove pdf
+skillporter remove pdf --dry-run
+skillporter remove pdf -y
 skillporter remove pdf --harness cursor
-skillporter uninstall pdf --dry-run
+skillporter uninstall pdf --keep-manifest -y
 ```
 
-Options: `--harness`, `--exclude-harness`, `--scope`, `--path`, `-y` / `--yes`, `--purge-source`, `--dry-run`.
+Options: `--harness`, `--exclude-harness`, `--scope`, `--path`, `-y` / `--yes`, `--purge-source`, `--keep-manifest`, `--dry-run`. `--purge-source` deletes an in-workspace source only when no harness still uses that directory.
 
 ### `skillporter move <skill>`
 
@@ -228,6 +233,8 @@ skillporter consolidate --rollback
 
 Options: `--harness`, `--apply`, `--status`, `--reconcile`, `--rollback`, `--force`.
 
+`--apply` rewrites the instruction files it manages after taking a backup. Running it again with nothing changed reports `already up to date` and writes nothing. `--rollback` restores the first backup, and refuses to run over hand edits unless you pass `--force`; it saves the current files to a new backup first either way. See [Instruction files and context](../instructions/README.md).
+
 ### `skillporter context [path]`
 
 Inspect the exact active instruction files, ignored foreign instruction files, reachable skills, and estimated startup token budget for one or more harnesses.
@@ -354,6 +361,8 @@ Validate archive structure and per-file SHA-256 hashes, run static security chec
 skillporter import my-environment.skillpack --dry-run
 skillporter import my-environment.skillpack --only-detected --on-conflict skip
 ```
+
+Without `--harness`, import writes only to harnesses it can justify: the ones the package recorded as installed, or, for older packages, the ones that are also detected or configured on the destination. The rest are listed as missing and are not written. `--dry-run` lists exactly which directories would be created. Pass `--harness` to choose targets yourself.
 
 Options: `--path`, `--scope`, `--harness`, `--exclude-harness`, `--only-detected`, `--on-conflict fail|skip|overwrite`, `--force`, `--dry-run`, `--preview`, `--allow-risky`, `--max-risk-score`, `--no-manifest`.
 

@@ -48,6 +48,9 @@ from .state import load_state, save_state
 
 SKILLPACK_SCHEMA_VERSION = 1
 SKILLPACK_FORMAT = "skillporter-skillpack"
+# Packs carrying this marker list only the harnesses each skill was installed to (a deliberate user selection).
+# Older packs listed every harness that could read the skill, so their lists are never trusted by default.
+HARNESS_SELECTION_INSTALLED = "installed"
 
 _EXCLUDED_EXPORT_DIRS = frozenset(
     {".git", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "node_modules"}
@@ -86,6 +89,35 @@ def _is_excluded_export_file(rel_posix: str) -> tuple[bool, bool]:
     if low.endswith(".pyc") or low == ".ds_store":
         return True, False
     return False, False
+
+
+def _canonical_harnesses(names: list[str] | tuple[str, ...]) -> list[str]:
+    out: list[str] = []
+    for raw in names:
+        with contextlib.suppress(KeyError):
+            canon = harnesses.get(raw).name
+            if canon not in out:
+                out.append(canon)
+    return sorted(out)
+
+
+def _recorded_harnesses(entry: SkillEnvironmentEntry, record: object, snap: EnvironmentSnapshot) -> list[str]:
+    """Harnesses a skill was actually installed to, never the broader set of harnesses that can *read* it.
+
+    ``entry.installed_harnesses`` is the reachable set (every harness that scans the install directory, directly or as
+    a compatibility path), so it is only a last resort for unmanaged skills and is then limited to the harnesses the
+    environment selected.
+    """
+    locked = snap.lockfile.skills.get(entry.name)
+    for candidate in (
+        list(getattr(record, "harnesses", []) or []),
+        list(locked.installed_targets) if locked else [],
+        list(entry.desired_harnesses),
+    ):
+        canon = _canonical_harnesses(candidate)
+        if canon:
+            return canon
+    return _canonical_harnesses(sorted(set(entry.installed_harnesses) & set(snap.selected_harnesses)))
 
 
 @dataclass
@@ -211,6 +243,8 @@ def export_skillpack(
     diag_copies = {}
     from .diagnose import diagnose as run_diagnose
 
+    state_records = load_state(root, scope=scope, home=home)
+
     diag = run_diagnose(root, scope=scope, home=home)
     diag_copies = diag.skill_copies
 
@@ -288,7 +322,7 @@ def export_skillpack(
                 thash = entry.tree_hash
                 fhashes = dict(entry.file_hashes)
 
-            eff_harnesses = sorted(set(entry.installed_harnesses or entry.desired_harnesses))
+            eff_harnesses = _recorded_harnesses(entry, state_records.get(sname), snap)
             skills_meta[sname] = {
                 "name": sname,
                 "version": entry.version,
@@ -338,6 +372,7 @@ def export_skillpack(
             "scope": scope,
             "active_profile": snap.active_profile,
             "harnesses": all_harnesses,
+            "harness_selection": HARNESS_SELECTION_INSTALLED,
             "manifest_only": manifest_only,
             "manifest": manifest_dict,
             "profiles": profiles_map,
@@ -388,6 +423,46 @@ def export_skillpack(
         shutil.rmtree(stage_root, ignore_errors=True)
 
 
+def _gate_fetched_source(
+    root: Path,
+    sname: str,
+    sdir: Path,
+    *,
+    raw_source: str,
+    resolved_source: str,
+    resolved_commit: str,
+    targets: list[str],
+    allow_risky: bool,
+    max_risk_score: int | None,
+) -> None:
+    """Apply scan and policy gating to a skill fetched at import time (``bundled: false`` packs).
+
+    Mirrors the bundled-skill plan checks: policy violations and structural escapes are never overridable, the
+    risk/scan-completeness gate honors ``allow_risky``.
+    """
+    from .policy import evaluate_policy, load_policy
+
+    srep = scan_skill(sdir, offline=True)
+    pol_errs = evaluate_policy(
+        load_policy(root),
+        skill_dirs=[sdir],
+        require_source=True,
+        source_candidates=[raw_source, resolved_source],
+        resolved_commit=resolved_commit,
+        target_harnesses=targets,
+        sec_reports={sdir.name: srep},
+    )
+    if pol_errs:
+        raise SkillpackError(f"fetched source for {sname!r} blocked by policy: " + "; ".join(pol_errs))
+    if srep.has_structural_escape:
+        raise SkillpackError(f"fetched source for {sname!r} blocked: structural escape (non-overridable)")
+    if (not srep.passed or not srep.scan_complete or srep.exceeds_risk_threshold(max_risk_score)) and not allow_risky:
+        raise SkillpackError(
+            f"fetched source for {sname!r} blocked by static security scan: "
+            f"risk {srep.risk_score}/100 ({srep.recommendation})"
+        )
+
+
 def _extract_and_verify_skillpack(pack_path: Path) -> tuple[dict[str, object], Path, str]:
     """Safely extract *pack_path*, validate ``skillpack.json``, and verify every skill's SHA-256."""
     resolved_pack = pack_path.expanduser().resolve()
@@ -425,9 +500,16 @@ def _extract_and_verify_skillpack(pack_path: Path) -> tuple[dict[str, object], P
             raise SkillpackError("skillpack contains no skills")
 
         for sname, smeta in sorted(skills_raw.items()):
-            validate_skill_name_segment(sname)
+            try:
+                validate_skill_name_segment(str(sname))
+            except InstallError as exc:
+                raise SkillpackError(f"invalid skillpack {resolved_pack}: {exc}") from exc
             if not isinstance(smeta, dict):
                 raise SkillpackError(f"corrupted skill metadata for {sname!r}")
+            if not smeta.get("bundled", True) and not str(smeta.get("source", "")).strip():
+                raise SkillpackError(
+                    f"invalid skillpack {resolved_pack}: skill {sname!r} is not bundled and has no source to fetch"
+                )
             if smeta.get("bundled", True):
                 sdir = extract_dir / "skills" / sname
                 if not (sdir / "SKILL.md").is_file():
@@ -453,6 +535,57 @@ def _extract_and_verify_skillpack(pack_path: Path) -> tuple[dict[str, object], P
     except BaseException:
         shutil.rmtree(extract_dir, ignore_errors=True)
         raise
+
+
+def refresh_snapshot_from_disk(
+    snap: EnvironmentSnapshot, other: EnvironmentSnapshot | None = None, *, home: Path | None = None
+) -> None:
+    """Re-hash every on-disk copy of each skill in a workspace snapshot so ``diff`` sees real file content.
+
+    ``capture_environment`` hashes only the first copy it finds; when a skill is installed in several harness
+    directories an edit to any other copy (or to a file a lockfile still describes) would go unnoticed. The copy that
+    differs from *other* (or from the first copy) is reported.
+    """
+    if snap.label.split(":", 1)[0] not in ("project", "user"):
+        return
+    from .diagnose import diagnose as run_diagnose
+
+    diag = run_diagnose(snap.root, scope=snap.scope, home=home)
+    for sname, entry in snap.skills.items():
+        copies = diag.skill_copies.get(sname, [])
+        if not copies:
+            continue
+        hashed = [compute_tree_hash(c) for c in copies]
+        theirs = other.skills.get(sname) if other is not None else None
+        ref_hash = theirs.tree_hash if theirs is not None else hashed[0][0]
+        differing = [h for h in hashed if h[0] != ref_hash]
+        tree, files = differing[0] if differing else hashed[0]
+        if tree and tree != entry.tree_hash:
+            entry.tree_hash, entry.file_hashes, entry.drifted = tree, files, True
+            if entry.status == "SYNCED":
+                entry.status = "DRIFTED"
+        elif not entry.tree_hash:
+            entry.tree_hash, entry.file_hashes = tree, files
+
+
+def _reachable_harnesses(targets: list[str], scope: str) -> list[str]:
+    """Harnesses that load a skill installed to *targets* (the same notion ``diagnose`` reports for a workspace).
+
+    A workspace snapshot lists every harness that scans the install directory, so a pack snapshot built from the exact
+    install targets is expanded the same way before ``diff`` compares them.
+    """
+    attr = "project_paths" if scope == "project" else "user_paths"
+    canon = _canonical_harnesses(targets)
+    install_dirs: set[str] = set()
+    for name in canon:
+        paths = getattr(harnesses.get(name), attr)
+        if paths:
+            install_dirs.add(paths[0].path)
+    reached = set(canon)
+    for name in harnesses.HARNESSES:
+        if any(p.path in install_dirs for p in getattr(harnesses.get(name), attr)):
+            reached.add(harnesses.get(name).name)
+    return sorted(reached)
 
 
 def snapshot_from_skillpack(pack_path: Path) -> EnvironmentSnapshot:
@@ -485,7 +618,7 @@ def snapshot_from_skillpack(pack_path: Path) -> EnvironmentSnapshot:
                     managed=True,
                     on_disk=bool(smeta.get("bundled", True)),
                     desired_harnesses=h_list,
-                    installed_harnesses=h_list,
+                    installed_harnesses=_reachable_harnesses(h_list, str(doc.get("scope", "project"))),
                     status="SYNCED",
                 )
         raw_h = doc.get("harnesses", [])
@@ -511,11 +644,20 @@ def _resolve_import_targets(
     detected_set: set[str],
     scope: str,
     only_detected: bool,
+    configured_set: set[str] | None = None,
+    trust_pack: bool = False,
 ) -> tuple[list[str], list[str]]:
-    """Return ``(selected_targets, missing_on_machine)`` for one skill during import."""
+    """Return ``(selected_targets, missing_on_machine)`` for one skill during import.
+
+    Without explicit ``--harness`` selection, the pack's harnesses are intersected with the destination's detected or
+    configured harnesses, so a pack never fans out into harness directories the user did not choose. Harnesses that
+    are dropped stay listed in ``missing_on_machine``; ``--harness`` installs into exactly what the user names.
+    """
     candidates = list(explicit_harnesses) if explicit_harnesses is not None else list(requested_harnesses)
+    from_pack = explicit_harnesses is None and bool(candidates) and not trust_pack
     if not candidates:
         candidates = sorted(detected_set) if detected_set else ["claude-code", "codex", "cursor"]
+    allowed_from_pack = detected_set | (configured_set or set())
 
     missing_on_host: list[str] = []
     selected: list[str] = []
@@ -535,10 +677,23 @@ def _resolve_import_targets(
             missing_on_host.append(h.name)
             if only_detected and explicit_harnesses is None:
                 continue
+        if from_pack and h.name not in allowed_from_pack:
+            continue
         if h.name not in selected:
             selected.append(h.name)
 
     return selected, sorted(set(missing_on_host))
+
+
+def _configured_harnesses(doc: dict[str, object], current: EnvironmentSnapshot) -> set[str]:
+    """Harnesses the user configured: the destination manifest plus the manifest carried inside the pack."""
+    raw: list[str] = []
+    if current.manifest is not None:
+        raw.extend(current.manifest.harnesses)
+    pack_manifest = doc.get("manifest")
+    if isinstance(pack_manifest, dict) and isinstance(pack_manifest.get("harnesses"), list):
+        raw.extend(str(x) for x in pack_manifest["harnesses"])
+    return set(_canonical_harnesses(raw))
 
 
 def plan_import_skillpack(
@@ -603,6 +758,7 @@ def _build_import_plan_from_extracted(
     detected_objs = harnesses.detect_harnesses(root, home=home)
     detected_set = {d.harness.name for d in detected_objs if d.installed}
     current_snap = capture_environment(root, scope=target_scope, home=home)
+    configured_set = _configured_harnesses(doc, current_snap)
 
     skills_raw = doc["skills"]  # type: ignore[index]
     all_pack_skills = set(skills_raw.keys())  # type: ignore[union-attr]
@@ -628,6 +784,8 @@ def _build_import_plan_from_extracted(
             detected_set=detected_set,
             scope=target_scope,
             only_detected=only_detected,
+            configured_set=configured_set,
+            trust_pack=doc.get("harness_selection") == HARNESS_SELECTION_INSTALLED,
         )
         all_missing_harnesses.update(missing_h)
         target_by_skill[sname] = targets
@@ -647,25 +805,26 @@ def _build_import_plan_from_extracted(
                     f"{sname}: local v{cur_e.version} ({cur_e.tree_hash[:8]}) != package v{ver} ({thash[:8]})"
                 )
 
+        destinations: list[str] = []
         if smeta.get("bundled", True):
             sdir = extract_dir / "skills" / sname
             issues = [i for i in validate(parse_skill(sdir / "SKILL.md")) if i.level == "error"]
             if issues:
                 sec_blocked.append(f"{sname}: spec error ({issues[0]})")
             srep = scan_skill(sdir, offline=True)
-            if target_scope == "project":
-                from .policy import evaluate_policy, load_policy
+            from .policy import evaluate_policy, load_policy
 
-                pol = load_policy(root)
-                pol_errs = evaluate_policy(
-                    pol,
-                    skill_dirs=[sdir],
-                    source_candidates=[str(smeta.get("source", ""))],
-                    resolved_commit=str(smeta.get("resolved_commit", "")),
-                    target_harnesses=targets,
-                    sec_reports={sdir.name: srep},
-                )
-                sec_blocked.extend(f"{sname}: {pe}" for pe in pol_errs)
+            pol = load_policy(root)
+            pol_errs = evaluate_policy(
+                pol,
+                skill_dirs=[sdir],
+                require_source=True,
+                source_candidates=[str(smeta.get("source", ""))],
+                resolved_commit=str(smeta.get("resolved_commit", "")),
+                target_harnesses=targets,
+                sec_reports={sdir.name: srep},
+            )
+            sec_blocked.extend(f"{sname}: {pe}" for pe in pol_errs)
             for f in srep.findings:
                 fd = f.to_dict()
                 fd["skill"] = sname
@@ -688,6 +847,21 @@ def _build_import_plan_from_extracted(
                     home=home,
                 )
                 dest_conflicts.extend(iplan.conflicts)
+                destinations = sorted({str(d.resolved_dest) for d in iplan.destinations})
+
+        else:
+            # Source-referenced (not bundled) skills have no files to scan yet, but source and harness rules apply.
+            from .policy import evaluate_policy, load_policy
+
+            ref_errs = evaluate_policy(
+                load_policy(root),
+                skill_dirs=[],
+                require_source=True,
+                source_candidates=[str(smeta.get("source", ""))],
+                resolved_commit=str(smeta.get("resolved_commit", "")),
+                target_harnesses=targets,
+            )
+            sec_blocked.extend(f"{sname}: {pe}" for pe in ref_errs)
 
         plan_skills.append(
             {
@@ -697,6 +871,7 @@ def _build_import_plan_from_extracted(
                 "bundled": bool(smeta.get("bundled", True)),
                 "source": str(smeta.get("source", "")),
                 "target_harnesses": targets,
+                "destinations": destinations,
             }
         )
 
@@ -802,11 +977,22 @@ def import_skillpack(
                                 base_dir=root,
                                 ref_override=str(smeta.get("resolved_commit", "")),
                             )
+                            if not resolved_remote.skill_dirs:
+                                raise SkillpackError(f"source for {sname!r} contains no skill (no SKILL.md found)")
                             matches = [d for d in resolved_remote.skill_dirs if d.name == sname]
                             sdir = matches[0] if matches else resolved_remote.skill_dirs[0]
-                            srep = scan_skill(sdir, offline=True)
-                            if srep.has_structural_escape or (not srep.passed and not allow_risky):
-                                raise SkillpackError(f"fetched source for {sname!r} blocked by static security scan")
+                            _gate_fetched_source(
+                                root,
+                                sname,
+                                sdir,
+                                raw_source=str(smeta["source"]),
+                                resolved_source=resolved_remote.canonical_source,
+                                resolved_commit=resolved_remote.resolved_commit
+                                or str(smeta.get("resolved_commit", "")),
+                                targets=targets,
+                                allow_risky=allow_risky,
+                                max_risk_score=max_risk_score,
+                            )
                             expected_h = str(smeta.get("tree_hash", ""))
                             if expected_h:
                                 actual_h, _ = compute_tree_hash(sdir)
@@ -940,7 +1126,14 @@ def import_skillpack(
                         root, profiles_raw, scope=target_scope, home=home, overwrite=eff_conflict == "overwrite"
                     )
 
-            except (InstallError, DependencyError, DependencyCycleError, DependencyConflictError) as exc:
+            except (
+                InstallError,
+                SourceError,
+                SkillpackError,
+                DependencyError,
+                DependencyCycleError,
+                DependencyConflictError,
+            ) as exc:
                 for sname, targets, existed_in_pre in reversed(completed):
                     if not existed_in_pre:
                         with contextlib.suppress(Exception):

@@ -16,14 +16,16 @@ Safety invariants:
 
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import json
+import os
 import re
 import shutil
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from . import harnesses
 from .atomic import atomic_write_text, workspace_lock
@@ -85,6 +87,17 @@ _EXCLUSIVE_TOOL_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Indentation style", ("tabs", "spaces")),
 )
 
+# Headings that skillporter itself generates; they are never treated as user section groups,
+# so re-ingesting a generated file is a stable round trip.
+_GENERATED_HEADING_PREFIXES: tuple[str, ...] = (
+    "project instructions",
+    "canonical project instructions",
+    "commands & reference blocks",
+    "preserved unclassified lines",
+    "agent-specific guidelines",
+)
+_HEADING_RE = re.compile(r"^#{1,6}\s+(.+?)\s*#*\s*$")
+
 _NEGATION_RE = re.compile(r"\b(?:never|do\s+not|don't|forbid|forbidden|avoid|instead\s+of|not\s+use)\b", re.IGNORECASE)
 _AFFIRMATIVE_RE = re.compile(r"\b(?:always|must|prefer|use|run|standardize\s+on)\b", re.IGNORECASE)
 _BACKTICK_PATH_RE = re.compile(
@@ -112,6 +125,7 @@ class DiscoveredInstructionFile:
     preserved_blocks: list[str] = field(default_factory=list)
     unclassified: list[str] = field(default_factory=list)
     is_path_scoped: bool = False
+    directive_headings: list[str] = field(default_factory=list)  # parallel to ``directives``; "" = ungrouped
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -139,6 +153,17 @@ def _normalize_directive_key(line: str) -> str:
     return clean
 
 
+def _section_heading(stripped_line: str) -> str:
+    """Return the user-facing section heading for a ``#`` line, or "" for generated/invalid headings."""
+    m = _HEADING_RE.match(stripped_line)
+    if not m:
+        return ""
+    title = m.group(1).strip()
+    if title.lower().startswith(_GENERATED_HEADING_PREFIXES):
+        return ""
+    return title
+
+
 def extract_directives_and_blocks(text: str) -> tuple[list[str], list[str], list[str]]:
     """Extract directives, preserved blocks, and unclassified lines from instruction content.
 
@@ -149,21 +174,32 @@ def extract_directives_and_blocks(text: str) -> tuple[list[str], list[str], list
       * ``unclassified``: non-empty lines that fit none of the above (e.g. ``Node >= 24``).
         Callers MUST keep these in generated files and report them; nothing is silently dropped.
 
-    Headings (``#``) are structural and excluded; their text remains in the consolidation backup.
+    Headings (``#``) are structural and excluded here; see ``_extract_with_headings`` for the
+    heading each directive sat under.
     """
+    dirs, blocks, uncls, _heads = _extract_with_headings(text)
+    return dirs, blocks, uncls
+
+
+def _extract_with_headings(text: str) -> tuple[list[str], list[str], list[str], list[str]]:
+    """Like ``extract_directives_and_blocks`` plus a parallel list of section headings per directive."""
     _, body = split_frontmatter(text)
     in_code_block = False
     code_lines: list[str] = []
     code_fence = ""
     table_lines: list[str] = []
     directives: list[str] = []
+    headings: list[str] = []
     blocks: list[str] = []
     unclassified: list[str] = []
     current: list[str] = []  # [parent_content, *raw child lines] for the open top-level bullet
+    heading = ""  # nearest preceding section heading ("" = none / generated)
+    open_heading = ""  # heading in effect when the open bullet started
 
     def flush_list() -> None:
         if current:
             directives.append("\n".join(current))
+            headings.append(open_heading)
             current.clear()
 
     def flush_table() -> None:
@@ -197,6 +233,7 @@ def extract_directives_and_blocks(text: str) -> tuple[list[str], list[str], list
         flush_table()
         if s.startswith("#"):
             flush_list()
+            heading = _section_heading(s)
             continue
         m_bullet = re.match(r"^(?:[-*+]|\d+\.)\s+(.+)$", s)
         if m_bullet:
@@ -205,15 +242,18 @@ def extract_directives_and_blocks(text: str) -> tuple[list[str], list[str], list
                 current.append(raw.rstrip())  # nested child: keep verbatim indentation
             else:
                 flush_list()
+                open_heading = heading
                 current.append(m_bullet.group(1).strip())
             continue
         flush_list()
         if s.startswith(">"):
             directives.append(s.lstrip(">").strip())
+            headings.append(heading)
         elif s.startswith("<!--"):
             continue
         elif len(s) >= 15 and not s.endswith(":"):
             directives.append(s)
+            headings.append(heading)
         else:
             unclassified.append(s)
 
@@ -221,7 +261,7 @@ def extract_directives_and_blocks(text: str) -> tuple[list[str], list[str], list
         blocks.append("\n".join(code_lines))
     flush_table()
     flush_list()
-    return directives, blocks, unclassified
+    return directives, blocks, unclassified, headings
 
 
 def extract_directives(text: str) -> list[str]:
@@ -246,7 +286,61 @@ def _is_scoped_rule_file(rel_path: str, text: str) -> bool:
         apply_to = str(fm.get("applyTo", "")).strip()
         if apply_to and apply_to not in ("*", "**"):
             return True
+    if rel_path.startswith((".windsurf/rules/", ".clinerules/", ".roo/rules/", ".continue/rules/")):
+        # Windsurf: trigger glob/model_decision/manual. Cline, Roo and Continue: `paths`/`globs` scoping.
+        if str(fm.get("trigger", "")).strip().lower() in ("glob", "model_decision", "manual"):
+            return True
+        for key in ("globs", "paths"):
+            scoped = str(fm.get(key, "")).strip()
+            if scoped and scoped not in ("*", "**", "[]"):
+                return True
     return False
+
+
+def _is_inside(path: Path, base: Path) -> bool:
+    try:
+        path.relative_to(base)
+    except ValueError:
+        return False
+    return True
+
+
+def _is_instruction_rel_path(rel: str) -> bool:
+    """True if *rel* (workspace-relative, POSIX) matches a known instruction-file discovery spec."""
+    pp = PurePosixPath(rel)
+    if not rel or pp.is_absolute() or ".." in pp.parts:
+        return False
+    if any(rel == spec[0] for spec in _STATIC_INSTRUCTION_SPECS):
+        return True
+    parent = pp.parent.as_posix()
+    return any(parent == rel_dir and fnmatch.fnmatchcase(pp.name, pat) for rel_dir, pat, *_ in _GLOB_INSTRUCTION_SPECS)
+
+
+def _guard_destination(root: Path, dest: Path) -> None:
+    """Refuse writes whose directory (or symlinked destination) resolves outside the workspace root.
+
+    A symlinked destination file that still resolves inside *root* may be replaced as before.
+    """
+    root_r = root.resolve()
+    try:
+        shown = dest.relative_to(root_r).as_posix()
+    except ValueError:
+        shown = str(dest)
+    parent = dest.parent.resolve()
+    if not _is_inside(parent, root_r):
+        raise InstructionError(
+            f"refusing to write {shown}: its directory resolves outside the workspace ({parent}); "
+            "remove the symlink or choose a different target"
+        )
+    if dest.is_symlink() and not _is_inside(dest.resolve(), root_r):
+        raise InstructionError(
+            f"refusing to write {shown}: it is a symlink pointing outside the workspace ({dest.resolve()})"
+        )
+
+
+def _safe_write(root: Path, dest: Path, content: str) -> None:
+    _guard_destination(root, dest)
+    atomic_write_text(dest, content)
 
 
 def discover_instruction_files(root: Path) -> list[DiscoveredInstructionFile]:
@@ -256,9 +350,9 @@ def discover_instruction_files(root: Path) -> list[DiscoveredInstructionFile]:
 
     for rel_p, h_tuple, kind, prec in _STATIC_INSTRUCTION_SPECS:
         cand = root / rel_p
-        if cand.is_file() and not cand.is_symlink():
+        if cand.is_file() and not cand.is_symlink() and _is_inside(cand.parent.resolve(), root):
             text = cand.read_text(encoding="utf-8", errors="replace")
-            dirs, blks, uncls = extract_directives_and_blocks(text)
+            dirs, blks, uncls, heads = _extract_with_headings(text)
             found[rel_p] = DiscoveredInstructionFile(
                 rel_path=rel_p,
                 abs_path=cand,
@@ -272,11 +366,12 @@ def discover_instruction_files(root: Path) -> list[DiscoveredInstructionFile]:
                 preserved_blocks=blks,
                 unclassified=uncls,
                 is_path_scoped=False,
+                directive_headings=heads,
             )
 
     for rel_dir, pat, h_tuple, kind, prec in _GLOB_INSTRUCTION_SPECS:
         dpath = root / rel_dir
-        if not dpath.is_dir():
+        if not dpath.is_dir() or not _is_inside(dpath.resolve(), root):
             continue
         for cand in sorted(dpath.glob(pat)):
             if not cand.is_file() or cand.is_symlink():
@@ -285,7 +380,7 @@ def discover_instruction_files(root: Path) -> list[DiscoveredInstructionFile]:
             if rel_p in found:
                 continue
             text = cand.read_text(encoding="utf-8", errors="replace")
-            dirs, blks, uncls = extract_directives_and_blocks(text)
+            dirs, blks, uncls, heads = _extract_with_headings(text)
             found[rel_p] = DiscoveredInstructionFile(
                 rel_path=rel_p,
                 abs_path=cand,
@@ -299,6 +394,7 @@ def discover_instruction_files(root: Path) -> list[DiscoveredInstructionFile]:
                 preserved_blocks=blks,
                 unclassified=uncls,
                 is_path_scoped=_is_scoped_rule_file(rel_p, text),
+                directive_headings=heads,
             )
 
     return [found[k] for k in sorted(found)]
@@ -446,6 +542,40 @@ def _load_instructions_state(root: Path) -> dict[str, object]:
         return {}
 
 
+def _backups_root(root: Path) -> Path:
+    return state_dir(root.resolve()) / "backups" / "instructions"
+
+
+def _rel_to_root(root: Path, path: Path) -> str:
+    try:
+        return path.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError as exc:
+        raise InstructionError(f"backup directory {path} is outside the workspace") from exc
+
+
+def _resolve_backup_dir(root: Path, value: str) -> Path:
+    """Resolve a backup dir recorded in state.json, refusing anything outside ``.skillporter/backups/instructions``.
+
+    New state stores a workspace-relative path; an old absolute value is accepted only when it
+    resolves inside this workspace's backups directory.
+    """
+    if not value:
+        raise InstructionError("no instruction consolidation backup available to roll back")
+    root = root.resolve()
+    base = _backups_root(root).resolve()
+    raw = Path(value)
+    resolved = (raw if raw.is_absolute() else root / raw).resolve()
+    if resolved == base or not _is_inside(resolved, base):
+        raise InstructionError(
+            f"refusing to use backup directory '{value}': it is not inside "
+            f"{base.relative_to(root).as_posix() if _is_inside(base, root) else base}; "
+            "state.json may be corrupted or tampered with"
+        )
+    if not resolved.is_dir():
+        raise InstructionError("no instruction consolidation backup available to roll back")
+    return resolved
+
+
 def detect_manual_instruction_modifications(root: Path) -> list[dict[str, object]]:
     """Detect managed agent instruction files modified manually since last consolidation."""
     root = root.resolve()
@@ -465,6 +595,8 @@ def detect_manual_instruction_modifications(root: Path) -> list[dict[str, object
         if not isinstance(meta, dict):
             continue
         expected_sha = str(meta.get("sha256", ""))
+        if not _is_instruction_rel_path(str(rel_p)) or not _is_inside((root / rel_p).resolve(), root):
+            continue  # doctored state entry: never read or report on files that are not instruction files
         fpath = root / rel_p
         if not fpath.is_file():
             modifications.append(
@@ -505,6 +637,67 @@ def detect_manual_instruction_modifications(root: Path) -> list[dict[str, object
     return modifications
 
 
+class _SharedCollector:
+    """Ordered shared directives grouped by source heading; a repeated parent bullet is merged, not repeated."""
+
+    def __init__(self) -> None:
+        self._items: list[list[str]] = []  # [heading, directive]
+        self._by_parent: dict[str, int] = {}
+
+    @staticmethod
+    def _child_key(line: str) -> tuple[int, str]:
+        return len(line) - len(line.lstrip()), _normalize_directive_key(line)
+
+    def add(self, directive: str, heading: str = "") -> None:
+        lines = directive.split("\n")
+        parent_key = _normalize_directive_key(lines[0])
+        if not parent_key:
+            return
+        idx = self._by_parent.get(parent_key)
+        if idx is None:
+            self._by_parent[parent_key] = len(self._items)
+            self._items.append([heading, directive])
+            return
+        existing = self._items[idx][1].split("\n")
+        have = {self._child_key(ln) for ln in existing[1:]}
+        extra = [ln for ln in lines[1:] if self._child_key(ln) not in have]
+        if extra:
+            self._items[idx][1] = "\n".join([*existing, *extra])
+
+    @classmethod
+    def from_sections(cls, sections: list[tuple[str, list[str]]]) -> _SharedCollector:
+        col = cls()
+        for heading, items in sections:
+            for d in items:
+                col.add(d, heading)
+        return col
+
+    def sections(self) -> list[tuple[str, list[str]]]:
+        """Ungrouped directives first, then one group per heading in first-seen order."""
+        order: list[str] = [""]
+        grouped: dict[str, list[str]] = {"": []}
+        for heading, directive in self._items:
+            if heading not in grouped:
+                grouped[heading] = []
+                order.append(heading)
+            grouped[heading].append(directive)
+        return [(h, grouped[h]) for h in order if grouped[h]]
+
+
+def _flatten_sections(sections: list[tuple[str, list[str]]]) -> list[str]:
+    return [d for _h, items in sections for d in items]
+
+
+def _render_shared_sections(sections: list[tuple[str, list[str]]]) -> str:
+    parts: list[str] = []
+    for heading, items in sections:
+        if not items:
+            continue
+        bullets = "\n".join(f"- {d}" for d in items)
+        parts.append(f"## {heading}\n\n{bullets}" if heading else bullets)
+    return "\n\n".join(parts)
+
+
 def render_native_instruction_target(
     harness_id: str,
     shared_directives: list[str],
@@ -513,14 +706,16 @@ def render_native_instruction_target(
     preferred_rel_path: str = "",
     preserved_blocks: list[str] | None = None,
     unclassified_lines: list[str] | None = None,
+    shared_sections: list[tuple[str, list[str]]] | None = None,
 ) -> tuple[str, str]:
-    """Render consolidated shared + agent-specific instructions into a harness's native file format."""
+    """Render consolidated shared + agent-specific instructions into a harness's native file format.
+
+    When *shared_sections* is given (``(heading, directives)`` pairs, heading ``""`` = ungrouped) it replaces
+    *shared_directives* and each non-empty heading is emitted as a ``## <heading>`` group.
+    """
     prov = f"{MANAGED_MARKER_PREFIX} source=.skillporter/instructions/canonical.md harness={harness_id} -->"
-    shared_lines = (
-        "\n".join(f"- {d}" for d in shared_directives)
-        if shared_directives
-        else "- Follow repository standards."
-    )
+    sections = shared_sections if shared_sections is not None else [("", shared_directives)]
+    shared_lines = _render_shared_sections(sections) or "- Follow repository standards."
     blocks_section = ""
     if preserved_blocks:
         blocks_section = "\n\n## Commands & Reference Blocks\n\n" + "\n\n".join(preserved_blocks)
@@ -571,6 +766,9 @@ def render_native_instruction_target(
         )
     else:
         content = f"{prov}\n\n# Project Instructions\n\n{shared_lines}{blocks_section}{agent_section}\n"
+        if rel_out.startswith(".windsurf/rules/"):
+            # Windsurf rules choose their activation mode from frontmatter; say so explicitly.
+            content = "---\ntrigger: always_on\n---\n\n" + content
     return rel_out, content
 
 
@@ -579,8 +777,7 @@ def analyze_instructions(root: Path, *, target_harnesses: list[str] | None = Non
     root = root.resolve()
     files = discover_instruction_files(root)
     key_occurrences: dict[str, int] = {}
-    ordered_shared: list[str] = []
-    seen_shared_keys: set[str] = set()
+    shared = _SharedCollector()
     agent_specific: dict[str, list[str]] = {}
     seen_agent_keys: dict[str, set[str]] = {}
     preserved_blocks: list[str] = []
@@ -602,7 +799,7 @@ def analyze_instructions(root: Path, *, target_harnesses: list[str] | None = Non
             if bh not in seen_block_hashes:
                 seen_block_hashes.add(bh)
                 preserved_blocks.append(blk)
-        for d in f.directives:
+        for d_idx, d in enumerate(f.directives):
             k = _normalize_directive_key(d)
             if not k:
                 continue
@@ -613,10 +810,12 @@ def analyze_instructions(root: Path, *, target_harnesses: list[str] | None = Non
                 if k not in aset:
                     aset.add(k)
                     agent_specific.setdefault(spec_agent, []).append(d)
-            elif k not in seen_shared_keys:
-                seen_shared_keys.add(k)
-                ordered_shared.append(d)
+            else:
+                heads = f.directive_headings
+                shared.add(d, heads[d_idx] if d_idx < len(heads) else "")
 
+    shared_sections = shared.sections()
+    ordered_shared = _flatten_sections(shared_sections)
     unscoped_files = [f for f in files if not f.is_path_scoped]
     total_occ = sum(len(f.directives) for f in unscoped_files)
     dup_occ = sum(cnt for cnt in key_occurrences.values() if cnt > 1)
@@ -637,6 +836,7 @@ def analyze_instructions(root: Path, *, target_harnesses: list[str] | None = Non
                 agent_specific.get(cname, []),
                 preserved_blocks=preserved_blocks,
                 unclassified_lines=unclassified_lines,
+                shared_sections=shared_sections,
             )
             if all(rp != rel_p for rp, _ in file_targets):
                 file_targets.append((rel_p, cname))
@@ -654,6 +854,7 @@ def analyze_instructions(root: Path, *, target_harnesses: list[str] | None = Non
             preferred_rel_path=rel_p,
             preserved_blocks=preserved_blocks,
             unclassified_lines=unclassified_lines,
+            shared_sections=shared_sections,
         )
         proposed_outputs[rel_p] = rendered
 
@@ -665,6 +866,7 @@ def analyze_instructions(root: Path, *, target_harnesses: list[str] | None = Non
         "agents_covered": all_agents,
         "overlap_percentage": overlap_pct,
         "shared_instructions": ordered_shared,
+        "shared_sections": [{"heading": h, "directives": list(items)} for h, items in shared_sections],
         "preserved_blocks": preserved_blocks,
         "unclassified_sections": unclassified_sections,
         "unclassified_lines": unclassified_lines,
@@ -684,9 +886,13 @@ def apply_consolidation(
     force: bool = False,
     reconcile: bool = False,
 ) -> dict[str, object]:
-    """Safely back up originals, write canonical instructions, and emit native agent files."""
+    """Safely back up originals, write canonical instructions, and emit native agent files.
+
+    Every destination is validated to stay inside the workspace before anything is written, and an
+    apply that would change nothing returns ``up_to_date=True`` without writing or snapshotting.
+    """
     root = root.resolve()
-    with workspace_lock(root):
+    with workspace_lock(root):  # context manager releases the advisory lock on every exit path
         manual_mods = detect_manual_instruction_modifications(root)
         if manual_mods and not force and not reconcile:
             mod_files = ", ".join(str(m["file"]) for m in manual_mods)
@@ -704,59 +910,46 @@ def apply_consolidation(
                 f"e.g. {first_c}); resolve conflicts in source files first or pass --force"
             )
 
-        shared_list: list[str] = list(analysis["shared_instructions"])  # type: ignore[arg-type]
         preserved_blks: list[str] = list(analysis.get("preserved_blocks", []))  # type: ignore[arg-type]
         uncls_lines: list[str] = list(analysis.get("unclassified_lines", []))  # type: ignore[arg-type]
         agent_map: dict[str, list[str]] = {
             k: list(v) for k, v in analysis["agent_specific_instructions"].items()  # type: ignore[union-attr]
         }
+        collector = _SharedCollector.from_sections(
+            [(str(sec["heading"]), list(sec["directives"])) for sec in analysis["shared_sections"]]  # type: ignore[index,union-attr]
+        )
 
         if reconcile and manual_mods:
-            existing_keys = {_normalize_directive_key(d) for d in shared_list}
+            existing_keys = {_normalize_directive_key(d) for d in _flatten_sections(collector.sections())}
             for m in manual_mods:
                 for added_d in m.get("added_directives", []):  # type: ignore[union-attr]
                     nk = _normalize_directive_key(str(added_d))
                     if nk and nk not in existing_keys:
                         existing_keys.add(nk)
-                        shared_list.append(str(added_d))
+                        collector.add(str(added_d))
+        shared_sections = collector.sections()
+        shared_list = _flatten_sections(shared_sections)
 
         files = discover_instruction_files(root)
         if not files and not shared_list:
             raise InstructionError(f"no instruction files discovered under {root} to consolidate")
 
-        # 1. Back up existing files before first write (or before every overwrite)
-        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        st_prev = _load_instructions_state(root)
-        initial_backup_dir_str = str(st_prev.get("initial_backup_dir", ""))
-        backup_root = state_dir(root) / "backups" / "instructions" / f"{ts}-{uuid.uuid4().hex[:8]}"
-        backed_up: list[str] = []
-        for f in files:
-            bdest = backup_root / f.rel_path
-            bdest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(f.abs_path, bdest)
-            backed_up.append(f.rel_path)
-
-        if not initial_backup_dir_str or not Path(initial_backup_dir_str).is_dir():
-            initial_backup_dir_str = str(backup_root)
-
-        # 2. Write canonical source of truth
+        # 1. Plan every write up front so a refused destination leaves the workspace untouched.
         idir = _instructions_dir(root)
-        idir.mkdir(parents=True, exist_ok=True)
-        canonical_md = "# Canonical Project Instructions\n\n" + "\n".join(f"- {d}" for d in shared_list) + "\n"
+        canonical_md = "# Canonical Project Instructions\n\n"
+        rendered_shared = _render_shared_sections(shared_sections)
+        canonical_md += rendered_shared + "\n" if rendered_shared else ""
         if preserved_blks:
             canonical_md += "\n## Commands & Reference Blocks\n\n" + "\n\n".join(preserved_blks) + "\n"
         if uncls_lines:
             canonical_md += "\n## Preserved Unclassified Lines\n\n" + "\n".join(uncls_lines) + "\n"
-        atomic_write_text(idir / "canonical.md", canonical_md)
-
+        planned: list[tuple[Path, str]] = [(idir / "canonical.md", canonical_md)]
         for hname, alist in sorted(agent_map.items()):
             if alist:
-                apath = idir / "agents" / f"{hname}.md"
-                atomic_write_text(apath, f"# {hname} Instructions\n\n" + "\n".join(f"- {d}" for d in alist) + "\n")
+                agent_md = f"# {hname} Instructions\n\n" + "\n".join(f"- {d}" for d in alist) + "\n"
+                planned.append((idir / "agents" / f"{hname}.md", agent_md))
 
-        # 3. Render and write target agent files
         managed_records: dict[str, dict[str, str]] = {}
-        written_files: list[str] = []
         proposed = analysis["proposed_outputs"]
         target_keys = list(proposed.keys()) if isinstance(proposed, dict) else []
         for rel_p in target_keys:
@@ -771,6 +964,7 @@ def apply_consolidation(
                         agent_map.get(cname, []),
                         preserved_blocks=preserved_blks,
                         unclassified_lines=uncls_lines,
+                        shared_sections=shared_sections,
                     )
                     if rp_cand == rel_p:
                         h_id = cname
@@ -782,58 +976,157 @@ def apply_consolidation(
                 preferred_rel_path=rel_p,
                 preserved_blocks=preserved_blks,
                 unclassified_lines=uncls_lines,
+                shared_sections=shared_sections,
             )
-            dest_p = root / rel_p
-            atomic_write_text(dest_p, out_content)
-            managed_records[rel_p] = {
-                "harness": h_id,
-                "sha256": _sha256_text(out_content),
+            planned.append((root / rel_p, out_content))
+            managed_records[rel_p] = {"harness": h_id, "sha256": _sha256_text(out_content)}
+
+        for dest_p, _content in [*planned, (_instructions_state_file(root), "")]:
+            _guard_destination(root, dest_p)
+
+        st_prev = _load_instructions_state(root)
+        up_to_date = st_prev.get("managed_files") == managed_records and all(
+            dest_p.is_file()
+            and _sha256_text(dest_p.read_text(encoding="utf-8", errors="replace")) == _sha256_text(content)
+            for dest_p, content in planned
+        )
+        if up_to_date:
+            return {
+                "applied": True,
+                "reconciled": reconcile,
+                "up_to_date": True,
+                "changed": False,
+                "canonical_path": str(idir / "canonical.md"),
+                "backup_dir": None,
+                "backed_up_files": [],
+                "written_files": [],
+                "shared_count": len(shared_list),
+                "conflicts": analysis["conflicts"],
             }
-            written_files.append(rel_p)
+
+        # 2. Back up existing files before first write (or before every overwrite)
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        backup_root = _backups_root(root) / f"{ts}-{uuid.uuid4().hex[:8]}"
+        backed_up: list[str] = []
+        for f in files:
+            bdest = backup_root / f.rel_path
+            bdest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(f.abs_path, bdest)
+            backed_up.append(f.rel_path)
+
+        try:
+            initial_rel = _rel_to_root(root, _resolve_backup_dir(root, str(st_prev.get("initial_backup_dir", ""))))
+        except InstructionError:
+            initial_rel = _rel_to_root(root, backup_root)  # missing, legacy-foreign or tampered: start fresh
+
+        # 3. Write canonical source of truth, agent overrides and native target files
+        for dest_p, content in planned:
+            _safe_write(root, dest_p, content)
+        written_files = [rel_p for rel_p in managed_records]
 
         state_payload = {
             "schema_version": 1,
             "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "initial_backup_dir": initial_backup_dir_str,
-            "latest_backup_dir": str(backup_root),
+            "initial_backup_dir": initial_rel,
+            "latest_backup_dir": _rel_to_root(root, backup_root),
             "managed_files": managed_records,
         }
-        atomic_write_text(_instructions_state_file(root), json.dumps(state_payload, indent=2) + "\n")
+        _safe_write(root, _instructions_state_file(root), json.dumps(state_payload, indent=2) + "\n")
 
         return {
             "applied": True,
             "reconciled": reconcile,
+            "up_to_date": False,
+            "changed": True,
             "canonical_path": str(idir / "canonical.md"),
             "backup_dir": str(backup_root),
             "backed_up_files": backed_up,
             "written_files": written_files,
+            "warnings": _harness_activation_warnings(written_files),
             "shared_count": len(shared_list),
             "conflicts": analysis["conflicts"],
         }
 
 
-def rollback_consolidation(root: Path) -> dict[str, object]:
-    """Restore pre-consolidation original instruction files from backup."""
+def _harness_activation_warnings(written_files: list[str]) -> list[str]:
+    """Explain generated files that their agent does not load on its own (verified against the real binary)."""
+    warnings: list[str] = []
+    if "CONVENTIONS.md" in written_files:
+        warnings.append(
+            "aider does not load CONVENTIONS.md by default: start it with `aider --read CONVENTIONS.md` "
+            "or add `read: CONVENTIONS.md` to .aider.conf.yml (skillporter did not change that file)."
+        )
+    return warnings
+
+
+def _plan_restore(root: Path, bdir: Path) -> tuple[list[tuple[str, Path]], list[str]]:
+    """Walk a backup dir without following symlinks; keep only known instruction-file paths."""
+    plan: list[tuple[str, Path]] = []
+    skipped: list[str] = []
+    for dirpath, dirnames, filenames in os.walk(bdir, followlinks=False):
+        base = Path(dirpath)
+        for dn in list(dirnames):
+            if (base / dn).is_symlink():
+                skipped.append((base / dn).relative_to(bdir).as_posix())
+                dirnames.remove(dn)
+        dirnames.sort()
+        for fn in sorted(filenames):
+            fpath = base / fn
+            rel_p = fpath.relative_to(bdir).as_posix()
+            if fpath.is_symlink() or not fpath.is_file() or not _is_instruction_rel_path(rel_p):
+                skipped.append(rel_p)
+                continue
+            plan.append((rel_p, fpath))
+    for rel_p, _src in plan:
+        _guard_destination(root, root / rel_p)
+    return sorted(plan), sorted(skipped)
+
+
+def rollback_consolidation(root: Path, *, force: bool = False) -> dict[str, object]:
+    """Restore pre-consolidation original instruction files from backup.
+
+    The backup directory recorded in state.json is only trusted when it lives inside this
+    workspace's ``.skillporter/backups/instructions``. Hand-edited managed files block the
+    rollback unless *force* is set, and the current files are always snapshotted first.
+    """
     root = root.resolve()
     with workspace_lock(root):
         st = _load_instructions_state(root)
-        bdir_str = str(st.get("initial_backup_dir") or st.get("latest_backup_dir") or "")
-        if not bdir_str or not Path(bdir_str).is_dir():
-            raise InstructionError("no instruction consolidation backup available to roll back")
-        bdir = Path(bdir_str)
+        bdir = _resolve_backup_dir(root, str(st.get("initial_backup_dir") or st.get("latest_backup_dir") or ""))
+        plan, skipped = _plan_restore(root, bdir)
+
+        edited = [m for m in detect_manual_instruction_modifications(root) if m.get("status") == "modified"]
+        if edited and not force:
+            names = ", ".join(str(m["file"]) for m in edited)
+            raise InstructionError(
+                f"manual modifications detected in managed instruction file(s): {names}; rollback would discard "
+                "them. Pass --force to restore anyway (current files are snapshotted first)"
+            )
+
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        snapshot = _backups_root(root) / f"{ts}-pre-rollback-{uuid.uuid4().hex[:8]}"
+        snapshot.mkdir(parents=True, exist_ok=True)
+        for f in discover_instruction_files(root):
+            sdest = snapshot / f.rel_path
+            sdest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(f.abs_path, sdest)
+
         restored: list[str] = []
-        for fpath in sorted(bdir.rglob("*")):
-            if not fpath.is_file():
-                continue
-            rel_p = fpath.relative_to(bdir).as_posix()
-            dest = root / rel_p
-            atomic_write_text(dest, fpath.read_text(encoding="utf-8", errors="replace"))
+        for rel_p, src in plan:
+            _safe_write(root, root / rel_p, src.read_text(encoding="utf-8", errors="replace"))
             restored.append(rel_p)
 
         idir = _instructions_dir(root)
-        if idir.is_dir():
+        if idir.is_dir() and not idir.is_symlink():
             shutil.rmtree(idir, ignore_errors=True)
-        return {"rolled_back": True, "backup_dir": str(bdir), "restored_files": restored}
+        return {
+            "rolled_back": True,
+            "backup_dir": str(bdir),
+            "restored_files": restored,
+            "skipped_files": skipped,
+            "pre_rollback_snapshot": str(snapshot),
+            "forced": bool(force and edited),
+        }
 
 
 def inspect_harness_context(root: Path, harness_id: str, *, scope: str = "project") -> dict[str, object]:

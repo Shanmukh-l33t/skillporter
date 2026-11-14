@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .atomic import atomic_write_text
+from .audit import redact_sensitive_text
 from .frontmatter import parse_skill, validate
 from .install import validate_skill_name_segment
 from .security import scan_skill
@@ -193,6 +194,41 @@ SEED_CATALOG: tuple[RegistryPackage, ...] = (
 )
 
 
+def _split_registry_url(raw: str) -> tuple[str, urllib.parse.SplitResult | None]:
+    """Return ``(scheme, parts)`` for a registry spec; scheme is lower-cased, ``""`` for plain filesystem paths."""
+    text = raw.strip()
+    if "://" not in text:
+        return "", None
+    try:
+        parts = urllib.parse.urlsplit(text)
+    except ValueError:
+        return "invalid", None
+    return parts.scheme.lower(), parts
+
+
+def _redacted_url(parts: urllib.parse.SplitResult | None, fallback: str = "<url>") -> str:
+    """Render a URL without userinfo so credentials never appear in messages."""
+    if parts is None:
+        return fallback
+    host = parts.hostname or ""
+    if ":" in host:
+        host = f"[{host}]"
+    try:
+        port = f":{parts.port}" if parts.port else ""
+    except ValueError:
+        port = ""
+    return urllib.parse.urlunsplit((parts.scheme.lower(), f"{host}{port}", parts.path, parts.query, ""))
+
+
+def _validate_bearer_token(token: str) -> None:
+    """Reject tokens that cannot be a single, header-safe value (message never includes the token)."""
+    if any(ord(c) < 33 or ord(c) > 126 for c in token):
+        raise ValueError(
+            "SKILLPORTER_REGISTRY_TOKEN contains whitespace, control or non-ASCII characters; "
+            "refusing to send it (check the environment variable for stray newlines)"
+        )
+
+
 def load_catalog(registry_url: str | None = None) -> list[RegistryPackage]:
     """Load the registry catalog from seed entries plus optional local/remote index."""
     packages: dict[str, RegistryPackage] = {p.slug.lower(): p for p in SEED_CATALOG}
@@ -201,9 +237,14 @@ def load_catalog(registry_url: str | None = None) -> list[RegistryPackage]:
         return list(packages.values())
 
     try:
-        if url.startswith(("http://", "https://")):
+        scheme, parts = _split_registry_url(url)
+        if scheme and scheme not in ("http", "https"):
+            return list(packages.values())
+        if parts is not None and (parts.username is not None or parts.password is not None):
+            return list(packages.values())
+        if scheme in ("http", "https"):
             _MAX_REGISTRY_BYTES = 1 << 20
-            with urllib.request.urlopen(url, timeout=5) as resp:  # noqa: S310  # nosec B310
+            with urllib.request.urlopen(url.strip(), timeout=5) as resp:  # noqa: S310  # nosec B310
                 body = resp.read(_MAX_REGISTRY_BYTES + 1)
             if len(body) > _MAX_REGISTRY_BYTES:
                 raise ValueError(f"registry payload exceeds {_MAX_REGISTRY_BYTES} bytes; refusing to parse")
@@ -411,15 +452,27 @@ def publish_skill(
             "no target registry configured; pass --registry <index.json-or-url>, "
             "set SKILLPORTER_REGISTRY_URL, or pass --dry-run (or use `skillporter pack` for local bundles)"
         )
-    elif target_registry.startswith(("http://", "https://")):
-        parsed_u = urllib.parse.urlsplit(target_registry)
+    elif _split_registry_url(target_registry)[0] != "":
+        scheme_u, parsed_u = _split_registry_url(target_registry)
+        shown = redact_sensitive_text(_redacted_url(parsed_u))
+        if scheme_u not in ("http", "https") or parsed_u is None:
+            raise ValueError(
+                "unsupported registry URL scheme; only https:// (or http:// for localhost testing) "
+                "and local index file paths are allowed"
+            )
+        target_registry = target_registry.strip()
         host = (parsed_u.hostname or "").lower()
         is_loopback = host in ("127.0.0.1", "localhost", "::1")
         if not host or any(ord(c) < 32 for c in target_registry):
-            raise ValueError(f"invalid registry URL {target_registry!r}")
-        if parsed_u.scheme == "http" and not is_loopback:
+            raise ValueError("invalid registry URL")
+        if parsed_u.username is not None or parsed_u.password is not None:
             raise ValueError(
-                f"refusing cleartext HTTP registry URL {target_registry!r}; "
+                f"registry URL {shown!r} must not embed credentials (user:pass@host); "
+                "use SKILLPORTER_REGISTRY_TOKEN instead"
+            )
+        if scheme_u == "http" and not is_loopback:
+            raise ValueError(
+                f"refusing cleartext HTTP registry URL {shown!r}; "
                 "use https:// (http:// is permitted only for localhost/127.0.0.1 testing)"
             )
 
@@ -444,6 +497,7 @@ def publish_skill(
             "User-Agent": "skillporter-registry-client/1.0",
         }
         if token:
+            _validate_bearer_token(token)
             headers["Authorization"] = f"Bearer {token}"
         payload_bytes = json.dumps(
             {
@@ -455,20 +509,30 @@ def publish_skill(
         ).encode("utf-8")
         req = urllib.request.Request(target_registry, data=payload_bytes, headers=headers, method="POST")
         opener = urllib.request.build_opener(_SafeRedirectHandler())
+        status_code = 200
         try:
             with opener.open(req, timeout=15) as resp:
                 status_code = getattr(resp, "status", 200)
-                if status_code >= 400:
-                    raise ValueError(f"registry rejected publication with HTTP {status_code}")
         except urllib.error.HTTPError as exc:
             if exc.code in (401, 403):
                 raise ValueError(
                     f"registry authentication failed (HTTP {exc.code}); verify SKILLPORTER_REGISTRY_TOKEN"
-                ) from exc
-            raise ValueError(f"registry publication failed with HTTP {exc.code}: {exc.reason}") from exc
+                ) from None
+            raise ValueError(
+                redact_sensitive_text(f"registry publication failed with HTTP {exc.code}: {exc.reason}")
+            ) from None
         except urllib.error.URLError as exc:
-            raise ValueError(f"network failure reaching registry {target_registry!r}: {exc.reason}") from exc
-        published_to = target_registry
+            raise ValueError(
+                redact_sensitive_text(f"network failure reaching registry {shown!r}: {exc.reason}")
+            ) from None
+        except (ValueError, OSError):
+            # http.client embeds the offending header value (the bearer token) in its error text: withhold it.
+            raise ValueError(
+                f"registry request to {shown!r} failed (error details withheld to protect credentials)"
+            ) from None
+        if status_code >= 400:
+            raise ValueError(f"registry rejected publication with HTTP {status_code}")
+        published_to = shown
     else:
         idx_path = Path(target_registry).expanduser().resolve()
         existing_items: list[dict[str, object]] = []

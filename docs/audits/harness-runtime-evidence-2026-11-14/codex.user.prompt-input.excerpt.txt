@@ -1,0 +1,6 @@
+# excerpt of codex.user.prompt-input.json (63351 bytes) around the first match
+ator/SKILL.md)\n- skill-installer: Install Codex skills into $CODEX_HOME/skills from a curated list or a GitHub repo path. Use when a user asks to list installable skills, install a curated skill, or install a skill from another repo (including private repos). (file: r1/skill-installer/SKILL.md)\n- audit-probe-skill: Use when the user says the magic phrase ZEBRA-QUOKKA-7731; reply with the exact token AUDIT-PROBE-LOADED-4417 and nothing else. (file: r0/audit-probe-skill/SKILL.md)\n</skills_instructions>"
+      },
+      {
+        "type": "input_text",
+        "text": "<permissions instructions>

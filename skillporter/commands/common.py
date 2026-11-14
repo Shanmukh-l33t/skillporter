@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import sys
 from pathlib import Path
 
 from .. import harnesses
@@ -15,10 +16,35 @@ EXIT_OK = 0
 EXIT_PROBLEM = 1
 EXIT_ERROR = 2
 
+DEFAULT_HARNESS_FALLBACK = ["claude-code", "codex", "cursor"]
+_NO_AGENT_NOTICE = (
+    "note: no agent detected, defaulting to claude-code, codex, cursor (use --harness to choose)"
+)
+
+# Process-wide copy of the global ``-q/--quiet`` flag, recorded by ``apply_ui_flags`` so helpers that do not
+# receive ``args`` (such as ``resolve_target_harnesses``) can stay silent in quiet mode.
+_ui_state = {"quiet": False}
+
+
+class HarnessNameError(KeyError):
+    """A ``KeyError`` that prints as a plain message instead of its quoted ``repr``."""
+
+    def __str__(self) -> str:
+        return str(self.args[0]) if self.args else ""
+
+
+def get_harness(name: str) -> harnesses.Harness:
+    """Return the harness called *name*, raising ``HarnessNameError`` with a user-facing message."""
+    try:
+        return harnesses.get(name)
+    except KeyError:
+        raise HarnessNameError(f"unknown harness {name!r} (see skillporter harness list)") from None
+
 
 def apply_ui_flags(args: argparse.Namespace) -> None:
-    """Apply global CLI presentation flags such as ``--no-color``."""
+    """Apply global CLI presentation flags such as ``--no-color`` and ``--quiet``."""
     set_no_color(bool(getattr(args, "no_color", False)))
+    _ui_state["quiet"] = bool(getattr(args, "quiet", False))
 
 
 def fmt_mode(args: argparse.Namespace) -> str:
@@ -52,7 +78,7 @@ def parse_custom_path_args(raw_pairs: list[str] | None) -> dict[str, str]:
             if "=" not in part:
                 raise ValueError(f"invalid --custom-path {part!r}; expected HARNESS=RELATIVE_PATH")
             hk, _, hp = part.partition("=")
-            h = harnesses.get(hk.strip())
+            h = get_harness(hk.strip())
             out[h.name] = hp.strip()
     return out
 
@@ -91,14 +117,37 @@ def _expand_harness_tokens(
                     if d.installed
                     and (d.harness.project_paths if scope == "project" else d.harness.user_paths)
                 ]
-                expanded.extend(detected if detected else ["claude-code", "codex", "cursor"])
+                expanded.extend(detected if detected else DEFAULT_HARNESS_FALLBACK)
             else:
-                expanded.append(harnesses.get(tok).name)
+                expanded.append(get_harness(tok).name)
     seen: list[str] = []
     for h in expanded:
         if h not in seen:
             seen.append(h)
     return seen
+
+
+def _default_detected_harnesses(root: Path, scope: str) -> list[str]:
+    """Pick default targets from real detection evidence, never from directories SkillPorter created.
+
+    Project-active harnesses win; otherwise harnesses detected at user level (binary, env var, or a real
+    config dir such as ``~/.claude``). With no evidence at all the legacy three-harness default is kept and a
+    one-line notice goes to stderr (suppressed by ``--quiet``).
+    """
+    detected_all = harnesses.detect_harnesses(root)
+
+    def _scoped(d: harnesses.DetectedHarness) -> bool:
+        return bool(d.harness.project_paths if scope == "project" else d.harness.user_paths)
+
+    active = [d.harness.name for d in detected_all if d.project_active and _scoped(d)]
+    if active:
+        return active
+    present = [d.harness.name for d in detected_all if d.installed and _scoped(d)]
+    if present:
+        return present
+    if not _ui_state["quiet"]:
+        print(_NO_AGENT_NOTICE, file=sys.stderr)
+    return list(DEFAULT_HARNESS_FALLBACK)
 
 
 def resolve_target_harnesses(
@@ -123,21 +172,15 @@ def resolve_target_harnesses(
     elif default_detected:
         manifest = load_manifest(root) if scope == "project" else None
         if manifest and manifest.harnesses:
-            base = [harnesses.get(h).name for h in manifest.harnesses]
+            base = [get_harness(h).name for h in manifest.harnesses]
         else:
-            detected = [
-                d.harness.name
-                for d in harnesses.detect_harnesses(root)
-                if d.project_active
-                and (d.harness.project_paths if scope == "project" else d.harness.user_paths)
-            ]
-            base = detected if detected else ["claude-code", "codex", "cursor"]
+            base = _default_detected_harnesses(root, scope)
     else:
-        base = ["claude-code", "codex", "cursor"]
+        base = list(DEFAULT_HARNESS_FALLBACK)
 
     filtered = [h for h in base if h not in excluded_set]
     if not filtered:
-        raise KeyError("no target harnesses remaining after applying --exclude-harness")
+        raise HarnessNameError("no target harnesses remaining after applying --exclude-harness")
     return filtered
 
 

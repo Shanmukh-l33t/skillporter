@@ -545,7 +545,12 @@ test('tabs, search and filters ship their interactive markup', () => {
     assert.ok(home.includes(`id="${tab[1]}"`), `tab controls a missing panel: ${tab[1]}`);
   }
   assert.ok((home.match(/data-copy="/g) ?? []).length >= 15, 'copy buttons missing');
-  for (const filter of ['all', 'tier:RUNTIME_VERIFIED', 'tier:INTEGRATION_TESTED', 'tier:FIXTURE_TESTED', 'category:coding', 'category:autonomous']) {
+  // A tier filter only exists while at least one adapter holds that tier, so derive them from the data.
+  const tierFilters = Object.entries(harnessData.counts.verification)
+    .filter(([, count]) => count > 0)
+    .map(([tier]) => `tier:${tier}`);
+  assert.ok(tierFilters.includes('tier:RUNTIME_VERIFIED') && tierFilters.includes('tier:FIXTURE_TESTED'));
+  for (const filter of ['all', ...tierFilters, 'category:coding', 'category:autonomous']) {
     assert.ok(home.includes(`data-filter="${filter}"`), `filter missing: ${filter}`);
   }
   assert.match(home, /<dialog\b[^>]*data-search/);

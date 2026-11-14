@@ -121,7 +121,7 @@ def test_policy_blocks_sync_manifest_bypass_traversal_glob_hyphen_caps_and_profi
     capsys.readouterr()
     assert main(["profile", "save", "ops", "--path", str(ws3), "--json"]) == 0
     capsys.readouterr()
-    assert main(["remove", "sh-runner", "--path", str(ws3), "--json"]) == 0
+    assert main(["remove", "sh-runner", "--path", str(ws3), "-y", "--json"]) == 0
     capsys.readouterr()
     (ws3 / "skillporter.policy.yaml").write_text("banned_capabilities:\n  - shell_exec\n", encoding="utf-8")
     assert main(["profile", "use", "ops", "--path", str(ws3)]) != 0
@@ -179,7 +179,7 @@ def test_remove_purge_source_preserves_remaining_owners_and_avoids_compat_noise(
     src = _make_skill(tmp_path / "src", "only-claude")
     assert main(["add", str(src), "--harness", "claude-code", "--path", str(ws2), "--json"]) == 0
     capsys.readouterr()
-    assert main(["remove", "only-claude", "--path", str(ws2), "--json"]) == 0
+    assert main(["remove", "only-claude", "--path", str(ws2), "-y", "--json"]) == 0
     rm_out = json.loads(capsys.readouterr().out)
     assert [r["harness"] for r in rm_out["results"]] == ["claude-code"]
 

@@ -10,12 +10,125 @@ from pathlib import Path
 from .. import harnesses
 from ..audit import record_audit_event
 from ..diagnose import diagnose as run_diagnose
-from ..diagnose import resolve_path
+from ..diagnose import load_custom_harness_paths, resolve_path
 from ..install import InstallError, rollback_skill, validate_skill_name_segment
 from ..install import uninstall as run_uninstall
+from ..manifest import LockfileError, load_lockfile, load_manifest, save_lockfile, save_manifest
 from ..state import load_state
 from ..ui import action_symbol
 from .common import EXIT_ERROR, EXIT_OK, EXIT_PROBLEM, fmt_mode, is_quiet, resolve_target_harnesses
+
+
+def _planned_rows(root: Path, skill_name: str, targets: list[str], scope: str) -> list[dict[str, str]]:
+    """Describe what `remove` would delete for *targets* (primary path plus non-shared native secondary paths)."""
+    planned: list[dict[str, str]] = []
+    for t in targets:
+        h = harnesses.get(t)
+        paths = h.project_paths if scope == "project" else h.user_paths
+        for idx, sp in enumerate(paths):
+            if idx > 0 and sp.is_compatibility:
+                continue
+            dest = resolve_path(sp.path, scope, root) / skill_name
+            exists = dest.exists() or dest.is_symlink()
+            if idx > 0 and not exists:
+                continue
+            action = "would-remove" if exists else "not-installed"
+            planned.append({"skill": skill_name, "harness": h.name, "dest": str(dest), "action": action})
+    return planned
+
+
+def _distinct_by_destination(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Collapse rows that share one destination (e.g. several harnesses on ``.agents/skills``) into one row."""
+    merged: dict[str, dict[str, str]] = {}
+    for row in rows:
+        cur = merged.get(row["dest"])
+        if cur is None:
+            merged[row["dest"]] = dict(row)
+            continue
+        names = cur["harness"].split(",")
+        if row["harness"] not in names:
+            cur["harness"] = ",".join([*names, row["harness"]])
+        if row["action"] == "would-remove":
+            cur["action"] = "would-remove"
+    return list(merged.values())
+
+
+def _confirm_removal(
+    args: argparse.Namespace, skill_name: str, rows: list[dict[str, str]], is_json: bool
+) -> int | None:
+    """Preview a no-``--harness`` removal and ask for consent. Returns an exit code to stop, or None to proceed."""
+    distinct = _distinct_by_destination(rows)
+    out = sys.stderr if is_json else sys.stdout
+    for row in distinct:
+        print(f"{row['action']:14} {row['harness']:14} {row['dest']}", file=out)
+    if getattr(args, "yes", False) or getattr(args, "force", False):
+        return None
+    stdin = sys.stdin
+    if stdin is not None and stdin.isatty():
+        print(f"Remove {skill_name!r} from {len(distinct)} destination(s)? [y/N] ", end="", file=out, flush=True)
+        try:
+            answer = input()
+        except EOFError:
+            answer = ""
+        if answer.strip().lower() in ("y", "yes"):
+            return None
+        print("aborted: nothing was removed", file=sys.stderr)
+        return EXIT_PROBLEM
+    print(
+        f"error: refusing to remove {skill_name!r} from {len(distinct)} destination(s) without confirmation; "
+        "pass -y/--yes to confirm, use --harness to target specific harnesses, or --dry-run to preview",
+        file=sys.stderr,
+    )
+    return EXIT_ERROR
+
+
+def _remaining_install_destinations(root: Path, skill_name: str, scope: str) -> set[Path]:
+    """Resolved harness install destinations that still hold *skill_name* (the source dir is never counted)."""
+    custom = load_custom_harness_paths(root, scope=scope)
+    found: set[Path] = set()
+    for hname in harnesses.names():
+        h = harnesses.get(hname)
+        raws = [sp.path for sp in (h.project_paths if scope == "project" else h.user_paths)]
+        if hname in custom:
+            raws.append(custom[hname])
+        for raw in raws:
+            dest = resolve_path(raw, scope, root) / skill_name
+            if dest.exists() or dest.is_symlink():
+                found.add(dest.resolve())
+    return found
+
+
+def _update_manifest_and_lock(
+    root: Path, skill_name: str, targets: list[str], *, fully_removed: bool, keep_manifest: bool
+) -> None:
+    """Drop a fully removed skill from skillporter.yaml / skillporter.lock; trim harnesses on partial removal."""
+    if keep_manifest:
+        return
+    try:
+        manifest = load_manifest(root)
+        if manifest is not None:
+            changed = False
+            if fully_removed:
+                kept = [s for s in manifest.skills if s.name != skill_name]
+                changed = len(kept) != len(manifest.skills)
+                manifest.skills = kept
+            else:
+                gone = {harnesses.get(t).name for t in targets}
+                for spec in manifest.skills:
+                    if spec.name == skill_name and spec.harnesses:
+                        left = [h for h in spec.harnesses if h not in gone]
+                        if left and left != spec.harnesses:
+                            spec.harnesses = left
+                            changed = True
+            if changed:
+                save_manifest(root, manifest)
+        if fully_removed:
+            lock = load_lockfile(root, warn_migration=False)
+            if skill_name in lock.skills:
+                del lock.skills[skill_name]
+                save_lockfile(root, lock)
+    except (LockfileError, OSError, ValueError) as exc:
+        print(f"warning: could not update skillporter manifest/lock for {skill_name!r}: {exc}", file=sys.stderr)
 
 
 def cmd_uninstall(args: argparse.Namespace) -> int:
@@ -75,21 +188,18 @@ def cmd_uninstall(args: argparse.Namespace) -> int:
             )
 
         if dry_run:
-            planned = []
-            for t in targets:
-                h = harnesses.get(t)
-                paths = h.project_paths if args.scope == "project" else h.user_paths
-                if not paths:
-                    continue
-                dest = resolve_path(paths[0].path, args.scope, root) / skill_name
-                action = "would-remove" if (dest.exists() or dest.is_symlink()) else "not-installed"
-                planned.append({"skill": skill_name, "harness": h.name, "dest": str(dest), "action": action})
+            planned = _planned_rows(root, skill_name, targets, args.scope)
             if is_json:
                 print(json.dumps({"dry_run": True, "results": planned}, indent=2))
             else:
                 for row in planned:
                     print(f"{row['action']:14} {row['harness']:14} {row['dest']}")
             return EXIT_OK
+
+        if not args.harness:
+            stop = _confirm_removal(args, skill_name, _planned_rows(root, skill_name, targets, args.scope), is_json)
+            if stop is not None:
+                return stop
 
         results = run_uninstall(root, skill_name, targets, scope=args.scope, record_state=True)
     except (InstallError, KeyError) as exc:
@@ -99,8 +209,7 @@ def cmd_uninstall(args: argparse.Namespace) -> int:
     purged_source_path = ""
     if purge_source and rec and rec.source:
         post_records = load_state(root, scope=args.scope)
-        post_diag = run_diagnose(root, scope=args.scope)
-        remaining_copies = {c.resolve() for c in post_diag.skill_copies.get(skill_name, [])}
+        remaining_copies = _remaining_install_destinations(root, skill_name, args.scope)
         raw_cand = Path(rec.source).expanduser()
         cand_src = (root / raw_cand).resolve() if not raw_cand.is_absolute() else raw_cand.resolve()
         is_safe_to_purge = (
@@ -114,6 +223,15 @@ def cmd_uninstall(args: argparse.Namespace) -> int:
         if is_safe_to_purge:
             shutil.rmtree(cand_src, ignore_errors=True)
             purged_source_path = str(cand_src)
+
+    if args.scope == "project" and (rec is not None or any(r.action == "removed" for r in results)):
+        _update_manifest_and_lock(
+            root,
+            skill_name,
+            targets,
+            fully_removed=skill_name not in load_state(root, scope=args.scope),
+            keep_manifest=bool(getattr(args, "keep_manifest", False)),
+        )
 
     record_audit_event(
         root,

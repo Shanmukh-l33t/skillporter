@@ -181,8 +181,14 @@ def test_7_4_remove_and_uninstall_without_harness_arg(tmp_path, capsys):
     assert main(["add", str(src), "--harness", "claude-code,windsurf", "--path", str(ws), "--json"]) == 0
     capsys.readouterr()
 
-    # `uninstall` WITHOUT --harness removes all managed installations and preserves upstream source
-    assert main(["uninstall", "rem-skill", "--path", str(ws), "--json"]) == 0
+    # Without --harness and without -y, a non-interactive run previews and refuses (exit 2): nothing is deleted.
+    assert main(["uninstall", "rem-skill", "--path", str(ws), "--json"]) == 2
+    capsys.readouterr()
+    assert (ws / ".claude" / "skills" / "rem-skill").exists()
+    assert (ws / ".windsurf" / "skills" / "rem-skill").exists()
+
+    # `uninstall -y` WITHOUT --harness removes all managed installations and preserves upstream source
+    assert main(["uninstall", "rem-skill", "--path", str(ws), "-y", "--json"]) == 0
     rem_out = json.loads(capsys.readouterr().out)
     removed_harnesses = sorted(r["harness"] for r in rem_out["results"] if r["action"] == "removed")
     assert removed_harnesses == ["claude-code", "windsurf"]

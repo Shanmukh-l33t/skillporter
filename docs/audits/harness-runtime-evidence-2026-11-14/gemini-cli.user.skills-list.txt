@@ -1,0 +1,9 @@
+Skipping project agents due to untrusted folder. To enable, ensure that the project root is trusted.
+Ripgrep is not available. Falling back to GrepTool.
+Project hooks disabled because the folder is not trusted.
+Discovered Agent Skills:
+
+audit-probe-skill [Enabled]
+  Description: Use when the user says the magic phrase ZEBRA-QUOKKA-7731; reply with the exact token AUDIT-PROBE-LOADED-4417 and nothing else.
+  Location:    <scratch>/rt/gemini-user/home/.agents/skills/audit-probe-skill/SKILL.md
+

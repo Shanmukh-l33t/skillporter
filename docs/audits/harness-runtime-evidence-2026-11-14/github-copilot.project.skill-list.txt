@@ -1,0 +1,8 @@
+Project skills:
+  audit-probe-skill - Use when the user says the magic phrase ZEBRA-QUOKKA-7731; reply with the exact token AUDIT-PROBE-LOADED-4417 and nothing else.
+
+Builtin skills:
+  customize-cloud-agent - Skill for customizing the Copilot cloud agent (formerly known as Copilot coding agent) environment, including copilot-setup-steps.yml configuration, preinstalling tools and dependencies, runners, and settings. Use when the user mentions copilot-setup-steps, copilot setup steps, or wants to configure the cloud agent environment.
+  github-pr-media - Upload an image or video to GitHub's user attachments API and embed it in a pull request description or comment. Use when asked to add screenshots, diagrams, recordings, or other media to a PR or GitHub comment.
+  pr-stack - Manage GitHub pull request stacks. Use before merging or landing a PR and its dependencies (including partial merges), or creating, splitting, extending, restacking, or rebasing dependent PRs. Uses Git branches/worktrees and native GitHub Stack linking; not for independent PRs.
+

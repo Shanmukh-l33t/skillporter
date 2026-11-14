@@ -166,8 +166,12 @@ HARNESSES: dict[str, Harness] = {
         display_name="Claude Code",
         category="coding",
         support_status="NATIVE",
-        verification_level="INTEGRATION_TESTED",
-        verified_date="2026-11-11",
+        verification_level="RUNTIME_VERIFIED",
+        verified_date="2026-11-14",
+        raw_evidence=(
+            "Real `claude` 2.1.325 init event listed the installed skill, project and user scope "
+            "(2026-11-14). No model invocation."
+        ),
         paths=(
             SkillPath(".claude/skills", "project"),
             SkillPath(".claude/skills", "user"),
@@ -199,8 +203,12 @@ HARNESSES: dict[str, Harness] = {
         display_name="OpenAI Codex",
         category="coding",
         support_status="NATIVE",
-        verification_level="INTEGRATION_TESTED",
-        verified_date="2026-11-11",
+        verification_level="RUNTIME_VERIFIED",
+        verified_date="2026-11-14",
+        raw_evidence=(
+            "Real `codex` 0.169.0 `debug prompt-input` listed the installed skill in the model- "
+            "visible input, project and user scope (2026-11-14). No model invocation."
+        ),
         paths=(
             SkillPath(".agents/skills", "project"),
             SkillPath(".agents/skills", "user"),
@@ -233,8 +241,12 @@ HARNESSES: dict[str, Harness] = {
         display_name="Cursor",
         category="coding",
         support_status="NATIVE",
-        verification_level="INTEGRATION_TESTED",
-        verified_date="2026-11-11",
+        verification_level="FIXTURE_TESTED",
+        verified_date="2026-11-14",
+        raw_evidence=(
+            "Lifecycle fixtures and vendor docs only. cursor-agent 2026.11.13 installs but "
+            "exposes no skill listing, so no live skill load was observed (2026-11-14)."
+        ),
         paths=(
             SkillPath(".agents/skills", "project"),
             SkillPath(".cursor/skills", "project"),
@@ -255,7 +267,7 @@ HARNESSES: dict[str, Harness] = {
             adapted_format="cursor-mdc",
         ),
         detection=DetectionSpec(
-            binaries=("cursor",),
+            binaries=("cursor", "cursor-agent"),
             user_dirs=(".cursor",),
             project_markers=(".cursor", ".cursorrules"),
         ),
@@ -272,8 +284,12 @@ HARNESSES: dict[str, Harness] = {
         display_name="GitHub Copilot",
         category="coding",
         support_status="NATIVE",
-        verification_level="FIXTURE_TESTED",
-        verified_date="2026-11-11",
+        verification_level="RUNTIME_VERIFIED",
+        verified_date="2026-11-14",
+        raw_evidence=(
+            "Real `copilot` 1.0.112 `skill list` showed the installed skill as a project and as a "
+            "personal skill (2026-11-14). No model invocation."
+        ),
         paths=(
             SkillPath(".github/skills", "project"),
             SkillPath(".agents/skills", "project", "compatibility read", is_compatibility=True),
@@ -291,7 +307,7 @@ HARNESSES: dict[str, Harness] = {
             adapted_format="copilot-instructions",
         ),
         detection=DetectionSpec(
-            binaries=("github-copilot-cli",),
+            binaries=("copilot", "github-copilot-cli"),
             user_dirs=(".copilot",),
             project_markers=(".github/copilot-instructions.md", ".github/instructions"),
         ),
@@ -308,8 +324,12 @@ HARNESSES: dict[str, Harness] = {
         display_name="Gemini CLI",
         category="coding",
         support_status="NATIVE",
-        verification_level="FIXTURE_TESTED",
-        verified_date="2026-11-11",
+        verification_level="RUNTIME_VERIFIED",
+        verified_date="2026-11-14",
+        raw_evidence=(
+            "Real `gemini` 0.68.0 `skills list` showed the skill enabled; project scope only "
+            "after the folder is trusted (2026-11-14). No model invocation."
+        ),
         paths=(
             SkillPath(".agents/skills", "project", ".agents/skills takes precedence over .gemini/skills"),
             SkillPath(".gemini/skills", "project"),
@@ -405,8 +425,12 @@ HARNESSES: dict[str, Harness] = {
         display_name="Cline",
         category="coding",
         support_status="NATIVE",
-        verification_level="FIXTURE_TESTED",
-        verified_date="2026-11-11",
+        verification_level="RUNTIME_VERIFIED",
+        verified_date="2026-11-14",
+        raw_evidence=(
+            "Real `cline` 3.0.74 request payload listed the installed skill, project and user "
+            "scope (2026-11-14). No model invocation."
+        ),
         paths=(
             SkillPath(".cline/skills", "project"),
             SkillPath(".clinerules/skills", "project", "legacy rules-folder skill path", is_compatibility=True),
@@ -469,8 +493,12 @@ HARNESSES: dict[str, Harness] = {
         display_name="OpenCode",
         category="coding",
         support_status="NATIVE",
-        verification_level="FIXTURE_TESTED",
-        verified_date="2026-11-11",
+        verification_level="RUNTIME_VERIFIED",
+        verified_date="2026-11-14",
+        raw_evidence=(
+            "Real `opencode` 2.2.4 server `skill.list` API returned the installed skill, project "
+            "and user scope (2026-11-14). No model invocation."
+        ),
         paths=(
             SkillPath(".opencode/skills", "project"),
             SkillPath(".agents/skills", "project", "compatibility read", is_compatibility=True),
@@ -714,8 +742,12 @@ HARNESSES: dict[str, Harness] = {
         display_name="Continue",
         category="coding",
         support_status="COMPATIBLE",
-        verification_level="FIXTURE_TESTED",
-        verified_date="2026-11-11",
+        verification_level="RUNTIME_VERIFIED",
+        verified_date="2026-11-14",
+        raw_evidence=(
+            "Real `cn` 1.5.47 request payload listed the skill in read_skill, project and user "
+            "scope (2026-11-14). No model invocation."
+        ),
         paths=(
             SkillPath(".continue/skills", "project"),
             SkillPath(".continue/skills", "user"),
@@ -773,6 +805,8 @@ HARNESSES: dict[str, Harness] = {
         ),
         limitations=(
             "Core Aider CLI does not auto-discover SKILL.md folders without --read or CONVENTIONS.md adaptation.",
+            "Checked on aider 0.86.2: CONVENTIONS.md is not loaded unless passed with --read or listed under "
+            "`read:` in .aider.conf.yml, and `consolidate` writes neither. Skill folders target AiderDesk only.",
         ),
     ),
 }

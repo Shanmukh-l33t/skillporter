@@ -44,7 +44,7 @@ def cmd_consolidate(args: argparse.Namespace) -> int:
 
     if do_rollback:
         try:
-            res_rb = rollback_consolidation(root)
+            res_rb = rollback_consolidation(root, force=force)
         except InstructionError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return EXIT_PROBLEM
@@ -56,6 +56,7 @@ def cmd_consolidate(args: argparse.Namespace) -> int:
                 f"{action_symbol('rolled-back')} Restored {len(res_rb['restored_files'])} original instruction file(s) "  # type: ignore[arg-type]
                 f"from {res_rb['backup_dir']}"
             )
+            print(f"  Pre-rollback snapshot of current files: {res_rb['pre_rollback_snapshot']}")
         return EXIT_OK
 
     if do_status:
@@ -100,7 +101,13 @@ def cmd_consolidate(args: argparse.Namespace) -> int:
         if is_json:
             print(json.dumps(res_ap, indent=2))
             return EXIT_OK
-        if not is_quiet(args):
+        if not is_quiet(args) and res_ap.get("up_to_date"):
+            print(
+                f"{action_symbol('synced')} Instructions already up to date "
+                f"({res_ap['shared_count']} shared instruction(s)); nothing written, no new backup snapshot"
+            )
+            print(f"  Canonical source: {res_ap['canonical_path']}")
+        elif not is_quiet(args):
             verb = "Reconciled and synchronized" if do_reconcile else "Consolidated"
             print(
                 f"{action_symbol('synced')} {verb} {res_ap['shared_count']} shared instruction(s) "
@@ -108,6 +115,8 @@ def cmd_consolidate(args: argparse.Namespace) -> int:
             )
             print(f"  Canonical source: {res_ap['canonical_path']}")
             print(f"  Backup snapshot:  {res_ap['backup_dir']}")
+            for warn in res_ap.get("warnings", []):  # type: ignore[union-attr]
+                print(f"  note: {warn}")
             for wf in res_ap["written_files"]:  # type: ignore[union-attr]
                 print(f"  ~ {wf}")
         return EXIT_OK
@@ -160,8 +169,11 @@ def cmd_consolidate(args: argparse.Namespace) -> int:
     if is_verbose(args):
         for rel_p, content in report["proposed_outputs"].items():  # type: ignore[union-attr]
             print(f"\nProposed output ({rel_p}):")
-            for ln in str(content).splitlines()[:25]:
+            out_lines = str(content).splitlines()
+            for ln in out_lines[:25]:
                 print(f"  {ln}")
+            if len(out_lines) > 25:
+                print(f"  ... ({len(out_lines) - 25} more lines)")
 
     print(
         "\n"

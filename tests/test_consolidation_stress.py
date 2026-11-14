@@ -142,7 +142,7 @@ def test_consolidation_preserves_unclassified_prose_short_lines_nested_lists_tab
     assert "conflict" in capsys.readouterr().err.lower()
 
     # 4. Rollback restores exact original files byte-for-byte
-    assert main(["consolidate", str(tmp_path), "--rollback", "--json"]) == 0
+    assert main(["consolidate", str(tmp_path), "--rollback", "--force", "--json"]) == 0
     capsys.readouterr()
     assert (tmp_path / "CLAUDE.md").read_text(encoding="utf-8") == claude_orig
     assert (tmp_path / "AGENTS.md").read_text(encoding="utf-8") == agents_orig

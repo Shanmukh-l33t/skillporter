@@ -57,6 +57,8 @@ During `import`, Skillporter runs five checks before modifying the destination w
 4. **Harness discovery.** Skillporter checks which harnesses exist on the destination machine, names any missing harnesses in the plan, and lets you skip missing ones with `--only-detected` or override targets with `--harness` and `--exclude-harness`.
 5. **Conflict handling.** Existing unmanaged destinations fail closed by default (`--on-conflict fail`). Pass `--on-conflict skip` to keep existing files untouched, or `--force` (`--on-conflict overwrite`) to snapshot backups and replace them.
 
+Without `--harness`, import does not fan out to every harness named in a package. It writes to the harnesses the package recorded as installed (or, for older packages, those also detected or configured on the destination), lists the others as missing, and `--dry-run` prints each directory it would create.
+
 When restoring into a project directory, `import` also writes `skillporter.yaml`, `skillporter.lock` and any bundled profiles unless `--no-manifest` is passed. If an error occurs mid-import, completed destinations are rolled back cleanly.
 
 ## Named environment profiles

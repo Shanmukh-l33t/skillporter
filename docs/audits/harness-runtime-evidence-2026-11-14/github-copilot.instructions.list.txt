@@ -1,0 +1,5 @@
+Repository instructions:
+  • .github/copilot-instructions.md
+      from .github/copilot-instructions.md
+  • AGENTS.md
+      from AGENTS.md

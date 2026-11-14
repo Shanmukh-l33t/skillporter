@@ -15,7 +15,8 @@ from ..frontmatter import parse_skill
 from ..install import InstallError, adopt_skills, move_skill, uninstall
 from ..install import install as run_install
 from ..manifest import LOCKFILE_FILENAME, MANIFEST_FILENAME
-from ..portability import SkillpackError, export_skillpack, import_skillpack
+from ..policy import load_policy, split_by_allowed_harnesses
+from ..portability import SkillpackError, export_skillpack, import_skillpack, refresh_snapshot_from_disk
 from ..profiles import (
     ProfileError,
     activate_profile_manifest,
@@ -152,7 +153,9 @@ def cmd_diff(args: argparse.Namespace) -> int:
     try:
         left = load_snapshot_from_target(base_arg, scope=scope)
         right = load_snapshot_from_target(target_arg, base_dir=Path.cwd(), scope=scope)
-    except (FileNotFoundError, SkillpackError, ProfileError) as exc:
+        refresh_snapshot_from_disk(left, right)
+        refresh_snapshot_from_disk(right, left)
+    except (FileNotFoundError, SkillpackError, ProfileError, InstallError, SourceError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_ERROR
 
@@ -243,7 +246,7 @@ def cmd_export(args: argparse.Namespace) -> int:
             include_unmanaged=not bool(getattr(args, "managed_only", False)),
             manifest_only=bool(getattr(args, "manifest_only", False)),
         )
-    except (SkillpackError, ValueError) as exc:
+    except (SkillpackError, InstallError, SourceError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_PROBLEM
 
@@ -338,7 +341,7 @@ def cmd_import(args: argparse.Namespace) -> int:
             restore_manifest=not bool(getattr(args, "no_manifest", False)),
             dry_run=dry_run,
         )
-    except (SkillpackError, KeyError, ValueError) as exc:
+    except (SkillpackError, InstallError, SourceError, KeyError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_PROBLEM
 
@@ -374,6 +377,8 @@ def cmd_import(args: argparse.Namespace) -> int:
         for s in plan_d["skills"]:  # type: ignore[index]
             t_str = ", ".join(s["target_harnesses"]) or "(none)"
             print(f"  {action_symbol('would-import')} {s['name']}@{s['version']} ({s['tree_hash']}) -> {t_str}")
+            for dest in s.get("destinations", []):
+                print(f"      writes {dest}")
         if plan_d["missing_harnesses"]:  # type: ignore[index]
             print(
                 f"\nNote: {len(plan_d['missing_harnesses'])} harness(es) in package are not detected on this machine: "  # type: ignore[index]
@@ -534,7 +539,7 @@ def cmd_profile(args: argparse.Namespace) -> int:
 
             from ..policy import evaluate_policy, load_policy
 
-            policy_prof = load_policy(root) if scope == "project" else None
+            policy_prof = load_policy(root)
             # Validate all profile skills against security and policy BEFORE mutating manifest or disk!
             for spec_chk in prof.skills:
                 targets_chk = spec_chk.harnesses or prof.harnesses
@@ -644,6 +649,15 @@ def cmd_move(args: argparse.Namespace) -> int:
     except (KeyError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_ERROR
+
+    _, blocked_to = split_by_allowed_harnesses(load_policy(root), to_h)
+    if blocked_to:
+        print(
+            f"error: move blocked by project security policy: harness(es) {', '.join(blocked_to)} "
+            "are not in allowed_harnesses in skillporter.policy.yaml",
+            file=sys.stderr,
+        )
+        return EXIT_PROBLEM
 
     if dry_run:
         payload = {
@@ -915,6 +929,15 @@ def cmd_self_skill(args: argparse.Namespace) -> int:
         except KeyError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return EXIT_ERROR
+
+        _, blocked_self = split_by_allowed_harnesses(load_policy(root), targets)
+        if blocked_self:
+            print(
+                f"error: self-skill install blocked by project security policy: harness(es) "
+                f"{', '.join(blocked_self)} are not in allowed_harnesses in skillporter.policy.yaml",
+                file=sys.stderr,
+            )
+            return EXIT_PROBLEM
 
         dry_run = bool(getattr(args, "dry_run", False))
         if dry_run:

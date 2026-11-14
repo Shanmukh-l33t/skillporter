@@ -335,7 +335,7 @@ def test_doctor_explicit_lifecycle_states_and_remediations(tmp_path, capsys):
     sstate = payload["skill_states"][0]
     assert sstate["name"] == "doc-skill"
     assert sstate["state"] == "VALID"
-    assert sstate["harnesses"]["claude-code"] == ["FOUND", "VALID", "COMPATIBLE", "INSTALLED", "UNVERIFIED"]
+    assert sstate["harnesses"]["claude-code"] == ["FOUND", "VALID", "COMPATIBLE", "INSTALLED", "VERIFIED"]
     assert sstate["harnesses"]["codex"] == ["FOUND", "VALID", "COMPATIBLE", "MISSING"]
 
 

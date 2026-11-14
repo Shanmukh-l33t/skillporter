@@ -13,7 +13,7 @@ from ..frontmatter import Issue, discover, parse_skill, validate
 from ..sandbox import run_sandbox
 from ..security import CATEGORY_KEYS, SCANNER_ENGINE_VERSION, scan_skill, to_sarif
 from ..ui import BOLD, CYAN, DIM, badge, render_table, style
-from .common import EXIT_ERROR, EXIT_OK, EXIT_PROBLEM, fmt_mode
+from .common import EXIT_ERROR, EXIT_OK, EXIT_PROBLEM, fmt_mode, is_quiet
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
@@ -173,6 +173,10 @@ def cmd_scan(args: argparse.Namespace) -> int:
         print(json.dumps(to_sarif(reports), indent=2))
         return EXIT_PROBLEM if blocked else EXIT_OK
 
+    if fmt == "json" and is_quiet(args):
+        # Quiet means no stdout at all; the exit code carries the verdict.
+        return EXIT_PROBLEM if blocked else EXIT_OK
+
     if fmt == "json":
         max_score = max((r.risk_score for r in reports.values()), default=0)
         first_rep = next(iter(reports.values()), None)
@@ -188,7 +192,9 @@ def cmd_scan(args: argparse.Namespace) -> int:
         print(json.dumps(payload_out, indent=2))
         return EXIT_PROBLEM if blocked else EXIT_OK
 
-    print(f"skillporter {__version__} — security assessment\n")
+    quiet = is_quiet(args)
+    if not quiet:
+        print(f"skillporter {__version__} — security assessment\n")
     for sname, rep in reports.items():
         exceeds = rep.exceeds_risk_threshold(max_risk_threshold)
         verdict = "PASSED" if (rep.passed and not exceeds) else "BLOCKED"
@@ -198,6 +204,8 @@ def cmd_scan(args: argparse.Namespace) -> int:
             f"engine: {rep.engine} v{rep.engine_version} · "
             f"sha256: {rep.tree_hash[:12] if rep.tree_hash else 'n/a'})"
         )
+        if quiet:
+            continue
         if not rep.scan_complete:
             print(
                 f"  Completeness: INCOMPLETE (truncated={len(rep.files_truncated)}, "
@@ -214,12 +222,13 @@ def cmd_scan(args: argparse.Namespace) -> int:
             print(f"  [{badge(f.severity)}] {f.code} ({loc}): {f.message}")
             if f.remediation:
                 print(f"      Fix: {f.remediation}")
-    print(
-        style(
-            "\nNote: Static scanning inspects patterns and symlinks; a clean scan does not prove runtime safety.",
-            DIM,
+    if not quiet:
+        print(
+            style(
+                "\nNote: Static scanning inspects patterns and symlinks; a clean scan does not prove runtime safety.",
+                DIM,
+            )
         )
-    )
     return EXIT_PROBLEM if blocked else EXIT_OK
 
 

@@ -33,6 +33,7 @@ from .commands.remove import cmd_rollback, cmd_uninstall
 from .commands.scan import cmd_explain, cmd_sandbox, cmd_scan, cmd_validate
 from .commands.sync import cmd_graph, cmd_init, cmd_lock, cmd_sync
 from .mcp_server import run_mcp_stdio
+from .policy import PolicyError
 from .telemetry import record_telemetry_event
 
 __all__ = ["EXIT_ERROR", "EXIT_OK", "EXIT_PROBLEM", "KNOWN_COMMANDS", "build_parser", "entrypoint", "main"]
@@ -437,7 +438,11 @@ def main(argv: list[str] | None = None) -> int:
     if not getattr(args, "command", None):
         parser.print_help()
         return EXIT_OK
-    rc = int(args.func(args))
+    try:
+        rc = int(args.func(args))
+    except PolicyError as exc:
+        print(f"error: {exc} (fix or remove the policy file; refusing to continue without it)", file=sys.stderr)
+        return EXIT_ERROR
     with contextlib.suppress(Exception):
         record_telemetry_event(Path.cwd(), str(args.command), rc)
     return rc
@@ -445,7 +450,14 @@ def main(argv: list[str] | None = None) -> int:
 
 def entrypoint() -> None:
     """Console & zipapp entrypoint that propagates exit codes to the OS."""
-    raise SystemExit(main())
+    try:
+        code = main()
+        sys.stdout.flush()
+    except BrokenPipeError:
+        # e.g. `skillporter detect | head`: stop quietly instead of printing a traceback.
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        code = 0
+    raise SystemExit(code)
 
 
 if __name__ == "__main__":

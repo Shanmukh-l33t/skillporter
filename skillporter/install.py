@@ -32,7 +32,7 @@ from .atomic import atomic_write_text, workspace_lock
 from .diagnose import load_custom_harness_paths, resolve_path, select_harness_install_raw_path
 from .formats import render_adapted_skill
 from .frontmatter import discover, parse_skill
-from .security import compute_tree_hash
+from .security import compute_tree_hash, copy_ignore
 from .state import (
     BackupEntry,
     is_managed_destination,
@@ -407,7 +407,7 @@ def _stage_and_copy_skill(
 
     txn_tmp_root.mkdir(parents=True, exist_ok=True)
     stage_dir = txn_tmp_root / f"stage-{uuid.uuid4().hex[:10]}"
-    shutil.copytree(src, stage_dir, symlinks=True)
+    shutil.copytree(src, stage_dir, symlinks=True, ignore=copy_ignore)
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     if existed:
@@ -641,10 +641,13 @@ def install(
         if record_state and written:
             first_written_dest = next(iter(written.keys()))
             effective_skill_dir = first_written_dest if first_written_dest.exists() else skill_dir
+            # No explicit source: keep the already-tracked upstream (state.py preserves it for an empty source)
+            # instead of recording this install's staging path, e.g. the internal .skillporter/store snapshot
+            # that `doctor --fix` reinstalls from.
             record_installation(
                 root,
                 skill_name=skill_name,
-                source=source or str(skill_dir),
+                source=source or ("" if existing_record is not None and existing_record.source else str(skill_dir)),
                 skill_dir=effective_skill_dir,
                 harnesses=installed_harnesses,
                 destinations=list(written.keys()),
@@ -800,20 +803,34 @@ def uninstall(
             dest = base / skill_name
 
             shared_owners: list[str] = []
-            if rec and (dest.exists() or dest.is_symlink()):
+            if dest.exists() or dest.is_symlink():
                 dest_resolved = dest.resolve() if not dest.is_symlink() else dest
-                for other_name in rec.harnesses:
+                # Managed skills: only harnesses recorded as owners. Unmanaged (no state record): every other
+                # registered harness that is active in this workspace (project scope) or home (user scope) and
+                # reads this directory keeps it alive. Detection uses markers only, never PATH lookups, so the
+                # result does not depend on which CLIs happen to be installed on the host.
+                if rec:
+                    other_candidates = list(rec.harnesses)
+                else:
+                    other_candidates = [
+                        d.harness.name
+                        for d in harnesses.detect_harnesses(root, home=home)
+                        if (d.project_active if scope == "project" else d.user_present)
+                    ]
+                for other_name in other_candidates:
                     if other_name in target_set:
                         continue
                     with contextlib.suppress(KeyError):
                         other_h = harnesses.get(other_name)
                         other_paths = other_h.project_paths if scope == "project" else other_h.user_paths
-                        if other_paths:
-                            other_base = resolve_path(other_paths[0].path, scope, root, home)
+                        scan_paths = other_paths if rec is None else other_paths[:1]
+                        for other_sp in scan_paths:
+                            other_base = resolve_path(other_sp.path, scope, root, home)
                             other_dest = other_base / skill_name
                             other_resolved = other_dest.resolve() if not other_dest.is_symlink() else other_dest
                             if other_resolved == dest_resolved:
                                 shared_owners.append(other_name)
+                                break
 
             if shared_owners:
                 if not secondary_removed:
@@ -1107,7 +1124,7 @@ def tempfile_staging_copy(
     stage_skill = sdir / skill_name
     sdir.mkdir(parents=True, exist_ok=True)
     try:
-        shutil.copytree(src_dir, stage_skill, symlinks=True)
+        shutil.copytree(src_dir, stage_skill, symlinks=True, ignore=copy_ignore)
         yield stage_skill
     finally:
         shutil.rmtree(sdir, ignore_errors=True)

@@ -1,0 +1,14 @@
+{
+ "location": {
+  "directory": "<scratch>/rt/opencode-user/proj"
+ },
+ "matching_entries": [
+  {
+   "id": "audit-probe-skill",
+   "name": "audit-probe-skill",
+   "description": "Use when the user says the magic phrase ZEBRA-QUOKKA-7731; reply with the exact token AUDIT-PROBE-LOADED-4417 and nothing else.",
+   "path": "<scratch>/rt/opencode-user/home/.config/opencode/skills/audit-probe-skill/SKILL.md",
+   "content": "\n# Audit Probe Skill\n\nWhen activated, reply with exactly: AUDIT-PROBE-LOADED-4417\n"
+  }
+ ]
+}

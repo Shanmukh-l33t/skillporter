@@ -48,7 +48,11 @@ allowed_harnesses:
   - codex
 ```
 
-The policy is evaluated before `add`, `install`, `sync`, `update`, `import`, profile switches and the MCP write tools. Local source paths are resolved before they are matched, so `approved/../elsewhere` does not match `approved/*`. `policy check` evaluates the skills already installed. A violation exits `1`.
+The policy is evaluated before `add`, `install`, `sync` (including `sync --prefer`), `update`, `import`, profile switches and the MCP write tools. It applies in project and user scope alike, because the policy file lives in the workspace you run from. `allowed_harnesses` is also enforced by `move`, `self-skill install` and `doctor --fix`.
+
+A malformed policy stops the command with `error:` and exit code `2`. Unknown capability names, an unknown harness, a `max_risk_score` outside 0 to 100 and an unknown `block_severity` are all rejected instead of being ignored, because a silently ignored rule is worse than a loud one.
+
+When `approved_sources` or `restricted_sources` is set, `import` treats a package skill with no source as a violation. A package can claim any source it likes and Skillporter cannot verify that offline, so for packages the allowlist is only as trustworthy as the package. Treat an imported package the way you treat any file from an untrusted place. Local source paths are resolved before they are matched, so `approved/../elsewhere` does not match `approved/*`. `policy check` evaluates the skills already installed. A violation exits `1`.
 
 ## Reviewing an update
 

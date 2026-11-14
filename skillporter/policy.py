@@ -22,7 +22,7 @@ from pathlib import Path
 
 from . import harnesses
 from .atomic import atomic_write_text
-from .capabilities import analyze_capabilities, normalize_capability_name
+from .capabilities import KNOWN_CAPABILITIES, analyze_capabilities, normalize_capability_name
 from .security import SEVERITY_ORDER, SecurityReport, scan_skill
 
 POLICY_FILENAME = "skillporter.policy.yaml"
@@ -76,21 +76,65 @@ class PolicyConfig:
         return "\n".join(lines) + "\n"
 
 
+class PolicyError(ValueError):
+    """Raised when skillporter.policy.yaml is malformed. Callers must fail closed, never ignore a bad rule."""
+
+
+def _policy_list(raw: dict[str, object], key: str) -> list[str]:
+    value = raw.get(key)
+    if value is None:
+        return []
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, list) or not all(isinstance(x, str) for x in value):
+        raise PolicyError(f"{POLICY_FILENAME}: {key!r} must be a list of strings")
+    return [x for x in value if x.strip()]
+
+
+def _validate_policy(cfg: PolicyConfig) -> PolicyConfig:
+    """Reject values that would silently weaken a rule (typos, unknown capabilities, bad severity)."""
+    if cfg.block_severity.upper() not in SEVERITY_ORDER:
+        raise PolicyError(
+            f"{POLICY_FILENAME}: block_severity {cfg.block_severity!r} is not one of {sorted(SEVERITY_ORDER)}"
+        )
+    for cap in cfg.banned_capabilities:
+        if normalize_capability_name(cap) not in KNOWN_CAPABILITIES:
+            raise PolicyError(
+                f"{POLICY_FILENAME}: unknown capability {cap!r} in banned_capabilities "
+                f"(known: {', '.join(KNOWN_CAPABILITIES)})"
+            )
+    for name in cfg.allowed_harnesses:
+        try:
+            harnesses.get(name)
+        except KeyError as exc:
+            raise PolicyError(f"{POLICY_FILENAME}: unknown harness {name!r} in allowed_harnesses") from exc
+    return cfg
+
+
 def parse_policy(text: str) -> PolicyConfig:
-    """Parse `skillporter.policy.yaml` without external YAML dependencies."""
+    """Parse `skillporter.policy.yaml` without external YAML dependencies. Raises PolicyError on bad values."""
     stripped = text.strip()
     if stripped.startswith("{"):
-        raw = json.loads(stripped)
+        try:
+            raw = json.loads(stripped)
+        except json.JSONDecodeError as exc:
+            raise PolicyError(f"{POLICY_FILENAME}: invalid JSON ({exc.msg})") from exc
+        if not isinstance(raw, dict):
+            raise PolicyError(f"{POLICY_FILENAME}: top level must be a mapping")
         mr = raw.get("max_risk_score")
-        return PolicyConfig(
-            approved_sources=[str(x) for x in raw.get("approved_sources", [])],
-            restricted_sources=[str(x) for x in raw.get("restricted_sources", [])],
-            max_risk_score=int(mr) if isinstance(mr, (int, float)) else None,
-            block_severity=str(raw.get("block_severity", "HIGH")).upper(),
-            banned_capabilities=[str(x).lower() for x in raw.get("banned_capabilities", [])],
-            require_declared_capabilities=bool(raw.get("require_declared_capabilities", False)),
-            allowed_harnesses=[str(x) for x in raw.get("allowed_harnesses", [])],
-            require_pinned_refs=bool(raw.get("require_pinned_refs", False)),
+        if mr is not None and (isinstance(mr, bool) or not isinstance(mr, int) or not 0 <= mr <= 100):
+            raise PolicyError(f"{POLICY_FILENAME}: max_risk_score must be an integer from 0 to 100")
+        return _validate_policy(
+            PolicyConfig(
+                approved_sources=_policy_list(raw, "approved_sources"),
+                restricted_sources=_policy_list(raw, "restricted_sources"),
+                max_risk_score=mr,
+                block_severity=str(raw.get("block_severity", "HIGH")).upper(),
+                banned_capabilities=[x.lower() for x in _policy_list(raw, "banned_capabilities")],
+                require_declared_capabilities=bool(raw.get("require_declared_capabilities", False)),
+                allowed_harnesses=_policy_list(raw, "allowed_harnesses"),
+                require_pinned_refs=bool(raw.get("require_pinned_refs", False)),
+            )
         )
 
     cfg = PolicyConfig()
@@ -126,7 +170,11 @@ def parse_policy(text: str) -> PolicyConfig:
                     active_list_name = key
                 elif val != "[]":
                     target.append(val.lower() if key == "banned_capabilities" else val)
-            elif key == "max_risk_score" and val.isdigit():
+            elif key == "max_risk_score":
+                if not val.isdigit() or not 0 <= int(val) <= 100:
+                    raise PolicyError(
+                        f"{POLICY_FILENAME}: max_risk_score must be an integer from 0 to 100, got {val!r}"
+                    )
                 cfg.max_risk_score = int(val)
             elif key == "block_severity" and val:
                 cfg.block_severity = val.upper()
@@ -140,7 +188,7 @@ def parse_policy(text: str) -> PolicyConfig:
                 target = list_fields[active_list_name]
                 target.append(item_val.lower() if active_list_name == "banned_capabilities" else item_val)
 
-    return cfg
+    return _validate_policy(cfg)
 
 
 def load_policy(root: Path) -> PolicyConfig | None:
@@ -206,6 +254,10 @@ def _source_matches_any(source_candidates: list[str], patterns: list[str], *, is
         if abs_locals and not has_remote:
             check_cands = abs_locals
 
+    if not is_allowlist:
+        check_cands = [c.casefold() for c in check_cands]
+        patterns = [p.casefold() for p in patterns]
+
     for pat in patterns:
         norm_pat = (
             _normalize_source_for_matching(pat)
@@ -222,10 +274,29 @@ def _source_matches_any(source_candidates: list[str], patterns: list[str], *, is
     return False
 
 
+def split_by_allowed_harnesses(policy: PolicyConfig | None, targets: list[str]) -> tuple[list[str], list[str]]:
+    """Split *targets* into ``(allowed, blocked)`` according to ``allowed_harnesses`` (no-op without a policy)."""
+    if policy is None or not policy.allowed_harnesses:
+        return list(targets), []
+    allowed_canonical: set[str] = set()
+    for ah in policy.allowed_harnesses:
+        try:
+            allowed_canonical.add(harnesses.get(ah).name)
+        except KeyError:
+            allowed_canonical.add(ah.strip().lower())
+    allowed: list[str] = []
+    blocked: list[str] = []
+    for th in targets:
+        cname = harnesses.get(th).name if th in harnesses.HARNESSES else th
+        (allowed if cname in allowed_canonical else blocked).append(th)
+    return allowed, blocked
+
+
 def evaluate_policy(
     policy: PolicyConfig | None,
     *,
     skill_dirs: list[Path],
+    require_source: bool = False,
     source_candidates: list[str] | None = None,
     resolved_commit: str = "",
     ref: str = "",
@@ -252,6 +323,12 @@ def evaluate_policy(
                 violations.append(
                     f"policy: harness {cname!r} is not in allowed_harnesses ({sorted(allowed_canonical)})"
                 )
+
+    if require_source and not srcs and (policy.approved_sources or policy.restricted_sources):
+        violations.append(
+            f"policy: source is unknown, so it cannot be checked against approved_sources/restricted_sources "
+            f"in {POLICY_FILENAME}"
+        )
 
     if srcs and policy.restricted_sources and _source_matches_any(srcs, policy.restricted_sources, is_allowlist=False):
         violations.append(f"policy: source {srcs[0]!r} matches restricted_sources in {POLICY_FILENAME}")

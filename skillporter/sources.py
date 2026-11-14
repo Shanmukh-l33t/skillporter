@@ -366,7 +366,31 @@ def safe_extract_tar(
     return dest_dir
 
 
-def _git_clone(url: str, ref: str = "", subpath: str = "", raw_spec: str = "", kind: str = "git") -> ResolvedSource:
+def _is_bare_git_repo(path: Path) -> bool:
+    """Return True when *path* is a bare git repository (``HEAD`` + ``objects/`` + ``refs/``)."""
+    if not (path.is_dir() and (path / "HEAD").is_file() and (path / "objects").is_dir() and (path / "refs").is_dir()):
+        return False
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(path), "rev-parse", "--is-bare-repository"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return proc.returncode == 0 and proc.stdout.strip() == "true"
+
+
+def _git_clone(
+    url: str,
+    ref: str = "",
+    subpath: str = "",
+    raw_spec: str = "",
+    kind: str = "git",
+    canonical_url: str = "",
+) -> ResolvedSource:
     ref = _validate_git_ref(ref)
     tmp = Path(tempfile.mkdtemp(prefix="skillporter-src-"))
     repo_dir = tmp / "repo"
@@ -440,7 +464,7 @@ def _git_clone(url: str, ref: str = "", subpath: str = "", raw_spec: str = "", k
         return ResolvedSource(
             raw_spec=raw_spec or url,
             kind=kind,
-            canonical_source=url + (f"#{subpath}" if subpath else ""),
+            canonical_source=(canonical_url or url) + (f"#{subpath}" if subpath else ""),
             root_dir=target_root,
             skill_dirs=skills,
             resolved_commit=commit_sha,
@@ -502,11 +526,16 @@ def resolve_source(spec: str, *, base_dir: Path | None = None, ref_override: str
             if "@" in split_u.path:
                 clean_path, _, frag_ref = split_u.path.rpartition("@")
                 url_part = urllib.parse.urlunsplit((split_u.scheme, split_u.netloc, clean_path, split_u.query, ""))
+        canonical_url = ""
         if url_part.lower().startswith("file://"):
             parsed_f = urllib.parse.urlsplit(url_part)
             local_git_path = urllib.request.url2pathname(urllib.parse.unquote(parsed_f.path))
-            url_part = str(Path(local_git_path).resolve())
-        return _git_clone(url_part, ref=ref_override or frag_ref, raw_spec=spec, kind="git")
+            resolved_git_path = Path(local_git_path).resolve()
+            url_part = str(resolved_git_path)
+            # Keep the file:// scheme in state/lock so the source can be resolved again as a git URL.
+            canonical_url = resolved_git_path.as_uri()
+        clone_kwargs = {"canonical_url": canonical_url} if canonical_url else {}
+        return _git_clone(url_part, ref=ref_override or frag_ref, raw_spec=spec, kind="git", **clone_kwargs)
 
     # 4. Check if spec is an existing local path (directory, SKILL.md file, or archive)
     candidate: Path | None = None
@@ -545,6 +574,8 @@ def resolve_source(spec: str, *, base_dir: Path | None = None, ref_override: str
                 raise
 
         skills = _find_skill_dirs(candidate)
+        if not skills and _is_bare_git_repo(candidate):
+            return _git_clone(str(candidate), ref=ref_override, raw_spec=spec, kind="git")
         if not skills:
             raise SourceError(f"no SKILL.md found under local path {candidate}")
         local_commit = ""

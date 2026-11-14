@@ -4,6 +4,29 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- `consolidate`, `context`, `new`, `lint`, `preview`, `test`, `suggest`, `insights`, `policy`, `update --check` and `scan --ai-review`, plus five read-only MCP tools (18 in total). See the new guides under `docs/`.
+- `remove --keep-manifest`; `skillporter.policy.yaml` project policy; capability declarations in `SKILL.md`.
+
+### Changed
+- `remove` and `uninstall` without `--harness` now preview and require confirmation (`-y` in scripts). They also drop the skill from `skillporter.yaml` and `skillporter.lock`.
+- `consolidate --rollback` refuses to overwrite hand edits without `--force` and snapshots current files first.
+- `import` no longer fans out to every harness in a package; it writes only to recorded, detected or configured harnesses.
+- Seven adapters moved to `RUNTIME_VERIFIED` on captured evidence; Cursor moved down to `FIXTURE_TESTED`.
+- An invalid `skillporter.policy.yaml` is an error instead of being silently ignored.
+
+### Fixed
+- Policy now applies to `--scope user`, `sync --prefer`, non-bundled `import` and `allowed_harnesses` for `move`, `self-skill` and `doctor --fix`.
+- The scanner and installer share one file list, so nothing under `node_modules`, `.venv` or similar is copied unscanned.
+- A registry token containing control characters is rejected and never printed; non-HTTP(S) and userinfo registry URLs are refused.
+- `consolidate --rollback` can no longer restore files from a doctored backup path; `--apply` refuses to write through symlinks that leave the workspace.
+- MCP tools reject unknown arguments (a `dry_run` flag was previously ignored and wrote files); deeply nested JSON no longer kills the server.
+- The scanner now recognizes `eval "$(curl ...)"`, process substitution, `sh -c "$(wget ...)"`, `python -c "$(curl ...)"` and download-then-run as remote execution, and resolves aliased imports such as `from subprocess import run` when inferring capabilities.
+- `sync` is idempotent: unchanged copies are reported as unchanged and no backup is taken. `doctor` and `doctor --fix` now agree, and `--fix` stays within the harnesses the skill was installed to.
+- `doctor --fix` keeps a skill's original source; `add .` no longer recurses; `suggest` no longer reports unverified catalog entries as scanned.
+
 ## [3.1.0] - 2026-11-14
 
 ### Added

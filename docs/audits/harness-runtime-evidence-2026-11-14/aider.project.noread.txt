@@ -1,0 +1,251 @@
+Warning: Input is not a terminal (fd=0).
+Config files search order, if no --config:
+  - <scratch>/rt/aider-project/proj/.aider.conf.yml 
+  - <scratch>/rt/aider-project/home/.aider.conf.yml 
+
+Command Line Args:   --no-git --no-check-update --no-analytics 
+--no-show-model-warnings --model gpt-4o --openai-api-key ...ummy --exit 
+--verbose --no-pretty --yes
+Defaults:
+  --set-env:         []
+  --api-key:         []
+  --model-settings-file:.aider.model.settings.yml
+  --model-metadata-file:.aider.model.metadata.json
+  --cache-keepalive-pings:0
+  --map-refresh:     auto
+  --map-multiplier-no-files:2
+  --input-history-file:<scratch>/rt/aider-projec
+t/proj/.aider.input.history
+  --chat-history-file:<scratch>/rt/aider-project
+/proj/.aider.chat.history.md
+  --user-input-color:#00cc00
+  --tool-error-color:#FF2222
+  --tool-warning-color:#FFA500
+  --assistant-output-color:#0088ff
+  --code-theme:      default
+  --aiderignore:     
+<scratch>/rt/aider-project/proj/.aiderignore
+  --lint-cmd:        []
+  --test-cmd:        []
+  --voice-format:    wav
+  --voice-language:  en
+  --encoding:        utf-8
+  --line-endings:    platform
+  --env-file:        
+<scratch>/rt/aider-project/proj/.env
+
+Option settings:
+  - 35turbo: False
+  - 4: False
+  - 4_turbo: False
+  - 4o: False
+  - add_gitignore_files: False
+  - aiderignore: 
+<scratch>/rt/aider-project/proj/.aiderignore
+  - alias: None
+  - analytics: False
+  - analytics_disable: False
+  - analytics_log: None
+  - analytics_posthog_host: None
+  - analytics_posthog_project_api_key: None
+  - anthropic_api_key: None
+  - api_key: []
+  - apply: None
+  - apply_clipboard_edits: False
+  - assistant_output_color: #0088ff
+  - attribute_author: None
+  - attribute_co_authored_by: True
+  - attribute_commit_message_author: False
+  - attribute_commit_message_committer: False
+  - attribute_committer: None
+  - auto_accept_architect: True
+  - auto_commits: True
+  - auto_lint: True
+  - auto_test: False
+  - cache_keepalive_pings: 0
+  - cache_prompts: False
+  - chat_history_file: 
+<scratch>/rt/aider-project/proj/.aider.chat.hist
+ory.md
+  - chat_language: None
+  - check_model_accepts_settings: True
+  - check_update: False
+  - code_theme: default
+  - commit: False
+  - commit_language: None
+  - commit_prompt: None
+  - completion_menu_bg_color: None
+  - completion_menu_color: None
+  - completion_menu_current_bg_color: None
+  - completion_menu_current_color: None
+  - config: None
+  - copy_paste: False
+  - dark_mode: False
+  - deepseek: False
+  - detect_urls: True
+  - dirty_commits: True
+  - disable_playwright: False
+  - dry_run: False
+  - edit_format: None
+  - editor: None
+  - editor_edit_format: None
+  - editor_model: None
+  - encoding: utf-8
+  - env_file: 
+<scratch>/rt/aider-project/proj/.env
+  - exit: True
+  - fancy_input: True
+  - file: None
+  - files: []
+  - git: False
+  - git_commit_verify: False
+  - gitignore: True
+  - gui: False
+  - haiku: False
+  - input_history_file: 
+<scratch>/rt/aider-project/proj/.aider.input.his
+tory
+  - install_main_branch: False
+  - just_check_update: False
+  - light_mode: False
+  - line_endings: platform
+  - lint: False
+  - lint_cmd: []
+  - list_models: None
+  - llm_history_file: None
+  - load: None
+  - map_multiplier_no_files: 2
+  - map_refresh: auto
+  - map_tokens: None
+  - max_chat_history_tokens: None
+  - message: None
+  - message_file: None
+  - mini: False
+  - model: gpt-4o
+  - model_metadata_file: .aider.model.metadata.json
+  - model_settings_file: .aider.model.settings.yml
+  - multiline: False
+  - notifications: False
+  - notifications_command: None
+  - o1_mini: False
+  - o1_preview: False
+  - openai_api_base: None
+  - openai_api_deployment_id: None
+  - openai_api_key: ...ummy
+  - openai_api_type: None
+  - openai_api_version: None
+  - openai_organization_id: None
+  - opus: False
+  - pretty: False
+  - read: None
+  - reasoning_effort: None
+  - restore_chat_history: False
+  - set_env: []
+  - shell_completions: None
+  - show_diffs: False
+  - show_model_warnings: False
+  - show_prompts: False
+  - show_release_notes: None
+  - show_repo_map: False
+  - skip_sanity_check_repo: False
+  - sonnet: False
+  - stream: True
+  - subtree_only: False
+  - suggest_shell_commands: True
+  - test: False
+  - test_cmd: []
+  - thinking_tokens: None
+  - timeout: None
+  - tool_error_color: #FF2222
+  - tool_output_color: None
+  - tool_warning_color: #FFA500
+  - upgrade: False
+  - user_input_color: #00cc00
+  - verbose: True
+  - verify_ssl: True
+  - vim: False
+  - voice_format: wav
+  - voice_input_device: None
+  - voice_language: en
+  - watch_files: False
+  - weak_model: None
+  - yes_always: True
+
+Checking imports for version 0.86.2 and executable 
+<scratch>/tools/aider-venv/bin/python3
+Installs file: 
+<scratch>/rt/aider-project/home/.aider/installs.
+json
+Installs file does not exist, creating new dictionary
+First run for this version and executable, loading imports synchronously
+Imports loaded and installs file updated
+No model settings files loaded
+Searched for model settings files:
+  - 
+<scratch>/rt/aider-project/home/.aider.model.set
+tings.yml
+  - 
+<scratch>/rt/aider-project/proj/.aider.model.set
+tings.yml
+Loaded model metadata from:
+  - 
+<scratch>/tools/aider-venv/lib/python3.12/site-p
+ackages/aider/resources/model-metadata.json
+Model metadata:
+{
+    "cache_read_input_token_cost": 1.25e-06,
+    "cache_read_input_token_cost_priority": 2.125e-06,
+    "deprecation_date": "2027-01-14",
+    "deprecation_source": "https://developers.openai.com/api/docs/deprecations",
+    "successor_model": "gpt-6-luna",
+    "input_cost_per_token": 2.5e-06,
+    "input_cost_per_token_batches": 1.25e-06,
+    "input_cost_per_token_priority": 4.25e-06,
+    "litellm_provider": "openai",
+    "max_input_tokens": 128000,
+    "max_output_tokens": 16384,
+    "mode": "chat",
+    "output_cost_per_token": 1e-05,
+    "fedramp_uplift_multiplier": 1.1,
+    "output_cost_per_token_batches": 5e-06,
+    "output_cost_per_token_priority": 1.7e-05,
+    "source": "https://developers.openai.com/api/docs/pricing",
+    "supports_function_calling": true,
+    "supports_parallel_function_calling": true,
+    "supports_pdf_input": true,
+    "supports_prompt_caching": true,
+    "supports_response_schema": true,
+    "supports_system_messages": true,
+    "supports_tool_choice": true,
+    "supports_vision": true
+}
+Model settings:
+accepts_settings: []
+cache_control: false
+caches_by_default: false
+edit_format: "diff"
+editor_edit_format: "editor-diff"
+editor_model_name: null
+examples_as_sys_msg: true
+extra_params: null
+lazy: true
+name: "gpt-4o"
+overeager: false
+reasoning_tag: null
+reminder: "sys"
+remove_reasoning: null
+send_undo_reply: false
+streaming: true
+system_prompt_prefix: null
+use_repo_map: true
+use_system_prompt: true
+use_temperature: true
+weak_model_name: "gpt-4o-mini"
+Aider v0.86.2
+Main model: gpt-4o with diff edit format
+Weak model: gpt-4o-mini
+Git repo: none
+Repo-map: disabled
+
+
+https://aider.chat/HISTORY.html#release-notes

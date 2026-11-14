@@ -14,10 +14,12 @@ from __future__ import annotations
 import ast
 import os
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from .frontmatter import parse_skill
+from .security import is_copy_excluded
 
 KNOWN_CAPABILITIES: tuple[str, ...] = (
     "network",
@@ -35,9 +37,15 @@ SENSITIVE_CAPABILITIES = frozenset(
 )
 
 _SHELL_SCRIPT_NET_RE = re.compile(
-    r"\b(?:curl|wget|nc|ncat|socat|ssh|scp|rsync|urlopen|urlretrieve|requests\.(?:get|post|put|delete|request)|"
-    r"httpx\.(?:get|post|Client|AsyncClient)|fetch\s*\(|axios\.(?:get|post))\b"
+    r"(?:\b(?:curl|wget|nc|ncat|socat|ssh|scp|rsync|urlopen|urlretrieve|requests\.(?:get|post|put|delete|request)|"
+    r"httpx\.(?:get|post|Client|AsyncClient)|axios\.(?:get|post))\b|\bfetch\s*\()"
 )
+# JS/TS: loading a module that performs network I/O or spawns processes is itself capability evidence, even when
+# the call sites are destructured/aliased (``const {execSync} = require('child_process')``).
+_JS_EXTS = frozenset({".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx"})
+_JS_MODULE_REF = r"(?:(?:require|import)\s*\(\s*|\bfrom\s+|\bimport\s+)[\"'`](?:node:)?"
+_JS_SHELL_IMPORT_RE = re.compile(_JS_MODULE_REF + r"child_process[\"'`]")
+_JS_NET_IMPORT_RE = re.compile(_JS_MODULE_REF + r"(?:https?|net|tls|dgram|http2)[\"'`]")
 _SHELL_SCRIPT_EXEC_RE = re.compile(
     r"\b(?:subprocess\.(?:run|Popen|call|check_call|check_output)|os\.(?:system|popen|exec\w*|spawn\w*)|"
     r"child_process\.(?:exec|execSync|spawn|spawnSync)|eval\s*\(|exec\s*\()\b"
@@ -68,7 +76,10 @@ _CAPABILITY_ALIASES: dict[str, str] = {
 
 def normalize_capability_name(raw: str) -> str:
     """Normalize hyphenated or aliased capability tokens to canonical identifiers."""
-    clean = "_".join(raw.strip().lower().replace("-", " ").replace("_", " ").split())
+    text = unicodedata.normalize("NFKC", raw).strip().lower()
+    for dash in ("-", "\u2010", "\u2011", "\u2012", "\u2013", "\u2014", "\u2015", "\u2212", "_"):
+        text = text.replace(dash, " ")
+    clean = "_".join(text.split())
     return _CAPABILITY_ALIASES.get(clean, clean)
 
 
@@ -172,12 +183,83 @@ def _record_ev(ev_map: dict[str, list[str]], cap: str, ref: str) -> None:
         items.append(ref)
 
 
+_PY_SHELL_MODULES = frozenset({"subprocess", "pty"})
+_PY_OS_SHELL_RE = re.compile(r"(?:system|popen|exec\w*|spawn\w*|posix_spawn\w*)")
+_PY_NET_PREFIXES = (
+    "urllib.request.",
+    "urllib.urlopen",
+    "http.client.",
+    "requests.",
+    "httpx.",
+    "socket.",
+    "urllib3.",
+    "aiohttp.",
+    "ftplib.",
+    "smtplib.",
+    "telnetlib.",
+    "websockets.",
+    "xmlrpc.client.",
+)
+
+
+def _py_import_aliases(tree: ast.AST) -> dict[str, str]:
+    """Map every locally bound import name to its fully qualified dotted name."""
+    aliases: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for a in node.names:
+                if a.asname:
+                    aliases[a.asname] = a.name
+                else:
+                    root = a.name.split(".", 1)[0]
+                    aliases[root] = root
+        elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+            for a in node.names:
+                if a.name != "*":
+                    aliases[a.asname or a.name] = f"{node.module}.{a.name}"
+    return aliases
+
+
+def _py_qualified_name(func: ast.expr, aliases: dict[str, str]) -> str:
+    """Return the import-resolved dotted name of a call target, or '' when it is not a plain name chain."""
+    parts: list[str] = []
+    cur: ast.expr = func
+    while isinstance(cur, ast.Attribute):
+        parts.append(cur.attr)
+        cur = cur.value
+    if not isinstance(cur, ast.Name):
+        return ""
+    parts.append(aliases.get(cur.id, cur.id))
+    return ".".join(reversed(parts))
+
+
+def _py_is_shell_qualname(q: str) -> bool:
+    root, _, rest = q.partition(".")
+    if root in _PY_SHELL_MODULES:
+        return True
+    return root == "os" and bool(_PY_OS_SHELL_RE.fullmatch(rest))
+
+
 def _infer_python_ast_caps(rel: str, text: str, ev_map: dict[str, list[str]]) -> None:
     try:
         tree = ast.parse(text, filename=rel)
     except (SyntaxError, ValueError, RecursionError):
         return
+    aliases = _py_import_aliases(tree)
     for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            # Importing a process-spawning module is shell_exec evidence by itself: the call site can be
+            # aliased, stored in a variable or passed around where name matching cannot follow it.
+            ref = f"{rel}:{getattr(node, 'lineno', 1)}"
+            if isinstance(node, ast.Import):
+                imported = [a.name for a in node.names]
+            elif node.module and not node.level:
+                imported = [node.module] + [f"{node.module}.{a.name}" for a in node.names]
+            else:
+                imported = []
+            if any(_py_is_shell_qualname(name) for name in imported):
+                _record_ev(ev_map, "shell_exec", ref)
+            continue
         if not isinstance(node, ast.Call):
             continue
         ln = getattr(node, "lineno", 1)
@@ -188,12 +270,17 @@ def _infer_python_ast_caps(rel: str, text: str, ev_map: dict[str, list[str]]) ->
         elif isinstance(node.func, ast.Attribute):
             base = node.func.value.id if isinstance(node.func.value, ast.Name) else ""
             fname = f"{base}.{node.func.attr}" if base else node.func.attr
+        qual = _py_qualified_name(node.func, aliases)
 
-        if any(t in fname for t in ("urlopen", "urlretrieve", "Request", "requests.", "httpx.", "socket")):
+        if any(t in fname for t in ("urlopen", "urlretrieve", "Request", "requests.", "httpx.", "socket")) or (
+            qual.startswith(_PY_NET_PREFIXES)
+        ):
             _record_ev(ev_map, "network", ref)
-        if any(t in fname for t in ("subprocess.", "os.system", "os.popen", "os.exec", "pty.spawn")):
+        if any(t in fname for t in ("subprocess.", "os.system", "os.popen", "os.exec", "pty.spawn")) or (
+            _py_is_shell_qualname(qual)
+        ):
             _record_ev(ev_map, "shell_exec", ref)
-        if fname in ("os.getenv", "getenv") or fname.startswith("os.environ"):
+        if fname in ("os.getenv", "getenv") or fname.startswith("os.environ") or qual in ("os.getenv", "os.putenv"):
             _record_ev(ev_map, "env_access", ref)
         if fname.endswith(("read_text", "read_bytes")):
             _record_ev(ev_map, "filesystem_read", ref)
@@ -232,11 +319,9 @@ def analyze_capabilities(skill_dir: Path) -> CapabilityAssessment:
             _record_ev(ev_map, "hooks", "SKILL.md:1")
 
     for dirpath, dirnames, filenames in os.walk(skill_dir, followlinks=False):
-        dirnames[:] = sorted(
-            d for d in dirnames if d not in {".git", "__pycache__", ".venv", "node_modules", ".skillporter"}
-        )
+        dirnames[:] = sorted(d for d in dirnames if not is_copy_excluded(d))
         cdir = Path(dirpath)
-        for fname in sorted(filenames):
+        for fname in sorted(f for f in filenames if not is_copy_excluded(f)):
             fpath = cdir / fname
             if fpath.is_symlink() or not fpath.is_file():
                 continue
@@ -261,10 +346,11 @@ def analyze_capabilities(skill_dir: Path) -> CapabilityAssessment:
                     continue
                 ref = f"{rel}:{idx}"
                 if is_script:
-                    if _SHELL_SCRIPT_NET_RE.search(s):
+                    is_js = suf in _JS_EXTS
+                    if _SHELL_SCRIPT_NET_RE.search(s) or (is_js and _JS_NET_IMPORT_RE.search(s)):
                         _record_ev(ev_map, "network", ref)
                     is_shell_line = suf in {".sh", ".bash"} and idx > 1 and not s.startswith("#")
-                    if _SHELL_SCRIPT_EXEC_RE.search(s) or is_shell_line:
+                    if _SHELL_SCRIPT_EXEC_RE.search(s) or is_shell_line or (is_js and _JS_SHELL_IMPORT_RE.search(s)):
                         _record_ev(ev_map, "shell_exec", ref)
                     if _SHELL_SCRIPT_WRITE_RE.search(s):
                         _record_ev(ev_map, "filesystem_write", ref)

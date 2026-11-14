@@ -650,6 +650,47 @@ MCP_TOOLS = [
     },
 ]
 
+_DESTRUCTIVE_TOOLS = frozenset({"skillporter_remove", "skillporter_import"})
+
+
+def _finalize_tool_registry(tools: list[dict[str, object]]) -> None:
+    """Close every input schema to unknown keys and attach MCP tool annotations."""
+    for tool in tools:
+        schema = tool["inputSchema"]
+        assert isinstance(schema, dict)
+        schema["additionalProperties"] = False
+        name = str(tool["name"])
+        description = str(tool.get("description", ""))
+        if description.startswith("[WRITE]"):
+            tool["annotations"] = {"readOnlyHint": False, "destructiveHint": name in _DESTRUCTIVE_TOOLS}
+        else:
+            tool["annotations"] = {"readOnlyHint": True}
+
+
+_finalize_tool_registry(MCP_TOOLS)
+_MCP_TOOLS_BY_NAME = {str(t["name"]): t for t in MCP_TOOLS}
+
+#: Maximum accepted size of one JSON-RPC request line on stdio (characters).
+MAX_MCP_LINE_CHARS = 8 * 1024 * 1024
+
+
+def _reject_unknown_arguments(tool_name: str, args: dict[str, object]) -> None:
+    """Raise ValueError when ``args`` has keys outside the tool's inputSchema (before any side effect)."""
+    tool = _MCP_TOOLS_BY_NAME.get(tool_name)
+    if tool is None:
+        return
+    schema = tool["inputSchema"]
+    assert isinstance(schema, dict)
+    properties = schema.get("properties", {})
+    assert isinstance(properties, dict)
+    unknown = sorted(str(k) for k in args if k not in properties)
+    if unknown:
+        allowed = ", ".join(sorted(properties)) or "none"
+        raise ValueError(
+            f"Invalid params: unknown argument(s) {', '.join(repr(k) for k in unknown)} for {tool_name} "
+            f"(allowed: {allowed})"
+        )
+
 
 def handle_mcp_request(
     req: object,
@@ -703,6 +744,9 @@ def handle_mcp_request(
             },
         }
 
+    if method == "ping":
+        return {"jsonrpc": "2.0", "id": req_id, "result": {}}
+
     if method == "tools/list":
         return {
             "jsonrpc": "2.0",
@@ -720,6 +764,7 @@ def handle_mcp_request(
                 raw_args = {}
             if not isinstance(raw_args, dict):
                 raise TypeError(f"MCP tool 'arguments' must be a JSON object, got {type(raw_args).__name__}")
+            _reject_unknown_arguments(raw_tname.strip(), raw_args)
             payload = _call_tool(
                 raw_tname.strip(),
                 raw_args,
@@ -1191,6 +1236,11 @@ def _call_tool(
         else:
             resolved_target = resolve_mcp_path(raw_target, workspace_root=ws_root)
             right = load_snapshot_from_target(resolved_target, base_dir=root, scope="project")
+        from .portability import refresh_snapshot_from_disk
+
+        # Same on-disk re-hash as the CLI `diff`, so an edit in any installed copy is reported.
+        refresh_snapshot_from_disk(left, right)
+        refresh_snapshot_from_disk(right, left)
         return diff_environments(left, right).to_dict()
 
     if name == "skillporter_export":
@@ -1310,20 +1360,45 @@ def run_mcp_stdio(
     allow_user_scope: bool | None = None,
 ) -> int:
     """Run the JSON-RPC 2.0 MCP server loop over stdin/stdout."""
-    for raw_line in sys.stdin:
+    while True:
+        raw_line = sys.stdin.readline(MAX_MCP_LINE_CHARS + 1)
+        if raw_line == "":
+            break
+        if len(raw_line) > MAX_MCP_LINE_CHARS and not raw_line.endswith("\n"):
+            # Oversized request: discard the rest of the line without buffering it, then keep serving.
+            while True:
+                chunk = sys.stdin.readline(MAX_MCP_LINE_CHARS)
+                if chunk == "" or chunk.endswith("\n"):
+                    break
+            _write_mcp_response(
+                {
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {
+                        "code": -32600,
+                        "message": f"Invalid Request: request line exceeds {MAX_MCP_LINE_CHARS} characters",
+                    },
+                }
+            )
+            continue
         line = raw_line.strip()
         if not line:
             continue
         try:
             req = json.loads(line)
         except json.JSONDecodeError as exc:
-            err_resp = {
-                "jsonrpc": "2.0",
-                "id": None,
-                "error": {"code": -32700, "message": f"Parse error: {exc.msg}"},
-            }
-            sys.stdout.write(json.dumps(err_resp) + "\n")
-            sys.stdout.flush()
+            _write_mcp_response(
+                {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": f"Parse error: {exc.msg}"}}
+            )
+            continue
+        except (RecursionError, ValueError):
+            _write_mcp_response(
+                {
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {"code": -32700, "message": "Parse error: invalid or too deeply nested JSON"},
+                }
+            )
             continue
         resp = handle_mcp_request(
             req,
@@ -1332,6 +1407,10 @@ def run_mcp_stdio(
             allow_user_scope=allow_user_scope,
         )
         if resp is not None:
-            sys.stdout.write(json.dumps(resp) + "\n")
-            sys.stdout.flush()
+            _write_mcp_response(resp)
     return 0
+
+
+def _write_mcp_response(resp: dict[str, object]) -> None:
+    sys.stdout.write(json.dumps(resp) + "\n")
+    sys.stdout.flush()

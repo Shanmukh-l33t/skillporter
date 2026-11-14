@@ -96,6 +96,12 @@ The server treats tool arguments as untrusted, because they come from a model th
 | `--allow-user-scope` | `SKILLPORTER_MCP_ALLOW_USER_SCOPE=1` | Permit `scope="user"`. |
 | | `SKILLPORTER_MCP_ALLOW_REMOTE=1` | Permit remote sources for `inspect` in read-only mode. |
 
+## Unknown arguments
+
+Every tool schema is closed. A call that includes an argument the tool does not define, for example `dry_run` on `skillporter_add`, is rejected before anything runs, and the error names the argument. This stops a model from believing it requested a preview when the tool would have written files.
+
+The server also answers `ping`, marks each tool in `tools/list` with `readOnlyHint` and `destructiveHint` annotations, and survives hostile input: a line over 8 MiB gets `-32600`, and deeply nested JSON gets `-32700`, with the server still running.
+
 ## Type checking
 
 Arguments are validated strictly. A boolean must be a JSON boolean, so `"false"` and `"0"` are rejected, not interpreted. Harness lists must contain registered harness IDs. Malformed JSON-RPC messages receive standard `-32700` and `-32600` errors.

@@ -17,6 +17,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -189,13 +190,43 @@ _PROMPT_PATTERNS: tuple[tuple[str, str, str, re.Pattern[str]], ...] = (
     ),
 )
 
+# Building blocks for remote-execution detection (sec-curl-pipe-sh). Every form here takes the *output of a
+# network fetch* and hands it to a shell or interpreter; merely mentioning curl/wget never matches.
+_RX_DL = r"(?:curl|wget)\b"
+_RX_SHELL = r"(?:/(?:[\w.-]+/)*)?(?:ba|z|da|k|a)?sh(?![\w-])"
+_RX_PYLIKE = r"(?:/(?:[\w.-]+/)*)?(?:python[23]?(?:\.\d+)?|perl|ruby|node)(?![\w-])"
+_RX_INTERP = rf"(?:{_RX_SHELL}|{_RX_PYLIKE})"
+_RX_PRIV = r"(?:(?:sudo|env)\s+(?:-\S+\s+)*)*"
+# `$(` or backtick command substitution, optionally inside quotes, whose first command is a download
+_RX_SUBST = r"[\"']?(?:\$\(|`)\s*(?:sudo\s+)?" + _RX_DL
+_RX_LEAD = r"(?<![\w.-])"
+
 # Patterns for risky shell/script execution
 _SCRIPT_PATTERNS: tuple[tuple[str, str, str, re.Pattern[str]], ...] = (
     (
         "CRITICAL",
         "sec-curl-pipe-sh",
         "Remote code execution pattern (curl/wget piped directly into shell)",
-        re.compile(r"(?:curl|wget)\b[^\n|]*\|\s*(?:sudo\s+)?(?:ba)?sh\b"),
+        re.compile(
+            rf"{_RX_DL}[^\n|]*\|\s*{_RX_PRIV}{_RX_SHELL}"
+            # `| python3 -`, `| node -`, `| python3 -u -`: interpreter reads the program from stdin
+            rf"|{_RX_DL}[^\n|]*\|\s*{_RX_PRIV}{_RX_PYLIKE}\s+(?:-[A-Za-z]\s+)*-(?=[\s;&|)\"']|$)"
+        ),
+    ),
+    (
+        "CRITICAL",
+        "sec-curl-pipe-sh",
+        "Remote code execution pattern (output of curl/wget executed via eval, process or command substitution)",
+        re.compile(
+            # eval "$(curl URL)"
+            rf"{_RX_LEAD}eval\s+{_RX_SUBST}"
+            # bash <(curl URL), source <(curl URL), . <(curl URL)
+            rf"|{_RX_LEAD}(?:{_RX_INTERP}|source|\.)\s+(?:-\S+\s+)*<\(\s*{_RX_DL}"
+            # sh -c "$(curl URL)", python3 -c "$(wget -qO- URL)"
+            rf"|{_RX_LEAD}{_RX_INTERP}\s+(?:-\S+\s+)*-[A-Za-z]*[ce]\s+{_RX_SUBST}"
+            # source /dev/stdin <<< "$(curl URL)", bash <<< "$(curl URL)"
+            rf"|{_RX_LEAD}(?:{_RX_INTERP}|source|\.)\s+(?:(?:-\S+|/dev/stdin)\s+)*<<<\s*{_RX_SUBST}"
+        ),
     ),
     (
         "CRITICAL",
@@ -253,7 +284,7 @@ _SCRIPT_PATTERNS: tuple[tuple[str, str, str, re.Pattern[str]], ...] = (
         "LOW",
         "sec-external-download",
         "External network download command referenced",
-        re.compile(r"\b(?:curl|wget)\s+-[A-Za-z]*\s+https?://"),
+        re.compile(r"\b(?:curl|wget)\s+-[A-Za-z]*-?\s+https?://"),
     ),
 )
 
@@ -319,6 +350,155 @@ _REMEDIATIONS: dict[str, str] = {
 }
 
 
+# Directory/file names that are never part of an installed skill. The installer (copy ignore list) and the
+# scanner / capability analysis (walk filter) MUST share this one definition so that every file that gets
+# copied into a harness directory has been scanned.
+COPY_EXCLUDED_NAMES = frozenset({".git", "__pycache__", ".DS_Store", ".skillporter"})
+
+
+def is_copy_excluded(name: str) -> bool:
+    """Return True when *name* (a single path segment) is never copied by the installer nor scanned."""
+    return name in COPY_EXCLUDED_NAMES
+
+
+def copy_ignore(_directory: str, names: list[str]) -> set[str]:
+    """``shutil.copytree(ignore=...)`` callback sharing the scanner's exclusion list."""
+    return {n for n in names if is_copy_excluded(n)}
+
+
+def _line_evidence(lines: list[str], line: int) -> str:
+    """Short, stable digest of the matched source line (identity of a finding's payload)."""
+    if 1 <= line <= len(lines):
+        return hashlib.sha256(lines[line - 1].strip().encode("utf-8", "replace")).hexdigest()[:16]
+    return ""
+
+
+# Download-then-execute detection: `curl URL -o a; sh a`, `wget URL -O a && bash a`, or the same on separate
+# lines. A file is only reported when the *same path* that a fetch command wrote is later handed to a
+# shell/interpreter (or run directly) and no checksum/signature verification command ran in between.
+_DX_SPLIT = re.compile(r"\s*(?:&&|\|\||\||;)\s*")
+_DX_INTERP = re.compile(r"(?:(?:ba|z|da|k|a)?sh|python[23]?(?:\.\d+)?|perl|ruby|node)")
+_DX_VERIFY = re.compile(
+    r"\b(?:sha\d+sum|shasum|md5sum|b2sum)\b[^\n]*(?:\s-\w*c\b|--check)"
+    r"|\bgpgv\b|\bgpg2?\b[^\n]*--verify|\bopenssl\s+dgst\b|\bcosign\s+verify\b|\bminisign\s+-V"
+)
+_DX_FAKE_VERIFY = re.compile(r"\|\|\s*(?:true|:|exit\s+0)\b")
+_DX_LEAD_JUNK = re.compile(r"^(?:[\w.]+\()?[\s\"'(\[{!]*(?:(?:then|do|else|elif|if)\s+)?")
+
+
+def _dx_norm(name: str) -> str:
+    name = name.strip().strip("\"'").rstrip("\"')]},")
+    name = re.sub(r"\$\{(\w+)\}", r"$\1", name)
+    return name[2:] if name.startswith("./") else name
+
+
+def _dx_download_names(seg: str) -> list[str]:
+    """Return normalized local file names written by a curl/wget command inside *seg*."""
+    m = re.search(r"(?<![\w./-])(curl|wget)\b(.*)$", seg)
+    if not m:
+        return []
+    tool, rest = m.group(1), m.group(2)
+    try:
+        toks = shlex.split(rest)
+    except ValueError:
+        toks = [t.strip("\"'") for t in rest.split()]
+    outs: list[str] = []
+    urls: list[str] = []
+    out_flag = re.compile(r"-[A-Za-z]*" + ("o" if tool == "curl" else "O"))
+    remote_name = False
+    stdout = False
+    i = 0
+    while i < len(toks):
+        tok = toks[i]
+        nxt = toks[i + 1] if i + 1 < len(toks) else ""
+        if tok.startswith(("--output=", "--output-document=")):
+            outs.append(tok.split("=", 1)[1])
+        elif tok in ("--output", "--output-document") or out_flag.fullmatch(tok):
+            outs.append(nxt)
+            i += 1
+        elif tool == "wget" and re.fullmatch(r"-[A-Za-z]*O-", tok):
+            stdout = True
+        elif tool == "curl" and (tok == "--remote-name" or re.fullmatch(r"-[A-Za-z]*O", tok)):
+            remote_name = True
+        elif re.match(r"(?:https?|ftp)://", tok):
+            urls.append(tok)
+        i += 1
+    for rm in re.finditer(r"(?<![\d&>])>>?\s*[\"']?([^\s\"'<>|;&]+)", rest):
+        outs.append(rm.group(1))
+    if not outs and not stdout and (tool == "wget" or remote_name):
+        for url in urls:
+            base = re.split(r"[?#]", url)[0].rstrip("/").rsplit("/", 1)[-1]
+            if base and "://" not in base:
+                outs.append(base)
+    return [n for n in (_dx_norm(o) for o in outs) if n and n not in ("-", "/dev/null") and not n.startswith("&")]
+
+
+def _dx_exec_target(seg: str) -> str:
+    """Return the normalized file a segment executes (``sh F``, ``source F``, ``./F``), or ''."""
+    toks = _DX_LEAD_JUNK.sub("", seg).split()
+    while toks and toks[0] in ("sudo", "env", "exec", "command", "time", "nohup"):
+        toks.pop(0)
+        while toks and toks[0].startswith("-"):
+            toks.pop(0)
+    if not toks:
+        return ""
+    head = toks[0]
+    base = head.rsplit("/", 1)[-1]
+    if _DX_INTERP.fullmatch(base) or head in ("source", "."):
+        rest = toks[1:]
+        if any(t in ("-c", "-m", "-e") for t in rest if t.startswith("-")):
+            return ""
+        for tok in rest:
+            if not tok.startswith("-"):
+                return _dx_norm(tok)
+        return ""
+    if head.startswith(("./", "/", "$", "~")):
+        return _dx_norm(head)
+    return ""
+
+
+def _find_download_then_exec(lines: list[str], *, fenced_only: bool) -> list[int]:
+    """Return 1-based line numbers where a file fetched by curl/wget is subsequently executed unverified."""
+    logical: list[tuple[int, str]] = []
+    buf = ""
+    start = 0
+    for idx, raw in enumerate(lines, start=1):
+        if not buf:
+            start = idx
+        if raw.rstrip().endswith("\\"):
+            buf += raw.rstrip()[:-1] + " "
+            continue
+        logical.append((start, buf + raw))
+        buf = ""
+    if buf:
+        logical.append((start, buf))
+
+    hits: list[int] = []
+    downloads: dict[str, bool] = {}  # normalized file name -> checksum/signature verified since download
+    in_fence = False
+    for ln, text in logical:
+        stripped = text.strip()
+        if fenced_only:
+            if stripped.startswith(("```", "~~~")):
+                in_fence = not in_fence
+                downloads.clear()
+                continue
+            if not in_fence:
+                continue
+        if not stripped or stripped.startswith("#"):
+            continue
+        fake_verify = bool(_DX_FAKE_VERIFY.search(text))
+        for seg in _DX_SPLIT.split(text):
+            target = _dx_exec_target(seg)
+            if target and downloads.get(target) is False and ln not in hits:
+                hits.append(ln)
+            for name in _dx_download_names(seg):
+                downloads[name] = False
+            if downloads and not fake_verify and _DX_VERIFY.search(seg):
+                downloads = dict.fromkeys(downloads, True)
+    return hits
+
+
 @dataclass
 class SecurityFinding:
     """One security finding in a skill package."""
@@ -331,6 +511,7 @@ class SecurityFinding:
     remediation: str = ""
     category: str = ""
     confidence: str = ""
+    evidence: str = field(default="", repr=False)  # digest of the matched line; part of finding identity only
 
     def __post_init__(self) -> None:
         if not self.remediation and self.code in _REMEDIATIONS:
@@ -379,6 +560,7 @@ class SecurityReport:
     files_truncated: list[str] = field(default_factory=list)
     files_unreadable: list[str] = field(default_factory=list)
     files_binary_skipped: list[str] = field(default_factory=list)
+    files_excluded: list[str] = field(default_factory=list)
     external_scanner_status: str = "not_configured"
 
     @property
@@ -516,6 +698,7 @@ class SecurityReport:
                 "files_truncated": list(self.files_truncated),
                 "files_unreadable": list(self.files_unreadable),
                 "files_binary_skipped": list(self.files_binary_skipped),
+                "files_excluded": list(self.files_excluded),
             },
             "counts": {
                 "critical": self.critical_count,
@@ -539,7 +722,7 @@ def compute_tree_hash(skill_dir: Path) -> tuple[str, dict[str, str]]:
 
     all_entries: list[Path] = []
     for dirpath, dirnames, filenames in os.walk(skill_dir, followlinks=False):
-        dirnames[:] = sorted(d for d in dirnames if d not in {".git", "__pycache__", ".DS_Store"})
+        dirnames[:] = sorted(d for d in dirnames if not is_copy_excluded(d))
         cdir = Path(dirpath)
         for dname in list(dirnames):
             dpath = cdir / dname
@@ -547,7 +730,7 @@ def compute_tree_hash(skill_dir: Path) -> tuple[str, dict[str, str]]:
                 all_entries.append(dpath)
                 dirnames.remove(dname)
         for fname in sorted(filenames):
-            if fname == ".DS_Store":
+            if is_copy_excluded(fname):
                 continue
             all_entries.append(cdir / fname)
 
@@ -665,10 +848,11 @@ def scan_skill(
     signals_by_file: dict[str, FileSignals] = {}
 
     for dirpath, dirnames, filenames in os.walk(raw_root, followlinks=False):
-        dirnames[:] = sorted(
-            d for d in dirnames if d not in {".git", "__pycache__", ".venv", "node_modules", ".skillporter"}
-        )
         current_dir = Path(dirpath)
+        for excluded in sorted(n for n in [*dirnames, *filenames] if is_copy_excluded(n)):
+            report.files_excluded.append((current_dir / excluded).relative_to(raw_root).as_posix())
+        dirnames[:] = sorted(d for d in dirnames if not is_copy_excluded(d))
+        filenames = [f for f in filenames if not is_copy_excluded(f)]
 
         for dname in list(dirnames):
             dpath = current_dir / dname
@@ -741,6 +925,7 @@ def scan_skill(
                 continue
 
             report.files_scanned += 1
+            file_findings_start = len(report.findings)
             if text.startswith("\ufeff"):
                 text = text[1:]
 
@@ -789,14 +974,37 @@ def scan_skill(
                     if h_code == "sec-html-comment-instruction" and h_pat.search(text):
                         report.findings.append(SecurityFinding(h_sev, h_code, rel, h_msg))
 
+            if is_script or is_markdown:
+                for dx_line in _find_download_then_exec(text.splitlines(), fenced_only=is_markdown and not is_script):
+                    fsig.has_dynamic_exec = True
+                    report.findings.append(
+                        SecurityFinding(
+                            "CRITICAL",
+                            "sec-curl-pipe-sh",
+                            rel,
+                            "Remote code execution pattern (file downloaded with curl/wget is executed unverified)",
+                            line=dx_line,
+                        )
+                    )
+
             if "\\\n" in text or "\\\r\n" in text:
                 joined_text = re.sub(r"\\\r?\n[ \t]*", " ", text)
+                joined_lines = joined_text.splitlines()
                 existing_codes = {f.code for f in report.findings if f.file == rel}
-                for l_idx, jline in enumerate(joined_text.splitlines(), start=1):
+                for l_idx, jline in enumerate(joined_lines, start=1):
                     for sev, code, msg, pat in _SCRIPT_PATTERNS:
                         if code not in existing_codes and pat.search(jline):
                             effective_sev = sev if (is_script or sev in ("CRITICAL", "HIGH")) else "INFO"
-                            report.findings.append(SecurityFinding(effective_sev, code, rel, msg, line=l_idx))
+                            report.findings.append(
+                                SecurityFinding(
+                                    effective_sev,
+                                    code,
+                                    rel,
+                                    msg,
+                                    line=l_idx,
+                                    evidence=_line_evidence(joined_lines, l_idx),
+                                )
+                            )
                             existing_codes.add(code)
 
             # Language-aware & bounded encoded content analyzers
@@ -843,6 +1051,11 @@ def scan_skill(
                         confidence=hit.confidence,
                     )
                 )
+
+            raw_lines = text.splitlines()
+            for fnd in report.findings[file_findings_start:]:
+                if fnd.line > 0 and not fnd.evidence:
+                    fnd.evidence = _line_evidence(raw_lines, fnd.line)
 
     for cross_hit in analyze_cross_file_chains(signals_by_file):
         report.findings.append(

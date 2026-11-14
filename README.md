@@ -168,23 +168,23 @@ Skillporter distinguishes **support status** (`NATIVE`, `COMPATIBLE`, `ADAPTED`)
 | Harness | Project Path | User / Global Path | Support | Verification Evidence |
 |---|---|---|---|---|
 | **Hermes Agent** | `.hermes/skills/` | `$HERMES_HOME/skills/<cat>/<name>` | `NATIVE` | `RUNTIME_VERIFIED` |
-| **Claude Code** | `.claude/skills/` | `~/.claude/skills/` | `NATIVE` | `INTEGRATION_TESTED` |
-| **OpenAI Codex** | `.agents/skills/` | `~/.agents/skills/` | `NATIVE` | `INTEGRATION_TESTED` |
-| **Cursor** | `.agents/skills/`, `.cursor/skills/` (+2 compat) | `~/.agents/skills/`, `~/.cursor/skills/` | `NATIVE` | `INTEGRATION_TESTED` |
-| **GitHub Copilot** | `.github/skills/` (+2 compat) | `~/.copilot/skills/` (+1 compat) | `NATIVE` | `FIXTURE_TESTED` |
-| **Gemini CLI** | `.agents/skills/`, `.gemini/skills/` | `~/.agents/skills/`, `~/.gemini/skills/` | `NATIVE` | `FIXTURE_TESTED` |
+| **Claude Code** | `.claude/skills/` | `~/.claude/skills/` | `NATIVE` | `RUNTIME_VERIFIED` |
+| **OpenAI Codex** | `.agents/skills/` | `~/.agents/skills/` | `NATIVE` | `RUNTIME_VERIFIED` |
+| **Cursor** | `.agents/skills/`, `.cursor/skills/` (+2 compat) | `~/.agents/skills/`, `~/.cursor/skills/` | `NATIVE` | `FIXTURE_TESTED` |
+| **GitHub Copilot** | `.github/skills/` (+2 compat) | `~/.copilot/skills/` (+1 compat) | `NATIVE` | `RUNTIME_VERIFIED` |
+| **Gemini CLI** | `.agents/skills/`, `.gemini/skills/` | `~/.agents/skills/`, `~/.gemini/skills/` | `NATIVE` | `RUNTIME_VERIFIED` |
 | **Google Antigravity** | `.agents/skills/` (+1 compat) | `~/.gemini/config/skills/` | `NATIVE` | `FIXTURE_TESTED` |
 | **Windsurf** | `.windsurf/skills/` | `~/.codeium/windsurf/skills/` | `NATIVE` | `FIXTURE_TESTED` |
-| **Cline** | `.cline/skills/` (+3 compat) | `~/.cline/skills/` | `NATIVE` | `FIXTURE_TESTED` |
+| **Cline** | `.cline/skills/` (+3 compat) | `~/.cline/skills/` | `NATIVE` | `RUNTIME_VERIFIED` |
 | **Roo Code** | `.roo/skills/` (+1 compat) | `~/.roo/skills/` (+1 compat) | `NATIVE` | `FIXTURE_TESTED` |
-| **OpenCode** | `.opencode/skills/` (+2 compat) | `~/.config/opencode/skills/` (+2 compat) | `NATIVE` | `FIXTURE_TESTED` |
+| **OpenCode** | `.opencode/skills/` (+2 compat) | `~/.config/opencode/skills/` (+2 compat) | `NATIVE` | `RUNTIME_VERIFIED` |
 | **Zed** | `.agents/skills/` | `~/.agents/skills/` | `NATIVE` | `FIXTURE_TESTED` |
 | **Replit Agent** | `.agents/skills/` (+1 compat) | `~/.config/agents/skills/` | `NATIVE` | `FIXTURE_TESTED` |
 | **JetBrains Junie** | `.junie/skills/` (+1 compat) | `~/.junie/skills/` (+1 compat) | `NATIVE` | `FIXTURE_TESTED` |
 | **OpenClaw** | `.openclaw/skills/` (+2 compat) | `~/.openclaw/skills/` (+1 compat) | `NATIVE` | `FIXTURE_TESTED` |
 | **OpenHands** | `.agents/skills/` (+2 compat) | `~/.agents/skills/` (+1 compat) | `NATIVE` | `FIXTURE_TESTED` |
 | **Goose** | `.agents/skills/` (+1 compat) | `~/.agents/skills/` (+1 compat) | `NATIVE` | `FIXTURE_TESTED` |
-| **Continue** | `.continue/skills/` (`.continue/rules/` adapted) | `~/.continue/skills/` | `COMPATIBLE` | `FIXTURE_TESTED` |
+| **Continue** | `.continue/skills/` (`.continue/rules/` adapted) | `~/.continue/skills/` | `COMPATIBLE` | `RUNTIME_VERIFIED` |
 | **Aider / AiderDesk** | `.aider-desk/skills/` (`CONVENTIONS.md` adapted) | `~/.aider-desk/skills/` | `ADAPTED` | `FIXTURE_TESTED` |
 
 Each harness record ships its detection rules, path precedence, and vendor documentation reference. `skillporter matrix` prints the same matrix from the installed CLI, and `skillporter detect` reports which harnesses exist on the current machine.

@@ -43,6 +43,16 @@ security:
 | Cross-file chains | A payload in one file that is decoded in a second and executed from a third. |
 | Filesystem | Symlinks that leave the skill root, path traversal, broken symlinks, precompiled binaries, scripts outside `scripts/`. |
 
+## Remote execution patterns
+
+`sec-curl-pipe-sh` (critical) covers more than `curl URL | sh`. It also matches `eval "$(curl ...)"`, `eval "$(wget -qO- ...)"`, `bash <(curl ...)`, `source <(curl ...)`, `sh -c "$(wget ...)"`, `python3 -c "$(curl ...)"`, piping into `python3 -` or `bash -s --`, and downloading a file and then running that same file (`curl URL -o a; sh a`). Merely downloading with a checksum check, or piping into a data tool such as `jq`, is not flagged as remote execution.
+
+The rule matches text, so it also flags prose that mentions the pattern, for example a `SKILL.md` line warning readers not to run `curl URL | sh`. That is a known false positive of pattern matching. Review the finding, and reword the sentence if the skill is yours.
+
+## Which files are scanned
+
+The scanner and the installer use one shared list. `.git`, `__pycache__`, `.DS_Store` and `.skillporter` are neither scanned nor copied into a harness, and the report lists them under `completeness.files_excluded`. Everything else is both scanned and copied, including `node_modules` and `.venv`, so code vendored into a skill is analyzed. Vendored code can add findings, and that is intended.
+
 ## Finding codes
 
 Each finding has a code, a severity, a category, a confidence level, a file, a line where one applies, and a suggested fix. `skillporter explain <code>` describes any of them.

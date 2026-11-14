@@ -461,13 +461,19 @@ def diagnose(
     explicit_only_set = {harnesses.get(h).name for h in only} if only is not None else None
     default_project_set = {"claude-code", "codex", "cursor"}
     if scope == "project":
-        for hname, rep in diag.reports.items():
-            if any(loc.exists for loc in rep.locations):
-                default_project_set.add(hname)
+        manifest_set: set[str] = set()
         if manifest and manifest.harnesses:
             for mh in manifest.harnesses:
                 with contextlib.suppress(KeyError):
-                    default_project_set.add(harnesses.get(mh).name)
+                    manifest_set.add(harnesses.get(mh).name)
+        if manifest_set:
+            # The manifest is the user's explicit harness selection: an unscoped skill is judged against it
+            # alone, never against claude-code/codex/cursor or whatever directories happen to exist.
+            default_project_set = manifest_set
+        else:
+            for hname, rep in diag.reports.items():
+                if any(loc.exists for loc in rep.locations):
+                    default_project_set.add(hname)
 
     for skill_md in diag.skills:
         skill = skill_md.parent.name

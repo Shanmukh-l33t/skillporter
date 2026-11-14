@@ -68,8 +68,18 @@ def test_verification_model_levels_and_evidence_honesty():
     all_names = harnesses.names()
     assert len(all_names) == 19
     runtime_verified = [n for n in all_names if harnesses.get(n).verification_level == "RUNTIME_VERIFIED"]
-    # Only harnesses actually runtime-tested in this environment may claim RUNTIME_VERIFIED
-    assert runtime_verified == ["hermes"]
+    # RUNTIME_VERIFIED needs a real binary that listed the installed skill, with dated evidence on the adapter.
+    # Do not extend this set without captured evidence (see docs/audits/ for the 2026-11-14 harness audit).
+    assert runtime_verified == sorted(
+        ["claude-code", "cline", "codex", "continue", "gemini-cli", "github-copilot", "hermes", "opencode"],
+        key=all_names.index,
+    )
+    for name in runtime_verified:
+        if name != "hermes":
+            h = harnesses.get(name)
+            assert h.raw_evidence and "No model invocation" in h.raw_evidence, f"{name} needs recorded evidence"
+    # Cursor has a CLI but it cannot list skills, so it must not claim more than fixture-level evidence.
+    assert harnesses.get("cursor").verification_level == "FIXTURE_TESTED"
     for name in all_names:
         h = harnesses.get(name)
         assert h.verification_evidence != "", f"{name} missing verification_evidence"

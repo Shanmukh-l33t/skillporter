@@ -38,6 +38,8 @@ faq:
     a: "No. Every report is labeled STATIC_SECURITY_ASSESSMENT, and NO_DETECTED_FINDINGS means exactly that: nothing matched."
   - q: "Which harnesses does Skill Porter support?"
     a: "19 adapters: Claude Code, OpenAI Codex, Cursor, GitHub Copilot, Gemini CLI, Google Antigravity, Windsurf, Cline, Roo Code, OpenCode, Zed, Replit Agent, JetBrains Junie, Hermes Agent, OpenClaw, OpenHands, Goose, Continue and Aider."
+  - q: "Which harnesses are runtime verified, and what does that mean?"
+    a: "Eight of 19: Claude Code, OpenAI Codex, GitHub Copilot, Gemini CLI, OpenCode, Cline, Continue and Hermes Agent. For these the real binary was run and its own output showed the installed skill. No model was called, so it proves discovery, not good behavior. Cursor and Windsurf are fixture tested."
   - q: "Does Skill Porter work on Windows?"
     a: "Yes. It runs on Python 3.9 or newer on Windows, and CI runs the same checks on Linux, macOS and Windows. Install with uv, pipx or npx, because the standalone install.sh is Linux and macOS only."
   - q: "Can I run Skill Porter in CI?"
@@ -147,6 +149,10 @@ Skillporter ships one adapter per harness and records how each was verified. The
 ### Which harnesses does Skill Porter support?
 
 19 adapters: Claude Code, OpenAI Codex, Cursor, GitHub Copilot, Gemini CLI, Google Antigravity, Windsurf, Cline, Roo Code, OpenCode, Zed, Replit Agent, JetBrains Junie, Hermes Agent, OpenClaw, OpenHands, Goose, Continue and Aider. Seventeen read `SKILL.md` natively, Continue reads it through a compatibility path, and Aider needs an adapted conventions file. `skillporter matrix` prints the same table, including which adapters are runtime verified.
+
+### Which harnesses are runtime verified, and what does that mean?
+
+Eight of 19: Claude Code, OpenAI Codex, GitHub Copilot, Gemini CLI, OpenCode, Cline, Continue and Hermes Agent. For these the real binary was run and its own output showed the installed skill, in project and user scope. No model was called, so it proves discovery, not good behavior. Gemini CLI needs the project folder to be trusted before it lists project skills. Cursor and Windsurf are fixture tested because no live load could be observed. See [Harness compatibility](/docs/harnesses).
 
 ### Does Skill Porter work on Windows?
 

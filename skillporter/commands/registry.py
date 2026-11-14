@@ -11,6 +11,7 @@ from .. import harnesses
 from ..diagnose import diagnose as run_diagnose
 from ..formats import inspect_skill_dir, render_adapted_skill
 from ..frontmatter import discover, parse_skill, validate
+from ..install import InstallError
 from ..registry import pack_skill, publish_skill, resolve_registry_spec, search_catalog
 from ..security import compute_tree_hash, scan_skill, to_sarif
 from ..sources import SourceError, resolve_source
@@ -371,7 +372,7 @@ def cmd_pack(args: argparse.Namespace) -> int:
         for sdir in skill_dirs:
             rel = pack_skill(sdir, out_dir)
             packed_items.append(rel)
-    except ValueError as exc:
+    except (InstallError, SourceError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_ERROR
 

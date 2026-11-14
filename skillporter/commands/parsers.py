@@ -91,6 +91,12 @@ def attach_harness_control_flags(
         action="append",
         help="exclude specific harness(es) from target selection (repeatable or comma-separated)",
     )
+    if parser.prog.split()[-1:] in (["remove"], ["uninstall"]):
+        parser.add_argument(
+            "--keep-manifest",
+            action="store_true",
+            help="keep the skill listed in skillporter.yaml and skillporter.lock after a full removal",
+        )
     if include_conflict:
         parser.add_argument(
             "--on-conflict",

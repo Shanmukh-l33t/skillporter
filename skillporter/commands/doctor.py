@@ -6,6 +6,7 @@ import argparse
 import contextlib
 import json
 import sys
+import time
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -16,10 +17,13 @@ from ..diagnose import diagnose as run_diagnose
 from ..install import InstallError
 from ..install import install as run_install
 from ..manifest import LOCKFILE_FILENAME, MANIFEST_FILENAME, LockfileError, load_lockfile, load_manifest
+from ..policy import load_policy, split_by_allowed_harnesses
 from ..security import compute_tree_hash, scan_skill
 from ..state import ManagedSkillRecord, load_state, state_dir
 from ..ui import badge, render_table
-from .common import EXIT_ERROR, EXIT_OK, EXIT_PROBLEM, fmt_mode, is_verbose, latest_tree_mtime_ns
+from .common import EXIT_ERROR, EXIT_OK, EXIT_PROBLEM, fmt_mode, get_harness, is_verbose, latest_tree_mtime_ns
+
+STALE_TMP_AGE_SECONDS = 600
 
 
 def print_matrix(as_json: bool, category: str | None = None, *, verbose: bool = False) -> int:
@@ -94,6 +98,12 @@ def cmd_diagnose(args: argparse.Namespace) -> int:
     selected = args.harness or None
     if selected and "all" in selected:
         selected = harnesses.names()
+    try:
+        for hn in selected or []:
+            get_harness(hn)
+    except KeyError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
 
     diag = run_diagnose(root, only=selected, scope=args.scope)
     fmt = fmt_mode(args)
@@ -143,7 +153,7 @@ def cmd_diagnose(args: argparse.Namespace) -> int:
     print(f"skills found: {', '.join(diag.skill_names)}\n")
 
     if selected:
-        names = [harnesses.get(h).name for h in selected]
+        names = [get_harness(h).name for h in selected]
     else:
         active = [
             name
@@ -266,9 +276,42 @@ def _find_verified_snapshot(root: Path, scope: str, sname: str, expected_hash: s
     return None
 
 
+def _remove_stale_state_tmp_files(root: Path, scope: str) -> int:
+    """Delete orphan ``.state.json.*.tmp`` files left by a killed writer; return how many were removed.
+
+    Only direct children of the state directory older than ten minutes are touched, so a concurrent
+    writer's in-flight temp file is never deleted.
+    """
+    sdir = state_dir(root, scope=scope)
+    if not sdir.is_dir():
+        return 0
+    cutoff = time.time() - STALE_TMP_AGE_SECONDS
+    removed = 0
+    for cand in sdir.glob(".state.json.*.tmp"):
+        try:
+            if cand.is_symlink() or not cand.is_file() or cand.stat().st_mtime > cutoff:
+                continue
+            cand.unlink()
+        except OSError:
+            continue
+        removed += 1
+    return removed
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     root = Path(args.path).expanduser().resolve()
     manifest = load_manifest(root) if args.scope == "project" else None
+    try:
+        # Validate every harness name up front so a typo is a clean error, not a traceback.
+        if args.harness:
+            for hn in args.harness:
+                get_harness(hn)
+        if manifest:
+            for hn in [*manifest.harnesses, *(h for s in manifest.skills for h in (s.harnesses or []))]:
+                get_harness(hn)
+    except KeyError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
     manifest_skill_map = {s.name: s for s in manifest.skills} if (manifest and manifest.skills) else {}
     records = load_state(root, scope=args.scope)
 
@@ -282,15 +325,22 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         diag.findings.append(f"lockfile error: {exc}")
 
     if args.harness:
-        default_targets = [harnesses.get(h).name for h in args.harness]
+        default_targets = [get_harness(h).name for h in args.harness]
     elif manifest and manifest.harnesses:
-        default_targets = [harnesses.get(h).name for h in manifest.harnesses]
+        default_targets = [get_harness(h).name for h in manifest.harnesses]
     else:
+        # No manifest scope: mirror exactly what diagnose() requires of an unscoped skill, so that
+        # `doctor` and `doctor --fix` judge against the same harness set.
         active_proj = {d.harness.name for d in detected if d.project_active}
-        default_targets = sorted({"claude-code", "codex", "cursor"} | active_proj)
+        existing = {n for n, rep in diag.reports.items() if any(loc.exists for loc in rep.locations)}
+        default_targets = sorted({"claude-code", "codex", "cursor"} | active_proj | existing)
 
     drift_before_fix = _collect_unified_drift(diag, lock, records, root)
     repaired: list[str] = []
+
+    stale_tmp_removed = 0
+    if args.fix and not dry_run:
+        stale_tmp_removed = _remove_stale_state_tmp_files(root, args.scope)
 
     has_broken = any(loc.broken_links for r in diag.reports.values() for loc in r.locations)
     if args.fix and not dry_run and (diag.skills or has_broken):
@@ -311,11 +361,16 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             if args.harness:
                 skill_targets = default_targets
             elif sname in manifest_skill_map and manifest_skill_map[sname].harnesses:
-                skill_targets = [harnesses.get(h).name for h in manifest_skill_map[sname].harnesses]
-            elif manifest and manifest.harnesses:
-                skill_targets = default_targets
+                skill_targets = [get_harness(h).name for h in manifest_skill_map[sname].harnesses]
             elif rec and rec.harnesses:
-                skill_targets = [harnesses.get(h).name for h in rec.harnesses]
+                # Same precedence as diagnose(): a state record (where the skill was installed) outranks the
+                # manifest-wide harness list, so `--fix` repairs exactly what `doctor` reports as missing.
+                skill_targets = []
+                for rh in rec.harnesses:
+                    with contextlib.suppress(KeyError):
+                        skill_targets.append(harnesses.get(rh).name)
+                if not skill_targets:
+                    skill_targets = default_targets
             else:
                 skill_targets = default_targets
 
@@ -356,11 +411,14 @@ def cmd_doctor(args: argparse.Namespace) -> int:
                 continue
 
             best_dir = max(clean_copies, key=latest_tree_mtime_ns)
+            repair_targets, _policy_blocked = split_by_allowed_harnesses(load_policy(root), list(skill_targets))
+            if not repair_targets:
+                continue
             with contextlib.suppress(InstallError):
                 res = run_install(
                     root,
                     best_dir,
-                    skill_targets,
+                    repair_targets,
                     strategy="copy",
                     scope=args.scope,
                     force=True,
@@ -374,7 +432,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
                         repaired.append(f"{sname} -> {r.harness} ({rel_dest}, sha256:{verified_h[:12]})")
 
         records = load_state(root, scope=args.scope)
-        diag = run_diagnose(root, only=args.harness or default_targets, scope=args.scope)
+        # Re-diagnose with the same arguments as the first pass so the post-repair verdict is judged by the
+        # same per-skill harness rules as plain `doctor` (never by a wider or narrower harness list).
+        diag = run_diagnose(root, only=args.harness or None, scope=args.scope)
 
     remaining_drift = _collect_unified_drift(diag, lock, records, root)
 
@@ -465,6 +525,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
                     "skill_states": skill_summaries,
                     "drift_before_fix": drift_before_fix,
                     "repaired": repaired,
+                    "stale_tmp_removed": stale_tmp_removed,
                     "drifted": remaining_drift,
                     "duplicates": diag.duplicates,
                     "findings": diag.findings,
@@ -492,6 +553,8 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         print("\nRepairs applied:")
         for item in repaired:
             print(f"  ~ {item}")
+    if stale_tmp_removed:
+        print(f"\nCleanup: removed {stale_tmp_removed} stale temp file(s) from {state_dir(root, scope=args.scope)}")
 
     if skill_summaries:
         print()

@@ -61,8 +61,9 @@ def review_skill_update(
 
     cur_sec = scan_skill(installed_dir, offline=True)
     new_sec = scan_skill(candidate_dir, offline=True)
-    cur_sig = {(f.code, f.file, f.line, f.message) for f in cur_sec.findings}
-    introduced_objs = [f for f in new_sec.findings if (f.code, f.file, f.line, f.message) not in cur_sig]
+    # Identity includes a digest of the matched line so a payload swapped on an already-flagged line is NEW.
+    cur_sig = {(f.code, f.file, f.line, f.message, f.evidence) for f in cur_sec.findings}
+    introduced_objs = [f for f in new_sec.findings if (f.code, f.file, f.line, f.message, f.evidence) not in cur_sig]
     introduced_findings = [f.to_dict() for f in introduced_objs]
     resolved_findings = sorted(
         {f.code for f in cur_sec.findings} - {f.code for f in new_sec.findings}

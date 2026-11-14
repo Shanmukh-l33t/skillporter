@@ -13,9 +13,10 @@ from ..atomic import workspace_lock
 from ..audit import record_audit_event
 from ..ci_report import check_lockfile_staleness
 from ..diagnose import diagnose as run_diagnose
+from ..diagnose import load_custom_harness_paths, resolve_path, select_harness_install_raw_path
 from ..frontmatter import discover
-from ..install import install as run_install
-from ..install import plan_install
+from ..install import InstallError, InstallResult, _resolve_harness_skill_dest, plan_install
+from ..install import install as _core_install
 from ..manifest import (
     LOCKFILE_FILENAME,
     MANIFEST_FILENAME,
@@ -33,7 +34,7 @@ from ..policy import evaluate_policy, load_policy
 from ..resolver import DependencyConflictError, DependencyCycleError, DependencyError, resolve_dependency_graph
 from ..security import compute_tree_hash, scan_skill
 from ..sources import resolve_source
-from ..state import load_state
+from ..state import load_state, record_installation
 from ..ui import action_symbol
 from .common import (
     EXIT_ERROR,
@@ -240,6 +241,94 @@ def cmd_lock(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def run_install(  # noqa: PLR0913 - mirrors install.install() keyword surface
+    root: Path,
+    skill_dir: Path,
+    targets: list[str],
+    *,
+    strategy: str = "copy",
+    scope: str = "project",
+    skill_name_override: str = "",
+    force: bool = True,
+    **kwargs,
+) -> list[InstallResult]:
+    """Install like ``install.install(..., force=True)`` but leave destinations that already match untouched.
+
+    A destination whose tree hash equals the source tree hash is reported ``unchanged``: it is neither
+    rewritten nor snapshotted into ``.skillporter/backups``. Only genuinely different destinations go through
+    the transactional installer (which backs up and replaces them, reported as ``updated``).
+    """
+    sname = skill_name_override or skill_dir.name
+    if not force:
+        return _core_install(root, skill_dir, targets, strategy=strategy, scope=scope, force=False, **kwargs)
+    install_kwargs = {"skill_name_override": skill_name_override, **kwargs}
+    if strategy != "copy":
+        return _core_install(root, skill_dir, targets, strategy=strategy, scope=scope, force=True, **install_kwargs)
+
+    src_hash, _ = compute_tree_hash(skill_dir)
+    rec = load_state(root, scope=scope).get(sname)
+    eff_custom = load_custom_harness_paths(root, scope=scope)
+    unchanged: dict[str, Path] = {}
+    pre_existing: set[str] = set()
+    changed: list[str] = []
+    for target in targets:
+        try:
+            h = harnesses.get(target)
+            raw = select_harness_install_raw_path(h, scope, custom_paths=eff_custom)
+            dest = (
+                _resolve_harness_skill_dest(
+                    resolve_path(raw, scope, root.resolve()), sname, src=skill_dir, recursive=h.recursive
+                )
+                if raw
+                else None
+            )
+        except (InstallError, KeyError, OSError):
+            dest = None
+        if dest is None:
+            changed.append(target)
+            continue
+        if dest.exists() or dest.is_symlink():
+            pre_existing.add(h.name)
+            if src_hash and dest.is_dir() and not dest.is_symlink() and compute_tree_hash(dest)[0] == src_hash:
+                unchanged[h.name] = dest
+                continue
+        changed.append(target)
+
+    by_harness: dict[str, InstallResult] = {}
+    if changed:
+        for r in _core_install(root, skill_dir, changed, strategy=strategy, scope=scope, force=True, **install_kwargs):
+            if r.action == "created" and r.harness in pre_existing:
+                r.action = "updated"
+            by_harness[r.harness] = r
+    for hname, dest in unchanged.items():
+        by_harness[hname] = InstallResult(
+            skill=sname,
+            harness=hname,
+            dest=dest,
+            action="unchanged",
+            detail="destination already matches source (tree hash)",
+        )
+
+    unrecorded = [hn for hn in unchanged if rec is None or hn not in rec.harnesses]
+    if unrecorded and kwargs.get("record_state"):
+        record_installation(
+            root,
+            skill_name=sname,
+            source=kwargs.get("source") or ("" if rec is not None and rec.source else str(skill_dir)),
+            skill_dir=unchanged[unrecorded[0]],
+            harnesses=unrecorded,
+            destinations=[unchanged[hn] for hn in unrecorded],
+            strategy=strategy,
+            scope=scope,
+            resolved_commit=kwargs.get("resolved_commit", ""),
+            version=kwargs.get("version", ""),
+        )
+
+    ordered = [by_harness[t] for t in (harnesses.get(x).name for x in targets) if t in by_harness]
+    ordered.extend(r for hn, r in by_harness.items() if r not in ordered)
+    return ordered
+
+
 def cmd_sync(args: argparse.Namespace) -> int:
     root = Path(args.path).expanduser().resolve()
     dry_run = bool(getattr(args, "dry_run", False))
@@ -273,7 +362,7 @@ def cmd_sync(args: argparse.Namespace) -> int:
 
         diag = run_diagnose(root, scope=args.scope)
 
-        policy = load_policy(root) if args.scope == "project" else None
+        policy = load_policy(root)
         for sname, copies in sorted(diag.skill_copies.items()):
             for cdir in copies:
                 srep = scan_skill(cdir)
@@ -535,6 +624,34 @@ def cmd_sync(args: argparse.Namespace) -> int:
             if not canonical_by_name:
                 print(f"no skills or {MANIFEST_FILENAME} found under {root}")
                 return EXIT_PROBLEM
+
+            # `--prefer <dir>` can point at skills that are not installed yet, so the earlier loop over
+            # installed copies never saw them. Apply the same policy and static-scan gates here.
+            for gname, gdir in sorted(canonical_by_name.items()):
+                grep_ = scan_skill(gdir)
+                gpol = evaluate_policy(
+                    policy,
+                    skill_dirs=[gdir],
+                    target_harnesses=targets,
+                    sec_reports={gdir.name: grep_},
+                )
+                if gpol:
+                    print("error: sync blocked by project security policy: " + "; ".join(gpol), file=sys.stderr)
+                    return EXIT_PROBLEM
+                if grep_.has_structural_escape or ((not grep_.passed or not grep_.scan_complete) and not allow_risky):
+                    print(
+                        f"error: sync blocked by static security policy on {gname!r} ({gdir}); "
+                        "run `skillporter scan` to inspect findings.",
+                        file=sys.stderr,
+                    )
+                    return EXIT_PROBLEM
+                if grep_.exceeds_risk_threshold(max_risk_score) and not allow_risky:
+                    print(
+                        f"error: sync blocked by configured security.max_risk_score ({max_risk_score}) "
+                        f"on {gname!r} (risk_score {grep_.risk_score}/100 > {max_risk_score})",
+                        file=sys.stderr,
+                    )
+                    return EXIT_PROBLEM
 
             if dry_run:
                 plan = plan_install(

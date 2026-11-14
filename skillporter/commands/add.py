@@ -71,7 +71,7 @@ def cmd_add(args: argparse.Namespace) -> int:
             skill_dirs = [d for d in skill_dirs if d.name in wanted]
 
         manifest = load_manifest(root)
-        policy = load_policy(root) if args.scope == "project" else None
+        policy = load_policy(root)
         max_risk_score = getattr(args, "max_risk_score", None)
         if max_risk_score is None and manifest is not None:
             max_risk_score = manifest.max_risk_score
@@ -116,6 +116,15 @@ def cmd_add(args: argparse.Namespace) -> int:
                 )
 
         is_json = fmt_mode(args) == "json"
+        policy_violations = evaluate_policy(
+            policy,
+            skill_dirs=skill_dirs,
+            source_candidates=[args.source, resolved.canonical_source],
+            resolved_commit=resolved.resolved_commit,
+            ref=args.ref or "",
+            target_harnesses=targets,
+            sec_reports=sec_reports,
+        )
         if is_json and args.dry_run:
             print(
                 json.dumps(
@@ -129,23 +138,19 @@ def cmd_add(args: argparse.Namespace) -> int:
                         "spec_errors": spec_errors,
                         "max_risk_score": max_risk_score,
                         "risk_threshold_exceeded": risk_threshold_exceeded,
+                        "policy_violations": policy_violations,
                         "security": {k: v.to_dict() for k, v in sec_reports.items()},
                     },
                     indent=2,
                 )
             )
-            return EXIT_PROBLEM if (spec_errors or sec_critical or sec_high or risk_threshold_exceeded) else EXIT_OK
+            return (
+                EXIT_PROBLEM
+                if (spec_errors or sec_critical or sec_high or risk_threshold_exceeded or policy_violations)
+                else EXIT_OK
+            )
 
         incomplete_skills = [sname for sname, r in sec_reports.items() if not r.scan_complete]
-        policy_violations = evaluate_policy(
-            policy,
-            skill_dirs=skill_dirs,
-            source_candidates=[args.source, resolved.canonical_source],
-            resolved_commit=resolved.resolved_commit,
-            ref=args.ref or "",
-            target_harnesses=targets,
-            sec_reports=sec_reports,
-        )
         has_structural = any(r.has_structural_escape for r in sec_reports.values())
         will_block = (
             has_structural
@@ -446,7 +451,7 @@ def cmd_install(args: argparse.Namespace) -> int:
 
     if (skill_dir / "SKILL.md").is_file():
         srep = scan_skill(skill_dir)
-        policy = load_policy(root) if args.scope == "project" else None
+        policy = load_policy(root)
         pol_violations = evaluate_policy(
             policy,
             skill_dirs=[skill_dir],
@@ -633,7 +638,7 @@ def cmd_update(args: argparse.Namespace) -> int:
 
     allow_risky = bool(getattr(args, "allow_risky", False))
     manifest = load_manifest(root)
-    policy = load_policy(root) if args.scope == "project" else None
+    policy = load_policy(root)
     max_risk_score = manifest.max_risk_score if manifest is not None else None
     if max_risk_score is None and policy is not None and policy.max_risk_score is not None:
         max_risk_score = policy.max_risk_score
@@ -646,7 +651,11 @@ def cmd_update(args: argparse.Namespace) -> int:
         if not rec:
             print(f"error: skill {sname!r} is not tracked by skillporter (run `skillporter list`)", file=sys.stderr)
             return EXIT_ERROR
-        resolved = resolve_source(rec.source, base_dir=root)
+        try:
+            resolved = resolve_source(rec.source, base_dir=root)
+        except (SourceError, KeyError) as exc:
+            print(f"error: cannot resolve source for {sname!r}: {exc}", file=sys.stderr)
+            return EXIT_ERROR
         try:
             matching = [d for d in resolved.skill_dirs if d.name == sname] or resolved.skill_dirs
             for sdir in matching:
@@ -661,6 +670,19 @@ def cmd_update(args: argparse.Namespace) -> int:
                 )
                 reviews.append(rev)
                 if check_only:
+                    continue
+
+                if inst_dir.is_dir() and not rev["has_changes"]:
+                    updated_items.append(
+                        {
+                            "skill": sdir.name,
+                            "harnesses": rec.harnesses,
+                            "dest": str(inst_dir),
+                            "action": "unchanged",
+                        }
+                    )
+                    if not is_json and not dry_run:
+                        print(f"unchanged {', '.join(rec.harnesses) or sdir.name:16} {inst_dir}")
                     continue
 
                 srep = scan_skill(sdir)
@@ -787,5 +809,6 @@ def cmd_update(args: argparse.Namespace) -> int:
     if is_json:
         print(json.dumps({"dry_run": dry_run, "updated": updated_items, "reviews": reviews}, indent=2))
     elif dry_run:
-        print(f"dry-run: {len(updated_items)} skill(s) ready to update (no files modified).")
+        pending = sum(1 for i in updated_items if i.get("action") == "would-update")
+        print(f"dry-run: {pending} skill(s) ready to update (no files modified).")
     return EXIT_OK

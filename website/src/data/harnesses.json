@@ -4,9 +4,8 @@
   "counts": {
     "total": 19,
     "verification": {
-      "RUNTIME_VERIFIED": 1,
-      "INTEGRATION_TESTED": 3,
-      "FIXTURE_TESTED": 15
+      "RUNTIME_VERIFIED": 8,
+      "FIXTURE_TESTED": 11
     },
     "support": {
       "NATIVE": 17,
@@ -21,6 +20,284 @@
     "shared_compat": 6
   },
   "harnesses": [
+    {
+      "id": "claude-code",
+      "name": "Claude Code",
+      "category": "coding",
+      "support": "NATIVE",
+      "verification": "RUNTIME_VERIFIED",
+      "verified_date": "2026-11-14",
+      "docs": "https://code.claude.com/docs/en/skills",
+      "aliases": [
+        "claude"
+      ],
+      "project_primary": ".claude/skills",
+      "user_primary": "~/.claude/skills",
+      "project_paths": [
+        {
+          "path": ".claude/skills",
+          "compat": false,
+          "note": ""
+        }
+      ],
+      "user_paths": [
+        {
+          "path": "~/.claude/skills",
+          "compat": false,
+          "note": ""
+        }
+      ],
+      "shared_agents_dir": null,
+      "recursive_discovery": false,
+      "adapted_format": null,
+      "notes": [
+        "Reads only .claude/skills. A skill authored in .agents/skills is invisible here unless bridged -- the most common silent failure."
+      ],
+      "limitations": [
+        "Does not read .agents/skills natively without a copy or symlink bridge."
+      ]
+    },
+    {
+      "id": "codex",
+      "name": "OpenAI Codex",
+      "category": "coding",
+      "support": "NATIVE",
+      "verification": "RUNTIME_VERIFIED",
+      "verified_date": "2026-11-14",
+      "docs": "https://developers.openai.com/codex/skills",
+      "aliases": [
+        "openai-codex"
+      ],
+      "project_primary": ".agents/skills",
+      "user_primary": "~/.agents/skills",
+      "project_paths": [
+        {
+          "path": ".agents/skills",
+          "compat": false,
+          "note": ""
+        }
+      ],
+      "user_paths": [
+        {
+          "path": "~/.agents/skills",
+          "compat": false,
+          "note": ""
+        }
+      ],
+      "shared_agents_dir": "primary",
+      "recursive_discovery": false,
+      "adapted_format": null,
+      "notes": [
+        "Reads .agents/skills only. A skill authored in .claude/skills is invisible here unless bridged."
+      ],
+      "limitations": [
+        "Ignores .claude/skills; expects direct child skill folders under .agents/skills."
+      ]
+    },
+    {
+      "id": "github-copilot",
+      "name": "GitHub Copilot",
+      "category": "coding",
+      "support": "NATIVE",
+      "verification": "RUNTIME_VERIFIED",
+      "verified_date": "2026-11-14",
+      "docs": "https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-skills",
+      "aliases": [
+        "copilot"
+      ],
+      "project_primary": ".github/skills",
+      "user_primary": "~/.copilot/skills",
+      "project_paths": [
+        {
+          "path": ".github/skills",
+          "compat": false,
+          "note": ""
+        },
+        {
+          "path": ".agents/skills",
+          "compat": true,
+          "note": "compatibility read"
+        },
+        {
+          "path": ".claude/skills",
+          "compat": true,
+          "note": "compatibility read"
+        }
+      ],
+      "user_paths": [
+        {
+          "path": "~/.copilot/skills",
+          "compat": false,
+          "note": ""
+        },
+        {
+          "path": "~/.agents/skills",
+          "compat": true,
+          "note": "compatibility read"
+        }
+      ],
+      "shared_agents_dir": "compat",
+      "recursive_discovery": false,
+      "adapted_format": "copilot-instructions",
+      "notes": [
+        "Reads .github/skills, .agents/skills, and .claude/skills in projects; ~/.copilot/skills and ~/.agents/skills for personal scope."
+      ],
+      "limitations": [
+        "Only immediate subdirectories containing SKILL.md are discovered."
+      ]
+    },
+    {
+      "id": "gemini-cli",
+      "name": "Gemini CLI",
+      "category": "coding",
+      "support": "NATIVE",
+      "verification": "RUNTIME_VERIFIED",
+      "verified_date": "2026-11-14",
+      "docs": "https://geminicli.com/docs/cli/skills/",
+      "aliases": [
+        "gemini"
+      ],
+      "project_primary": ".agents/skills",
+      "user_primary": "~/.agents/skills",
+      "project_paths": [
+        {
+          "path": ".agents/skills",
+          "compat": false,
+          "note": ".agents/skills takes precedence over .gemini/skills"
+        },
+        {
+          "path": ".gemini/skills",
+          "compat": false,
+          "note": ""
+        }
+      ],
+      "user_paths": [
+        {
+          "path": "~/.agents/skills",
+          "compat": false,
+          "note": "~/.agents/skills takes precedence over ~/.gemini/skills"
+        },
+        {
+          "path": "~/.gemini/skills",
+          "compat": false,
+          "note": ""
+        }
+      ],
+      "shared_agents_dir": "primary",
+      "recursive_discovery": false,
+      "adapted_format": null,
+      "notes": [
+        "Discovers skills in .agents/skills (higher precedence) and .gemini/skills.",
+        "Workspace skills require the project folder to be trusted in Gemini CLI."
+      ],
+      "limitations": [
+        "Case-sensitive on Linux: filename must be exact uppercase SKILL.md."
+      ]
+    },
+    {
+      "id": "cline",
+      "name": "Cline",
+      "category": "coding",
+      "support": "NATIVE",
+      "verification": "RUNTIME_VERIFIED",
+      "verified_date": "2026-11-14",
+      "docs": "https://docs.cline.bot/customization/skills",
+      "aliases": [],
+      "project_primary": ".cline/skills",
+      "user_primary": "~/.cline/skills",
+      "project_paths": [
+        {
+          "path": ".cline/skills",
+          "compat": false,
+          "note": ""
+        },
+        {
+          "path": ".clinerules/skills",
+          "compat": true,
+          "note": "legacy rules-folder skill path"
+        },
+        {
+          "path": ".claude/skills",
+          "compat": true,
+          "note": "compatibility read"
+        },
+        {
+          "path": ".agents/skills",
+          "compat": true,
+          "note": "compatibility read"
+        }
+      ],
+      "user_paths": [
+        {
+          "path": "~/.cline/skills",
+          "compat": false,
+          "note": ""
+        }
+      ],
+      "shared_agents_dir": "compat",
+      "recursive_discovery": false,
+      "adapted_format": null,
+      "notes": [
+        "Scans .cline/skills (recommended), .clinerules/skills, .claude/skills, and .agents/skills."
+      ],
+      "limitations": [
+        "Mandates SKILL.md body under 5,000 tokens; oversized skills should move detail into references/."
+      ]
+    },
+    {
+      "id": "opencode",
+      "name": "OpenCode",
+      "category": "coding",
+      "support": "NATIVE",
+      "verification": "RUNTIME_VERIFIED",
+      "verified_date": "2026-11-14",
+      "docs": "https://opencode.ai/docs/skills",
+      "aliases": [],
+      "project_primary": ".opencode/skills",
+      "user_primary": "~/.config/opencode/skills",
+      "project_paths": [
+        {
+          "path": ".opencode/skills",
+          "compat": false,
+          "note": ""
+        },
+        {
+          "path": ".agents/skills",
+          "compat": true,
+          "note": "compatibility read"
+        },
+        {
+          "path": ".claude/skills",
+          "compat": true,
+          "note": "compatibility read"
+        }
+      ],
+      "user_paths": [
+        {
+          "path": "~/.config/opencode/skills",
+          "compat": false,
+          "note": ""
+        },
+        {
+          "path": "~/.agents/skills",
+          "compat": true,
+          "note": "compatibility read"
+        },
+        {
+          "path": "~/.claude/skills",
+          "compat": true,
+          "note": "compatibility read"
+        }
+      ],
+      "shared_agents_dir": "compat",
+      "recursive_discovery": true,
+      "adapted_format": null,
+      "notes": [
+        "Searches .opencode/skills, .agents/skills, and .claude/skills across project and global scopes.",
+        "Supports nested grouping directories containing SKILL.md."
+      ],
+      "limitations": []
+    },
     {
       "id": "hermes",
       "name": "Hermes Agent",
@@ -58,77 +335,40 @@
       "limitations": []
     },
     {
-      "id": "claude-code",
-      "name": "Claude Code",
+      "id": "continue",
+      "name": "Continue",
       "category": "coding",
-      "support": "NATIVE",
-      "verification": "INTEGRATION_TESTED",
-      "verified_date": "2026-11-11",
-      "docs": "https://code.claude.com/docs/en/skills",
+      "support": "COMPATIBLE",
+      "verification": "RUNTIME_VERIFIED",
+      "verified_date": "2026-11-14",
+      "docs": "https://docs.continue.dev/customize/deep-dives/rules",
       "aliases": [
-        "claude"
+        "continue-dev"
       ],
-      "project_primary": ".claude/skills",
-      "user_primary": "~/.claude/skills",
+      "project_primary": ".continue/skills",
+      "user_primary": "~/.continue/skills",
       "project_paths": [
         {
-          "path": ".claude/skills",
+          "path": ".continue/skills",
           "compat": false,
           "note": ""
         }
       ],
       "user_paths": [
         {
-          "path": "~/.claude/skills",
+          "path": "~/.continue/skills",
           "compat": false,
           "note": ""
         }
       ],
       "shared_agents_dir": null,
       "recursive_discovery": false,
-      "adapted_format": null,
+      "adapted_format": "continue-rules",
       "notes": [
-        "Reads only .claude/skills. A skill authored in .agents/skills is invisible here unless bridged -- the most common silent failure."
+        "Continue loadMarkdownSkills loader reads .continue/skills/<name>/SKILL.md; older versions require adapted rules in .continue/rules/<name>.md."
       ],
       "limitations": [
-        "Does not read .agents/skills natively without a copy or symlink bridge."
-      ]
-    },
-    {
-      "id": "codex",
-      "name": "OpenAI Codex",
-      "category": "coding",
-      "support": "NATIVE",
-      "verification": "INTEGRATION_TESTED",
-      "verified_date": "2026-11-11",
-      "docs": "https://developers.openai.com/codex/skills",
-      "aliases": [
-        "openai-codex"
-      ],
-      "project_primary": ".agents/skills",
-      "user_primary": "~/.agents/skills",
-      "project_paths": [
-        {
-          "path": ".agents/skills",
-          "compat": false,
-          "note": ""
-        }
-      ],
-      "user_paths": [
-        {
-          "path": "~/.agents/skills",
-          "compat": false,
-          "note": ""
-        }
-      ],
-      "shared_agents_dir": "primary",
-      "recursive_discovery": false,
-      "adapted_format": null,
-      "notes": [
-        "Reads .agents/skills only. A skill authored in .claude/skills is invisible here unless bridged."
-      ],
-      "limitations": [
-        "Ignores .claude/skills; expects direct child skill folders under .agents/skills."
+        "Upstream Continue repository entered maintenance-only mode in June 2026."
       ]
     },
     {
@@ -136,8 +376,8 @@
       "name": "Cursor",
       "category": "coding",
       "support": "NATIVE",
-      "verification": "INTEGRATION_TESTED",
-      "verified_date": "2026-11-11",
+      "verification": "FIXTURE_TESTED",
+      "verified_date": "2026-11-14",
       "docs": "https://cursor.com/docs/context/skills",
       "aliases": [],
       "project_primary": ".agents/skills",
@@ -195,106 +435,6 @@
       ],
       "limitations": [
         "Installing into both .agents/skills and .cursor/skills causes Cursor to list the skill twice."
-      ]
-    },
-    {
-      "id": "github-copilot",
-      "name": "GitHub Copilot",
-      "category": "coding",
-      "support": "NATIVE",
-      "verification": "FIXTURE_TESTED",
-      "verified_date": "2026-11-11",
-      "docs": "https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-skills",
-      "aliases": [
-        "copilot"
-      ],
-      "project_primary": ".github/skills",
-      "user_primary": "~/.copilot/skills",
-      "project_paths": [
-        {
-          "path": ".github/skills",
-          "compat": false,
-          "note": ""
-        },
-        {
-          "path": ".agents/skills",
-          "compat": true,
-          "note": "compatibility read"
-        },
-        {
-          "path": ".claude/skills",
-          "compat": true,
-          "note": "compatibility read"
-        }
-      ],
-      "user_paths": [
-        {
-          "path": "~/.copilot/skills",
-          "compat": false,
-          "note": ""
-        },
-        {
-          "path": "~/.agents/skills",
-          "compat": true,
-          "note": "compatibility read"
-        }
-      ],
-      "shared_agents_dir": "compat",
-      "recursive_discovery": false,
-      "adapted_format": "copilot-instructions",
-      "notes": [
-        "Reads .github/skills, .agents/skills, and .claude/skills in projects; ~/.copilot/skills and ~/.agents/skills for personal scope."
-      ],
-      "limitations": [
-        "Only immediate subdirectories containing SKILL.md are discovered."
-      ]
-    },
-    {
-      "id": "gemini-cli",
-      "name": "Gemini CLI",
-      "category": "coding",
-      "support": "NATIVE",
-      "verification": "FIXTURE_TESTED",
-      "verified_date": "2026-11-11",
-      "docs": "https://geminicli.com/docs/cli/skills/",
-      "aliases": [
-        "gemini"
-      ],
-      "project_primary": ".agents/skills",
-      "user_primary": "~/.agents/skills",
-      "project_paths": [
-        {
-          "path": ".agents/skills",
-          "compat": false,
-          "note": ".agents/skills takes precedence over .gemini/skills"
-        },
-        {
-          "path": ".gemini/skills",
-          "compat": false,
-          "note": ""
-        }
-      ],
-      "user_paths": [
-        {
-          "path": "~/.agents/skills",
-          "compat": false,
-          "note": "~/.agents/skills takes precedence over ~/.gemini/skills"
-        },
-        {
-          "path": "~/.gemini/skills",
-          "compat": false,
-          "note": ""
-        }
-      ],
-      "shared_agents_dir": "primary",
-      "recursive_discovery": false,
-      "adapted_format": null,
-      "notes": [
-        "Discovers skills in .agents/skills (higher precedence) and .gemini/skills.",
-        "Workspace skills require the project folder to be trusted in Gemini CLI."
-      ],
-      "limitations": [
-        "Case-sensitive on Linux: filename must be exact uppercase SKILL.md."
       ]
     },
     {
@@ -384,56 +524,6 @@
       ]
     },
     {
-      "id": "cline",
-      "name": "Cline",
-      "category": "coding",
-      "support": "NATIVE",
-      "verification": "FIXTURE_TESTED",
-      "verified_date": "2026-11-11",
-      "docs": "https://docs.cline.bot/customization/skills",
-      "aliases": [],
-      "project_primary": ".cline/skills",
-      "user_primary": "~/.cline/skills",
-      "project_paths": [
-        {
-          "path": ".cline/skills",
-          "compat": false,
-          "note": ""
-        },
-        {
-          "path": ".clinerules/skills",
-          "compat": true,
-          "note": "legacy rules-folder skill path"
-        },
-        {
-          "path": ".claude/skills",
-          "compat": true,
-          "note": "compatibility read"
-        },
-        {
-          "path": ".agents/skills",
-          "compat": true,
-          "note": "compatibility read"
-        }
-      ],
-      "user_paths": [
-        {
-          "path": "~/.cline/skills",
-          "compat": false,
-          "note": ""
-        }
-      ],
-      "shared_agents_dir": "compat",
-      "recursive_discovery": false,
-      "adapted_format": null,
-      "notes": [
-        "Scans .cline/skills (recommended), .clinerules/skills, .claude/skills, and .agents/skills."
-      ],
-      "limitations": [
-        "Mandates SKILL.md body under 5,000 tokens; oversized skills should move detail into references/."
-      ]
-    },
-    {
       "id": "roo-code",
       "name": "Roo Code",
       "category": "coding",
@@ -477,60 +567,6 @@
       "notes": [
         "Reads .roo/skills (highest priority) and .agents/skills in project and user scopes.",
         "Also supports mode-specific folders such as .roo/skills-code/ and .roo/skills-architect/."
-      ],
-      "limitations": []
-    },
-    {
-      "id": "opencode",
-      "name": "OpenCode",
-      "category": "coding",
-      "support": "NATIVE",
-      "verification": "FIXTURE_TESTED",
-      "verified_date": "2026-11-11",
-      "docs": "https://opencode.ai/docs/skills",
-      "aliases": [],
-      "project_primary": ".opencode/skills",
-      "user_primary": "~/.config/opencode/skills",
-      "project_paths": [
-        {
-          "path": ".opencode/skills",
-          "compat": false,
-          "note": ""
-        },
-        {
-          "path": ".agents/skills",
-          "compat": true,
-          "note": "compatibility read"
-        },
-        {
-          "path": ".claude/skills",
-          "compat": true,
-          "note": "compatibility read"
-        }
-      ],
-      "user_paths": [
-        {
-          "path": "~/.config/opencode/skills",
-          "compat": false,
-          "note": ""
-        },
-        {
-          "path": "~/.agents/skills",
-          "compat": true,
-          "note": "compatibility read"
-        },
-        {
-          "path": "~/.claude/skills",
-          "compat": true,
-          "note": "compatibility read"
-        }
-      ],
-      "shared_agents_dir": "compat",
-      "recursive_discovery": true,
-      "adapted_format": null,
-      "notes": [
-        "Searches .opencode/skills, .agents/skills, and .claude/skills across project and global scopes.",
-        "Supports nested grouping directories containing SKILL.md."
       ],
       "limitations": []
     },
@@ -795,43 +831,6 @@
       "limitations": []
     },
     {
-      "id": "continue",
-      "name": "Continue",
-      "category": "coding",
-      "support": "COMPATIBLE",
-      "verification": "FIXTURE_TESTED",
-      "verified_date": "2026-11-11",
-      "docs": "https://docs.continue.dev/customize/deep-dives/rules",
-      "aliases": [
-        "continue-dev"
-      ],
-      "project_primary": ".continue/skills",
-      "user_primary": "~/.continue/skills",
-      "project_paths": [
-        {
-          "path": ".continue/skills",
-          "compat": false,
-          "note": ""
-        }
-      ],
-      "user_paths": [
-        {
-          "path": "~/.continue/skills",
-          "compat": false,
-          "note": ""
-        }
-      ],
-      "shared_agents_dir": null,
-      "recursive_discovery": false,
-      "adapted_format": "continue-rules",
-      "notes": [
-        "Continue loadMarkdownSkills loader reads .continue/skills/<name>/SKILL.md; older versions require adapted rules in .continue/rules/<name>.md."
-      ],
-      "limitations": [
-        "Upstream Continue repository entered maintenance-only mode in June 2026."
-      ]
-    },
-    {
       "id": "aider",
       "name": "Aider / AiderDesk",
       "category": "coding",
@@ -865,7 +864,8 @@
         "AiderDesk reads .aider-desk/skills/<name>/SKILL.md. Core Aider CLI requires `aider --read <skill>/SKILL.md` or adapted export to CONVENTIONS.md."
       ],
       "limitations": [
-        "Core Aider CLI does not auto-discover SKILL.md folders without --read or CONVENTIONS.md adaptation."
+        "Core Aider CLI does not auto-discover SKILL.md folders without --read or CONVENTIONS.md adaptation.",
+        "Checked on aider 0.86.2: CONVENTIONS.md is not loaded unless passed with --read or listed under `read:` in .aider.conf.yml, and `consolidate` writes neither. Skill folders target AiderDesk only."
       ]
     }
   ]
