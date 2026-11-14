@@ -106,11 +106,11 @@ The build output is the `website/dist/` directory. Any static host can serve it.
 | Output directory | `dist` |
 | Node version | 24 |
 
-The build needs only Node. Python is needed for `npm run verify` and for regenerating data, not for `npm run build`.
+The build needs only Node. `.nvmrc` and `.node-version` pin Node 24 for hosts that read them. Python is needed for `npm run verify` and for regenerating data, not for `npm run build`.
 
-**URL behaviour the host must provide**
+**URL behaviour and headers**
 
-Pages are emitted as files: `/docs/cli` is `dist/docs/cli.html`, and `/docs` is `dist/docs/index.html`. The host must serve `cli.html` for `/docs/cli` without a redirect to a different canonical form. Cloudflare Pages, Netlify and GitHub Pages do this by default. On Vercel set `"cleanUrls": true`. Unknown paths should serve `dist/404.html` with status 404, which those hosts also do by default.
+Pages are emitted as files: `/docs/cli` is `dist/docs/cli.html`, and `/docs` is `dist/docs/index.html`. Cloudflare Pages, Netlify and GitHub Pages serve extensionless clean URLs and `dist/404.html` by default, and `vercel.json` enables `"cleanUrls": true` and `"trailingSlash": false` for Vercel. `public/_headers` (copied to `dist/_headers`) and `vercel.json` also configure immutable caching for `/_astro/*` and baseline security headers.
 
 **Domain**
 

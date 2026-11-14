@@ -7,6 +7,8 @@
 [![Zero Runtime Dependencies](https://img.shields.io/badge/dependencies-0-success)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+**Website:** [skillporter.dev](https://skillporter.dev) · **Documentation:** [skillporter.dev/docs](https://skillporter.dev/docs)
+
 ---
 
 ## 1. What Is Skillporter?

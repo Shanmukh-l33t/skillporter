@@ -505,3 +505,24 @@ test('documentation links are rewritten for the site', () => {
     assert.deepEqual(leftovers, [], `${file}: unrewritten Markdown link`);
   }
 });
+
+test('all local asset references and host configs exist in the build', () => {
+  for (const [file, html] of pages) {
+    for (const match of html.matchAll(/\b(?:src|srcset|href)="([^"]+)"/g)) {
+      const parts = match[0].startsWith('srcset=') ? decode(match[1]).split(',') : [decode(match[1])];
+      for (const raw of parts) {
+        const url = raw.trim().split(/\s+/)[0];
+        if (!url || /^(?:https?:|mailto:|data:|#|\/\/)/.test(url)) continue;
+        const clean = url.split('#')[0].split('?')[0];
+        if (!clean) continue;
+        assert.ok(resolveRoute(clean), `${file}: missing local asset or route ${url}`);
+      }
+    }
+  }
+  assert.ok(existsSync(join(DIST, '_headers')), 'Cloudflare/Netlify _headers missing from dist/');
+  const vercel = readJson(join(WEBSITE, 'vercel.json'));
+  assert.equal(vercel.cleanUrls, true);
+  assert.equal(vercel.trailingSlash, false);
+  assert.equal(readFileSync(join(WEBSITE, '.nvmrc'), 'utf8').trim(), '24');
+  assert.equal(readFileSync(join(WEBSITE, '.node-version'), 'utf8').trim(), '24');
+});
