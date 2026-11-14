@@ -265,9 +265,16 @@ def record_installation(
         set((existing.destinations if existing else []) + [str(d.resolve()) for d in destinations])
     )
 
+    # If state already tracks a remote/upstream source, preserve it when source=="" or matches a local destination!
+    preserved_source = source
+    if existing and existing.source:
+        dest_strs = {str(d.resolve()) for d in destinations} | set(existing.destinations)
+        if not source or source in dest_strs:
+            preserved_source = existing.source
+
     rec = ManagedSkillRecord(
         name=skill_name,
-        source=source or (existing.source if existing else str(skill_dir)),
+        source=preserved_source or str(skill_dir),
         resolved_commit=resolved_commit or (existing.resolved_commit if existing else ""),
         version=version or (existing.version if existing else "1.0.0"),
         tree_hash=tree_hash,

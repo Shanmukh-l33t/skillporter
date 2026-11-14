@@ -1,4 +1,4 @@
-name: Publish Release (PyPI & npm)
+name: Publish Hardened Release (GitHub Attestations, PyPI & npm)
 
 on:
   release:
@@ -7,12 +7,84 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
+  verify-gate:
+    name: Mandatory Release Acceptance Gate (Lint, Tests, SAST & Packaging)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install dev, build & SAST dependencies
+        run: |
+          python -m pip install --upgrade pip build twine bandit
+          pip install -e ".[dev]"
+      - name: Ruff lint check
+        run: ruff check .
+      - name: Bandit SAST check
+        run: bandit -r skillporter -ll -q
+      - name: Full test & security regression suite
+        run: python -m pytest tests/ -v
+      - name: Build & validate standalone zipapp, wheel, sdist & npm wrapper
+        run: |
+          python scripts/build_standalone.py
+          python dist/skillporter.pyz --version
+          node npm/bin/skillporter.js --version
+          python -m build --outdir dist-pkg
+          twine check dist-pkg/*
+
+  release-artifacts:
+    name: Build, Attest Provenance & Upload GitHub Release Assets
+    needs: [verify-gate]
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      attestations: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build standalone zipapp, platform launchers & SHA256SUMS.txt
+        run: |
+          python scripts/build_standalone.py
+          cd dist && sha256sum -c SHA256SUMS.txt
+      - name: Generate Sigstore OIDC Artifact Attestations
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            dist/skillporter.pyz
+            dist/skillporter-linux-x64
+            dist/skillporter-linux-arm64
+            dist/skillporter-macos-arm64
+            dist/skillporter-macos-x64
+            dist/skillporter-windows-x64.cmd
+            dist/SHA256SUMS.txt
+      - name: Upload verified artifacts & SHA256SUMS.txt to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          gh release upload "${RELEASE_TAG}" dist/* --clobber
+
   pypi:
     name: Build & Publish Python Package to PyPI
+    needs: [verify-gate]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -36,7 +108,11 @@ jobs:
 
   npm:
     name: Publish NPX Wrapper to npm
+    needs: [verify-gate]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -50,6 +126,7 @@ jobs:
         run: |
           python scripts/build_standalone.py
           node npm/bin/skillporter.js --version
+          npm pack --dry-run
       - name: Publish to npm (when NPM_TOKEN is configured)
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

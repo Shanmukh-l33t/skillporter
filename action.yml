@@ -7,7 +7,7 @@ branding:
 
 inputs:
   command:
-    description: "Skillporter command to execute (validate, scan, diagnose, doctor, lock)"
+    description: "Skillporter command to execute (validate, scan, diagnose, doctor, lock, audit)"
     required: false
     default: "validate"
   path:
@@ -57,39 +57,61 @@ runs:
 
     - name: Install Skillporter
       shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
       run: |
         python -m pip install --upgrade pip
-        pip install "${{ github.action_path }}"
+        pip install "${ACTION_PATH}"
 
     - name: Run Skillporter Primary Check
       shell: bash
+      env:
+        SP_COMMAND: ${{ inputs.command }}
+        SP_PATH: ${{ inputs.path }}
+        SP_HARNESSES: ${{ inputs.harnesses }}
+        SP_MAX_RISK: ${{ inputs.max-risk-score }}
       run: |
-        RISK_ARG=""
-        if [ -n "${{ inputs.max-risk-score }}" ]; then
-          RISK_ARG="--max-risk-score ${{ inputs.max-risk-score }}"
+        set -euo pipefail
+        case "${SP_COMMAND}" in
+          validate|scan|diagnose|doctor|lock|audit) ;;
+          *)
+            echo "error: unsupported action command '${SP_COMMAND}'" >&2
+            exit 2
+            ;;
+        esac
+        EXTRA_ARGS=()
+        if [ -n "${SP_MAX_RISK}" ] && [[ "${SP_COMMAND}" =~ ^(validate|scan)$ ]]; then
+          EXTRA_ARGS+=("--max-risk-score" "${SP_MAX_RISK}")
         fi
-        if [ "${{ inputs.command }}" = "diagnose" ] && [ -n "${{ inputs.harnesses }}" ]; then
-          skillporter diagnose "${{ inputs.path }}" --harness "${{ inputs.harnesses }}"
+        if [ "${SP_COMMAND}" = "diagnose" ] && [ -n "${SP_HARNESSES}" ]; then
+          skillporter diagnose "${SP_PATH}" --harness "${SP_HARNESSES}"
         else
-          skillporter ${{ inputs.command }} "${{ inputs.path }}" $RISK_ARG
+          skillporter "${SP_COMMAND}" "${SP_PATH}" "${EXTRA_ARGS[@]}"
         fi
 
     - name: Run Security Assessment & Emit SARIF 2.1.0
       if: ${{ inputs.run-security-scan == 'true' }}
       shell: bash
+      env:
+        SP_PATH: ${{ inputs.path }}
+        SP_MAX_RISK: ${{ inputs.max-risk-score }}
+        SP_SARIF_FILE: ${{ inputs.sarif-file }}
       run: |
-        RISK_ARG=""
-        if [ -n "${{ inputs.max-risk-score }}" ]; then
-          RISK_ARG="--max-risk-score ${{ inputs.max-risk-score }}"
+        set -euo pipefail
+        RISK_ARGS=()
+        if [ -n "${SP_MAX_RISK}" ]; then
+          RISK_ARGS+=("--max-risk-score" "${SP_MAX_RISK}")
         fi
-        skillporter scan "${{ inputs.path }}" --format sarif $RISK_ARG > "${{ inputs.sarif-file }}"
-        skillporter scan "${{ inputs.path }}" $RISK_ARG
+        skillporter scan "${SP_PATH}" --format sarif "${RISK_ARGS[@]}" > "${SP_SARIF_FILE}"
+        skillporter scan "${SP_PATH}" "${RISK_ARGS[@]}"
 
     - name: Verify Lockfile Integrity (lock --check)
       if: ${{ inputs.lock-check == 'true' }}
       shell: bash
+      env:
+        SP_PATH: ${{ inputs.path }}
       run: |
-        skillporter lock "${{ inputs.path }}" --check
+        skillporter lock "${SP_PATH}" --check
 
     - name: Upload SARIF to GitHub Code Scanning
       if: ${{ always() && inputs.upload-sarif == 'true' }}
@@ -102,7 +124,10 @@ runs:
       shell: bash
       env:
         GITHUB_TOKEN: ${{ github.token }}
+        SP_PATH: ${{ inputs.path }}
+        SP_REPO: ${{ github.repository }}
+        SP_PR: ${{ github.event.pull_request.number }}
       run: |
-        skillporter ci-report "${{ inputs.path }}" \
-          --github-repo "${{ github.repository }}" \
-          --pr "${{ github.event.pull_request.number }}"
+        skillporter ci-report "${SP_PATH}" \
+          --github-repo "${SP_REPO}" \
+          --pr "${SP_PR}"

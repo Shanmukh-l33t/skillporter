@@ -1,33 +1,46 @@
 # Installation & Distribution Channels
 
-Skillporter is designed so you never need to manually manage virtualenvs just to install or audit agent skills. All distribution channels execute the single authoritative Python core.
+Skillporter executes a single zero-runtime-dependency Python 3.9+ core across every distribution channel.
 
 ## 1. Zero-Install Runners (`uvx` and `npx`)
 
 ```bash
-# Run directly from PyPI via uvx (no global install needed)
+# Run directly from PyPI via uvx
 uvx skillporter diagnose .
 
-# Run via npx from npm (or github:Shanmukh-l33t/skillporter)
+# Run via npx from npm
 npx @shanmukhdheekonda/skillporter diagnose .
 ```
 
 ## 2. Global CLI Installation (PEP 668 Safe)
 
 ```bash
-# via uv tool (from PyPI)
+# Recommended: uv tool or pipx from PyPI
 uv tool install skillporter
-
-# via pipx (from PyPI)
 pipx install skillporter
-
-# Universal 1-liner (downloads standalone skillporter.pyz to /usr/local/bin/skillporter)
-curl -fsSL https://raw.githubusercontent.com/Shanmukh-l33t/skillporter/main/install.sh | sh
 ```
 
-## 3. Standalone Single-File Zipapp & Executables
+## 3. Hardened Standalone Installer (`install.sh`, Linux & macOS)
 
-Build or download the zero-dependency standalone executable (`skillporter.pyz`):
+`install.sh` downloads immutable release tags (`skillporter.pyz` + `SHA256SUMS.txt`), never falls back to mutable `main`, and fails closed unless authenticity/provenance is verified:
+
+```bash
+# Download the release installer for a specific immutable tag
+curl -fsSL https://github.com/Shanmukh-l33t/skillporter/releases/download/v3.0.0/install.sh -o install.sh
+
+# Option A (Preferred): Verify Sigstore OIDC provenance via GitHub CLI (`gh attestation verify`)
+SKILLPORTER_VERSION=v3.0.0 sh install.sh
+
+# Option B: Pin expected SHA-256 digest out-of-band (CI / Dockerfiles)
+SKILLPORTER_VERSION=v3.0.0 SKILLPORTER_SHA256=<64-hex-sha256> sh install.sh
+
+# Option C: Verify detached OpenSSL signature against a release public key
+SKILLPORTER_VERSION=v3.0.0 SKILLPORTER_PUBLIC_KEY_FILE=/path/to/pub.pem sh install.sh
+```
+
+> **Trust Model Limitation**: Downloading `SHA256SUMS.txt` from the same HTTPS endpoint as `skillporter.pyz` detects accidental corruption, not a compromised release bucket. `install.sh` therefore refuses unattested installs unless one of Options A/B/C succeeds (or the operator explicitly sets `SKILLPORTER_ALLOW_UNATTESTED_CHECKSUM=1`).
+
+## 4. Building Standalone Executables Locally
 
 ```bash
 python3 scripts/build_standalone.py
@@ -39,22 +52,17 @@ Artifacts produced in `dist/`:
 - `skillporter-linux-x64`, `skillporter-linux-arm64`
 - `skillporter-macos-arm64`, `skillporter-macos-x64`
 - `skillporter-windows-x64.cmd`
-- `SHA256SUMS.txt`
+- `SHA256SUMS.txt` (and `SHA256SUMS.txt.sig` when `--sign-key <pem>` is passed)
 
-## 4. Native AI Harness Integration (MCP Server)
+## 5. Native AI Harness Integration (MCP Server)
 
-Skillporter includes a built-in, zero-dependency stdio JSON-RPC 2.0 Model Context Protocol (MCP) server (`skillporter mcp`):
+`skillporter mcp` runs in **read-only mode by default** (exposing `detect`, `diagnose`, `scan`, `inspect`, `matrix` within the workspace root):
 
 ```bash
-# Claude Code
+# Read-only MCP server (default, recommended)
 claude mcp add skillporter -- uvx skillporter mcp
-
-# OpenAI Codex
 codex mcp add skillporter -- uvx skillporter mcp
+
+# Explicitly opt in to workspace write tools (add, install, sync, remove)
+claude mcp add skillporter -- uvx skillporter mcp --allow-writes
 ```
-
-For Cursor, Windsurf, Cline, or Hermes, merge [`integrations/mcp/mcp.json`](../../integrations/mcp/mcp.json) into your MCP settings.
-
-## 5. Claude Code Plugin & Slash Command
-
-This repository ships `.claude-plugin/plugin.json` and `.claude/commands/skillporter.md`, enabling `/skillporter` inside Claude Code workspaces.

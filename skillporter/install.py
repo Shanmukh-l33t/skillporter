@@ -662,16 +662,73 @@ def uninstall(
 
     with workspace_lock(root):
         recover_interrupted_transactions(root, scope=scope, home=home)
+        records = load_state(root, scope=scope, home=home)
+        rec = records.get(skill_name)
+        target_set = {harnesses.get(t).name for t in targets}
+
         for target in targets:
             h = harnesses.get(target)
             paths = h.project_paths if scope == "project" else h.user_paths
             if not paths:
                 results.append(InstallResult(skill_name, h.name, root, "skipped", f"no {scope} path"))
                 continue
+
+            # 1. Remove any non-shared secondary native paths (e.g. redundant `.cursor/skills/<skill>`)
+            secondary_removed = False
+            for sp in paths[1:]:
+                if sp.is_compatibility:
+                    continue
+                sec_base = resolve_path(sp.path, scope, root, home)
+                _verify_harness_base_within_scope(sec_base, scope, root, home)
+                validate_skill_name_segment(skill_name, sec_base)
+                sec_dest = sec_base / skill_name
+                if sec_dest.is_symlink():
+                    with contextlib.suppress(OSError):
+                        removed_dests.add(str(sec_dest.resolve()))
+                    sec_dest.unlink()
+                    results.append(InstallResult(skill_name, h.name, sec_dest, "removed", "symlink"))
+                    secondary_removed = True
+                elif sec_dest.is_dir():
+                    removed_dests.add(str(sec_dest.resolve()))
+                    shutil.rmtree(sec_dest)
+                    results.append(InstallResult(skill_name, h.name, sec_dest, "removed", "directory"))
+                    secondary_removed = True
+
+            # 2. Check primary path — preserve shared `.agents/skills` if other managed harnesses still own it!
             base = resolve_path(paths[0].path, scope, root, home)
             _verify_harness_base_within_scope(base, scope, root, home)
             validate_skill_name_segment(skill_name, base)
             dest = base / skill_name
+
+            shared_owners: list[str] = []
+            if rec and (dest.exists() or dest.is_symlink()):
+                dest_resolved = dest.resolve() if not dest.is_symlink() else dest
+                for other_name in rec.harnesses:
+                    if other_name in target_set:
+                        continue
+                    with contextlib.suppress(KeyError):
+                        other_h = harnesses.get(other_name)
+                        other_paths = other_h.project_paths if scope == "project" else other_h.user_paths
+                        if other_paths:
+                            other_base = resolve_path(other_paths[0].path, scope, root, home)
+                            other_dest = other_base / skill_name
+                            other_resolved = other_dest.resolve() if not other_dest.is_symlink() else other_dest
+                            if other_resolved == dest_resolved:
+                                shared_owners.append(other_name)
+
+            if shared_owners:
+                if not secondary_removed:
+                    results.append(
+                        InstallResult(
+                            skill_name,
+                            h.name,
+                            dest,
+                            "preserved-shared",
+                            f"shared directory retained for {', '.join(sorted(shared_owners))}",
+                        )
+                    )
+                continue
+
             if dest.is_symlink():
                 with contextlib.suppress(OSError):
                     removed_dests.add(str(dest.resolve()))
@@ -681,19 +738,15 @@ def uninstall(
                 removed_dests.add(str(dest.resolve()))
                 shutil.rmtree(dest)
                 results.append(InstallResult(skill_name, h.name, dest, "removed", "directory"))
-            else:
+            elif not secondary_removed:
                 results.append(InstallResult(skill_name, h.name, dest, "skipped", "not installed"))
 
-        if record_state and removed_dests:
-            records = load_state(root, scope=scope, home=home)
-            rec = records.get(skill_name)
-            if rec:
-                rec.destinations = [d for d in rec.destinations if d not in removed_dests]
-                removed_harnesses = {r.harness for r in results if r.action == "removed"}
-                rec.harnesses = [hn for hn in rec.harnesses if hn not in removed_harnesses]
-                if not rec.destinations:
-                    records.pop(skill_name, None)
-                save_state(root, records, scope=scope, home=home)
+        if record_state and rec:
+            rec.destinations = [d for d in rec.destinations if d not in removed_dests]
+            rec.harnesses = [hn for hn in rec.harnesses if hn not in target_set]
+            if not rec.destinations or not rec.harnesses:
+                records.pop(skill_name, None)
+            save_state(root, records, scope=scope, home=home)
 
     return results
 

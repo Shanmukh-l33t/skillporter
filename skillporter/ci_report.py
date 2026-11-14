@@ -186,6 +186,8 @@ def post_github_pr_comment(repo: str, pr_number: int, markdown: str, token: str 
     if not tok:
         raise RuntimeError("GITHUB_TOKEN is required to post a PR comment")
     url = f"https://api.github.com/repos/{repo}/issues/{pr_number}/comments"
+    if not url.startswith("https://api.github.com/"):
+        raise ValueError("GitHub PR comment URL must target https://api.github.com/")
     body = json.dumps({"body": markdown}).encode("utf-8")
     req = urllib.request.Request(
         url,
@@ -198,5 +200,5 @@ def post_github_pr_comment(repo: str, pr_number: int, markdown: str, token: str 
             "User-Agent": f"skillporter/{__version__}",
         },
     )
-    with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310
+    with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310  # nosec B310
         return json.loads(resp.read(1 << 20).decode("utf-8"))
