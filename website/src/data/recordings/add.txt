@@ -3,7 +3,7 @@ $ skillporter add anthropics/skills --skill pdf --harness all
 SKILLPORTER
 
 Source: github:anthropics/skills
-Commit: 2c5958ecac7c
+Commit: 1780c5e5a552
 
 Found skills:
   pdf  (risk: 0/100 · APPROVE)

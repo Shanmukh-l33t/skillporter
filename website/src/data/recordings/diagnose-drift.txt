@@ -1,6 +1,6 @@
 # exit: 1
 $ skillporter diagnose . --harness claude-code --harness codex --harness cursor
-skillporter 3.0.0 — diagnosing ~/acme-api (scope: project)
+skillporter 3.0.1 — diagnosing ~/acme-api (scope: project)
 
 skills found: pdf
 
@@ -9,4 +9,4 @@ SKILL  claude-code     codex           cursor
 pdf    DRIFT           DRIFT           DRIFT
 
 findings:
-  - skill 'pdf' has content drift across copies: .agents/skills/pdf (6b86f0c7), .aider-desk/skills/pdf (6b86f0c7), .claude/skills/pdf (e08dcf6f), .cline/skills/pdf (6b86f0c7), .continue/skills/pdf (6b86f0c7), .github/skills/pdf (6b86f0c7), .hermes/skills/pdf (6b86f0c7), .junie/skills/pdf (6b86f0c7), .openclaw/skills/pdf (6b86f0c7), .opencode/skills/pdf (6b86f0c7), .roo/skills/pdf (6b86f0c7), .windsurf/skills/pdf (6b86f0c7)
+  - skill 'pdf' has content drift across copies: .agents/skills/pdf (bfdca083), .aider-desk/skills/pdf (bfdca083), .claude/skills/pdf (a58d8bc1), .cline/skills/pdf (bfdca083), .continue/skills/pdf (bfdca083), .github/skills/pdf (bfdca083), .hermes/skills/pdf (bfdca083), .junie/skills/pdf (bfdca083), .openclaw/skills/pdf (bfdca083), .opencode/skills/pdf (bfdca083), .roo/skills/pdf (bfdca083), .windsurf/skills/pdf (bfdca083)

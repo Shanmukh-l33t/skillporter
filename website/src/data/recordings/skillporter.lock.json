@@ -1,19 +1,19 @@
 {
-  "generated_at": "2026-11-14T12:12:41Z",
+  "generated_at": "2026-11-14T16:14:04Z",
   "manifest_schema_version": 2,
   "reproducible": true,
   "schema_version": 2,
   "skills": {
     "pdf": {
       "adapt": false,
-      "adapter_version": "3.0.0",
+      "adapter_version": "3.0.1",
       "dependencies": {},
       "direct": true,
       "file_hashes": {
+        "FORMS.md": "d5df5757e23634cd8a1a37e092af6c3b3b63afb3fd3ce86337fce9017cc3ee9f",
         "LICENSE.txt": "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd",
+        "REFERENCE.md": "07af9a8f59e77e88fe9b238a403348244f38a4771c54911c412716d8f88f0ea9",
         "SKILL.md": "d1c7caf5f35eb7d37877dd7fc33a095037be2b34fb5d2f7f4d43bde3165bb4ee",
-        "forms.md": "9530b3f57034792e0242a3abfe8b3c296466329551916f2ff6c5a70db78f7e44",
-        "reference.md": "03a5f964f8abecbbe156f363356e927e864d7ee964f1012c84ee1bfc8acbeb95",
         "scripts/check_bounding_boxes.py": "0ced522402dd7b3c82a0be9518cf4e485fa9cc0467d7beab6ddb04cb36fcc3e1",
         "scripts/check_fillable_fields.py": "1fe10b9980a5493c9bbec8c20630c603eaa475b45403751c08f26738736647b8",
         "scripts/convert_pdf_to_images.py": "7f58e292a67e18a8ff000d30bad2469389546731f7e8a698cc1d0aed001ea15d",
@@ -44,16 +44,16 @@
         "windsurf",
         "zed"
       ],
-      "locked_at": "2026-11-14T12:12:41Z",
+      "locked_at": "2026-11-14T16:14:04Z",
       "manifest_schema_version": 2,
       "name": "pdf",
       "pin_state": "PINNED_COMMIT",
-      "resolved_commit": "2c5958ecac7cee2b583967a2c4981d0f4a75c579",
+      "resolved_commit": "1780c5e5a552fd4d1c9d6a7b0cab26b0c2bef064",
       "risk_score": 0,
       "scope": "project",
       "source": "https://github.com/anthropics/skills.git",
       "strategy": "copy",
-      "tree_hash": "6b86f0c798b5a47987bdd48a97964c0d349ea8ecbc4b886f10dcc38ab0580c32",
+      "tree_hash": "bfdca08385b6f1aab6315b0e0fa38887616c32f968e5eb3aa733fc4c322c9c4e",
       "version": "1.0.0"
     }
   }

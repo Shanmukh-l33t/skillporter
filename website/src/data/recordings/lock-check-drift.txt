@@ -1,4 +1,4 @@
 # exit: 1
 $ skillporter lock --check
 skillporter.lock check FAILED (1 issue(s)):
-  - lockfile drift on 'pdf' (.claude/skills/pdf): locked 6b86f0c798b5 != disk e08dcf6fa1c6
+  - lockfile drift on 'pdf' (.claude/skills/pdf): locked bfdca08385b6 != disk a58d8bc1f897

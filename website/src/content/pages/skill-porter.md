@@ -41,8 +41,8 @@ uvx skillporter --version
 pipx install skillporter
 npx @shanmukhdheekonda/skillporter --version
 
-curl -fsSL https://github.com/Shanmukh-l33t/skillporter/releases/download/v3.0.0/install.sh -o install.sh
-SKILLPORTER_VERSION=v3.0.0 sh install.sh
+curl -fsSL https://github.com/Shanmukh-l33t/skillporter/releases/download/v3.0.1/install.sh -o install.sh
+SKILLPORTER_VERSION=v3.0.1 sh install.sh
 ```
 
 Download the installer to a file first, so you can read it before it runs. It accepts only an immutable version tag, rejecting branch names and aliases such as `latest`, checks the zipapp against `SHA256SUMS.txt` from the same release, and requires one independent authenticity check, either GitHub artifact attestation through the authenticated `gh` CLI, a pinned digest, or a detached signature. Python 3.9 or newer is required in every case, and the npm package needs a Python 3.9+ interpreter (`python3`, `python` or `py -3`) or `uvx` on `PATH`. On Windows, use `uv`, `pipx` or `npx`.

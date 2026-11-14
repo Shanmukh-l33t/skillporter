@@ -1,6 +1,6 @@
 # exit: 0
 $ skillporter matrix
-skillporter 3.0.0 — universal harness compatibility matrix (19 harnesses)
+skillporter 3.0.1 — universal harness compatibility matrix (19 harnesses)
 
 HARNESS         SUPPORT     VERIFICATION            PRIMARY PROJECT PATH
 --------------  ----------  ----------------------  ------------------------------------

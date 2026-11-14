@@ -1,10 +1,10 @@
 # exit: 0
 $ skillporter audit .
-skillporter 3.0.0 — supply-chain security audit for ~/acme-api
+skillporter 3.0.1 — supply-chain security audit for ~/acme-api
 
 Installed/discovered skills: 1
 Recorded audit log events:   3 (0 explicit risk override(s))
 Lockfile integrity issues:   0
-  - pdf                NO_DETECTED_FINDINGS   (risk: 0/100 · origin: ./.agents/skills/pdf@2c5958ecac7c)
+  - pdf                NO_DETECTED_FINDINGS   (risk: 0/100 · origin: ./.agents/skills/pdf@1780c5e5a552)
 
 Verdict: HEALTHY

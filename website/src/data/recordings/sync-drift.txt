@@ -1,7 +1,7 @@
 # exit: 1,0
 $ skillporter sync
 error: on-disk skill content differs from skillporter.lock; refusing to re-lock without --force:
-  - pdf (~/acme-api/.claude/skills/pdf): locked 6b86f0c7 != disk e08dcf6f
+  - pdf (~/acme-api/.claude/skills/pdf): locked bfdca083 != disk a58d8bc1
 
 $ skillporter sync --force --prefer .agents/skills/pdf
 wrote ~/acme-api/skillporter.lock (1 locked skill(s))

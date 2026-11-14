@@ -1,6 +1,6 @@
 # exit: 0
 $ skillporter demo
-skillporter 3.0.0 — interactive multi-harness demo (isolated temp workspace)
+skillporter 3.0.1 — interactive multi-harness demo (isolated temp workspace)
 
 1. BEFORE (Diagnosing fragmented workspace with broken worktree symlink & SHA-256 drift):
    - claude-code: broken symlink(s) under /tmp/skillporter-demo-XXXXXXXX/.claude/skills — the target no longer exists (legacy-helper)

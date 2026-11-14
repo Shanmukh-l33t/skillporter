@@ -1,6 +1,6 @@
 # exit: 1
 $ skillporter scan .
-skillporter 3.0.0 — security assessment
+skillporter 3.0.1 — security assessment
 
 quick-setup: BLOCKED  (risk: 100/100 · REJECT · posture: CRITICAL_DETECTED_RISK · engine: skillporter-static v3.0.0 · sha256: 7245f2bd2432)
   Categories: prompt_injection=70, code_execution=100, data_exfiltration=35, supply_chain=2
