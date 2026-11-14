@@ -55,21 +55,24 @@ The score is deterministic: the same files always score the same.
 | `CAUTION` | Any high finding, a score above 20, or an incomplete scan. |
 | `REJECT` | Any critical finding, a structural filesystem escape, or a score above 50. |
 
-Abridged output for a deliberately unsafe test skill:
+Recorded output for the repository's unsafe test fixture, with the per-finding `Fix:` lines removed for length:
 
 ```text
-quick-setup: BLOCKED  (risk: 100/100 · REJECT · posture: CRITICAL_DETECTED_RISK · engine: skillporter-static v3.0.0 · sha256: 2906cfd035f7)
+quick-setup: BLOCKED  (risk: 100/100 · REJECT · posture: CRITICAL_DETECTED_RISK · engine: skillporter-static v3.0.0 · sha256: 7245f2bd2432)
   Categories: prompt_injection=70, code_execution=100, data_exfiltration=35, supply_chain=2
-  [CRITICAL] sec-prompt-override (SKILL.md:10): Prompt-injection directive attempting to override system/user instructions
-  [CRITICAL] sec-curl-pipe-sh (SKILL.md:12): Remote code execution pattern (curl/wget piped directly into shell)
-  [INFO] sec-external-download (SKILL.md:12): External network download command referenced
+  [CRITICAL] sec-prompt-override (SKILL.md:12): Prompt-injection directive attempting to override system/user instructions
+  [CRITICAL] sec-curl-pipe-sh (SKILL.md:15): Remote code execution pattern (curl/wget piped directly into shell)
+  [INFO] sec-external-download (SKILL.md:15): External network download command referenced
   [MEDIUM] sec-html-comment-instruction (SKILL.md): HTML comment containing imperative execution or override keywords
-  [HIGH] sec-credential-harvest (scripts/bootstrap.py:4): Access to sensitive host credential stores (~/.ssh, ~/.aws, /etc/shadow)
-  [HIGH] sec-dynamic-eval (scripts/bootstrap.py:5): Dynamic or inline shell/code execution (os.system / eval / exec / shell=True / python -c)
-  [HIGH] sec-py-unsafe-subprocess (scripts/bootstrap.py:5): Unsafe subprocess invocation `subprocess.run(..., shell=True)` risks shell injection
+  [HIGH] sec-base64-decode (scripts/bootstrap.py:7): Encoded base64 decode invocation detected in skill instructions or script
+  [HIGH] sec-dynamic-eval (scripts/bootstrap.py:9): Dynamic or inline shell/code execution (os.system / eval / exec / shell=True / python -c)
+  [HIGH] sec-credential-harvest (scripts/bootstrap.py:6): Python AST accesses sensitive host credential path (.ssh/id_ed25519)
+  [HIGH] sec-py-unsafe-subprocess (scripts/bootstrap.py:8): Unsafe subprocess invocation `subprocess.run(..., shell=True)` risks shell injection
+  [CRITICAL] sec-encoded-payload (scripts/bootstrap.py:7): Base64-encoded (or zlib-compressed) malicious command or prompt-injection payload detected
+  [HIGH] sec-cross-file-staged-exec (SKILL.md:1): Multi-file staged payload decode-and-execute chain detected (payload=scripts/bootstrap.py -> decode=scripts/bootstrap.py -> exec=SKILL.md)
 ```
 
-The arithmetic is in line two: prompt injection adds 55 and 15 for 70; code execution adds 55, 35 and 35, past the category cap to 100; data exfiltration adds 35, supply chain 2. The 207 total is capped at 100.
+The arithmetic is in line two: prompt injection adds 55 and 15 for 70; code execution holds two criticals at 55 and four highs at 35, which the per-category cap trims to 100; data exfiltration adds 35 and supply chain 2. The 207 total is capped at 100.
 
 ## SARIF for code scanning
 
@@ -131,10 +134,11 @@ skillporter sandbox run ./skills/release-notes --runtime dry-run
 
 `add --dry-run` validates, scans and prints the install plan and conflicts, then stops; the gate runs first, so a failing skill is blocked here, not at the write. `sandbox run` traces the proposed reach of the package, and `--runtime dry-run` picks the built-in tracer rather than whatever the machine has.
 
-Only then install and pin:
+Only then install, then write the lockfile and verify it:
 
 ```bash
 skillporter add ./skills/release-notes --harness claude-code
+skillporter lock
 skillporter lock --check
 ```
 

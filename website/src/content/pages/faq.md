@@ -1,7 +1,7 @@
 ---
 title: "Agent skill management questions, answered"
 heading: "Common questions about managing agent skills"
-description: "Short answers about installing, pinning, scanning and rolling back SKILL.md packages across 19 AI coding harnesses, including what a static scan cannot prove."
+description: "Short answers about installing, pinning, scanning and rolling back SKILL.md packages across 19 harnesses, coding and autonomous, including what a static scan cannot prove."
 kicker: "FAQ"
 faq:
   - q: "What is Skill Porter?"

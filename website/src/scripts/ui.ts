@@ -575,6 +575,35 @@ function initReveal(): void {
   pending.forEach((el) => observer.observe(el));
 }
 
+/* -------------------------------------------------------- hero spotlight */
+
+function initHeroSpotlight(): void {
+  const hero = $<HTMLElement>('.hero');
+  if (!hero) return;
+  if (!window.matchMedia('(hover: hover)').matches) return;
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  let raf = 0;
+  let px = 26;
+  let py = 24;
+  hero.addEventListener(
+    'pointermove',
+    (event) => {
+      const rect = hero.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      px = Math.round(((event.clientX - rect.left) / rect.width) * 100);
+      py = Math.round(((event.clientY - rect.top) / rect.height) * 100);
+      if (raf) return;
+      raf = window.requestAnimationFrame(() => {
+        raf = 0;
+        hero.style.setProperty('--spot-x', `${px}%`);
+        hero.style.setProperty('--spot-y', `${py}%`);
+      });
+    },
+    { passive: true },
+  );
+}
+
 initTheme();
 initHeader();
 initSectionSpy();
@@ -584,3 +613,4 @@ initMatrix();
 initSearch();
 initDocs();
 initReveal();
+initHeroSpotlight();

@@ -15,7 +15,7 @@ Run it once, no install:
 uvx skillporter diagnose .
 ```
 
-Or with Node, a thin launcher around the same Python zipapp that still needs `python3` on `PATH`:
+Or with Node, a thin launcher around the same Python zipapp that needs a Python 3.9+ interpreter (`python3`, `python` or `py -3`) or `uvx` on `PATH`:
 
 ```bash
 npx @shanmukhdheekonda/skillporter diagnose .
@@ -105,7 +105,7 @@ codex mcp add skillporter -- uvx skillporter mcp
 
 Clients without an `mcp add` command register `uvx skillporter mcp` in `mcpServers`.
 
-Write tools stay disabled until you add `--allow-writes`. The workspace root is fixed at startup by `--root`, then the working directory, and path arguments that leave it are rejected. [MCP integration](/docs/mcp) has the nine tools and the boundary rules.
+Write tools stay disabled until you add `--allow-writes`. The workspace root is fixed at startup by `--root`, then `SKILLPORTER_MCP_ROOT`, then the working directory, and path arguments that leave it are rejected. [MCP integration](/docs/mcp) has the nine tools and the boundary rules.
 
 ## Upgrade and uninstall
 
@@ -165,7 +165,7 @@ Exit code `1` means a finding, `2` means the command could not run. The reposito
 
 - `error: refusing to install unattested artifact`: no authenticity check was available. Sign in to `gh`, or pass `SKILLPORTER_SHA256`.
 - `error: invalid SKILLPORTER_VERSION`: the value is not an immutable tag. Use something like `v3.0.0`, never `main` or `latest`.
-- The npm launcher exits immediately: `python3` is not on `PATH`. Install Python 3.9 or newer, or use `uv`.
+- The npm launcher exits immediately: no Python 3.9+ interpreter and no `uvx` on `PATH`. Install Python 3.9 or newer, or use `uv`.
 - `externally-managed-environment` from pip: install with `uv tool install` or `pipx install` instead of the system interpreter.
 
 Problems after a good install are usually workspace problems. `skillporter doctor .` reports what it finds; `--json` gives the same output for a bug report. [Troubleshooting](/docs/troubleshooting) covers each message, and [Installation](/docs/installation) is the reference for every channel and variable.

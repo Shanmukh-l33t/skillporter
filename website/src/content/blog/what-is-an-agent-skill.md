@@ -41,7 +41,7 @@ Other recognized fields include `license`, `compatibility`, `metadata` and `vers
 
 ## Why every harness reads a different directory
 
-There is no single agreed location for skills. Skillporter's registry records a project level directory and a user level directory per harness. Its 19 entries, as published in `website/src/data/harnesses.json`:
+There is no single agreed location for skills. Skillporter's registry records a project level directory and a user level directory per harness. Its 19 entries, as published in the [harness matrix](/docs/harnesses):
 
 | Harness | Project directory |
 |---|---|
@@ -123,9 +123,10 @@ skillporter scan . --max-risk-score 30
 
 `scan` runs the static assessment over every skill in the workspace and produces a risk score from 0 to 100. `--max-risk-score` turns a threshold into a failing exit code, which makes the check usable in CI.
 
-Then pin the result:
+Then pin the result and verify the pin:
 
 ```bash
+skillporter lock
 skillporter lock --check
 ```
 

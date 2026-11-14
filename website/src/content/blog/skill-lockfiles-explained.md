@@ -63,7 +63,7 @@ Without per-file hashes you would know a directory had drifted but not whether i
 
 ## Check mode
 
-`skillporter lock --check` writes nothing. It reads `skillporter.yaml`, reads the lockfile, hashes what is on disk, and compares. Exit code 1 means the lockfile is stale or the files no longer match it. Exit code 2 means the command could not run at all, which keeps a broken install from being mistaken for a clean pass. On success it prints a single line saying the lockfile is up to date and verified with zero drift.
+`skillporter lock --check` writes nothing. It reads `skillporter.yaml`, reads the lockfile, hashes what is on disk, and compares. Exit code 1 means the lockfile is stale or the files no longer match it. A corrupted or missing lockfile is also exit code 1, reported as an issue, so a broken workspace is never mistaken for a clean pass; `lock --check` does not return 2. On success it prints a single line saying the lockfile is up to date and verified with zero drift.
 
 A real failure looks like this:
 

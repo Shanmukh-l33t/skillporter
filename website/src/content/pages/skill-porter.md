@@ -7,7 +7,7 @@ kicker: "Product"
 
 ## What Skill Porter means
 
-Skill Porter and Skillporter are the same product: an open source package manager for AI agent skills. It installs, validates, scans, pins and synchronizes `SKILL.md` packages across 19 coding harnesses. The two-word form is how people write the name in prose and in search, so this page uses it. There is no second tool behind the spelling and no fork to compare against. Every command and path below belongs to the released package, MIT licensed, with no runtime dependencies and no hosted service in the loop.
+Skill Porter and Skillporter are the same product: an open source package manager for AI agent skills. It installs, validates, scans, pins and synchronizes `SKILL.md` packages across 19 harnesses, 15 coding clients and 4 autonomous agents. The two-word form is how people write the name in prose and in search, so this page uses it. There is no second tool behind the spelling and no fork to compare against. Every command and path below belongs to the released package, MIT licensed, with no runtime dependencies and no hosted service in the loop.
 
 ## What it does
 
@@ -18,7 +18,7 @@ Skill Porter runs the lifecycle of a package manager over skill directories. Eac
 3. **Scan.** The static assessment runs before anything is written. A blocking result stops the install there.
 4. **Install.** One destination is planned per adapter. Harnesses sharing `.agents/skills` share a single write, and all destinations land in one journaled transaction, so an interrupted run leaves nothing half-written.
 5. **Pin.** `skillporter.lock` records the resolved commit and a SHA-256 for every file.
-6. **Sync.** `sync` reconciles the manifest, the lockfile and the directories. It will not overwrite a copy that changed on disk until you name the authoritative one with `--prefer`.
+6. **Sync.** `sync` reconciles the manifest, the lockfile and the directories. It will not overwrite a copy that changed on disk until you pass `--force`, which takes the most recently modified copy unless you name one with `--prefer`.
 7. **Diagnose.** `diagnose` reports which harnesses see each skill, plus drift between copies, duplicates and broken symlinks.
 8. **Roll back.** `rollback` restores a skill from the snapshot taken before the last overwrite, stored under `.skillporter/backups/`.
 
@@ -45,7 +45,7 @@ curl -fsSL https://github.com/Shanmukh-l33t/skillporter/releases/download/v3.0.0
 SKILLPORTER_VERSION=v3.0.0 sh install.sh
 ```
 
-Download the installer to a file first, so you can read it before it runs. It accepts only an immutable version tag, rejecting branch names and aliases such as `latest`, checks the zipapp against `SHA256SUMS.txt` from the same release, and requires one independent authenticity check, either GitHub artifact attestation through the authenticated `gh` CLI, a pinned digest, or a detached signature. Python 3.9 or newer is required in every case, and the npm package still needs `python3` on `PATH`. On Windows, use `uv`, `pipx` or `npx`.
+Download the installer to a file first, so you can read it before it runs. It accepts only an immutable version tag, rejecting branch names and aliases such as `latest`, checks the zipapp against `SHA256SUMS.txt` from the same release, and requires one independent authenticity check, either GitHub artifact attestation through the authenticated `gh` CLI, a pinned digest, or a detached signature. Python 3.9 or newer is required in every case, and the npm package needs a Python 3.9+ interpreter (`python3`, `python` or `py -3`) or `uvx` on `PATH`. On Windows, use `uv`, `pipx` or `npx`.
 
 ## The skill directories it reconciles
 

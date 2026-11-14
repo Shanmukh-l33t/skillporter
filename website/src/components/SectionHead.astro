@@ -11,8 +11,11 @@ const { index, label, title, id } = Astro.props;
 
 <header class="section-head">
   <div class="section-head__rail">
-    <span class="index">{index}</span>
-    <span class="overline">{label}</span>
+    <div class="section-head__meta">
+      <span class="index">{index}</span>
+      <span class="overline">{label}</span>
+    </div>
+    <span class="section-head__line" aria-hidden="true"></span>
   </div>
   <div class="section-head__body">
     <h2 id={id}>{title}</h2>
