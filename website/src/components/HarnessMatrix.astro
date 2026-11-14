@@ -1,0 +1,430 @@
+---
+import { harnessData, SUPPORT_TYPES, tierLabel, VERIFICATION_TIERS, verificationCount } from '../data/site';
+
+const { harnesses, counts } = harnessData;
+
+const categoryCounts = counts.category as Record<string, number>;
+
+const filters = [
+  { id: 'all', label: 'All', count: counts.total },
+  ...VERIFICATION_TIERS.filter((tier) => verificationCount(tier.id) > 0).map((tier) => ({
+    id: `tier:${tier.id}`,
+    label: tier.label,
+    count: verificationCount(tier.id),
+  })),
+  { id: 'category:coding', label: 'Coding agents', count: categoryCounts.coding ?? 0 },
+  { id: 'category:autonomous', label: 'Autonomous agents', count: categoryCounts.autonomous ?? 0 },
+];
+
+function extraPaths(paths: { path: string; compat: boolean }[], primary: string | null): number {
+  return paths.filter((p) => p.path !== primary).length;
+}
+---
+
+<div class="matrix" data-matrix>
+  <div class="matrix__legend">
+    <dl class="tiers">
+      {
+        VERIFICATION_TIERS.map((tier) => (
+          <div class="tiers__item">
+            <dt>
+              <span class="tiers__count" data-tier-count={tier.id} data-zero={verificationCount(tier.id) === 0 ? '' : undefined}>
+                {verificationCount(tier.id)}
+              </span>
+              <span class="chip" data-tier={tier.id}>
+                {tier.id}
+              </span>
+            </dt>
+            <dd>{tier.definition}</dd>
+          </div>
+        ))
+      }
+    </dl>
+    <p class="matrix__support">
+      <span class="overline">Support type</span>
+      {
+        SUPPORT_TYPES.map((type) => (
+          <span>
+            <code>{type.id}</code> {type.definition}
+          </span>
+        ))
+      }
+    </p>
+  </div>
+
+  <div class="matrix__filters" role="group" aria-label="Filter harnesses">
+    {
+      filters.map((filter, i) => (
+        <button class="filter" type="button" data-filter={filter.id} aria-pressed={i === 0 ? 'true' : 'false'}>
+          {filter.label}
+          <span class="filter__count">{filter.count}</span>
+        </button>
+      ))
+    }
+  </div>
+  <p class="sr-only" role="status" aria-live="polite" data-matrix-status>
+    Showing {counts.total} of {counts.total} harnesses.
+  </p>
+
+  <div class="matrix__scroll">
+    <table>
+      <caption class="sr-only">
+        Harness compatibility: support type, verification tier and install paths for {counts.total} adapters.
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Harness</th>
+          <th scope="col">Support</th>
+          <th scope="col">Verification</th>
+          <th scope="col">Project path</th>
+          <th scope="col">User path</th>
+          <th scope="col"><span class="sr-only">Vendor documentation</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          harnesses.map((h) => {
+            const moreProject = extraPaths(h.project_paths, h.project_primary);
+            const moreUser = extraPaths(h.user_paths, h.user_primary);
+            return (
+              <tr data-harness-id={h.id} data-tier={h.verification} data-category={h.category}>
+                <th scope="row">
+                  <span class="h-name">{h.name}</span>
+                  <code class="h-id">{h.id}</code>
+                </th>
+                <td data-label="Support">
+                  <span class="chip chip--plain">{h.support}</span>
+                </td>
+                <td data-label="Verification">
+                  <span class="chip" data-tier={h.verification} title={tierLabel(h.verification)}>
+                    {h.verification}
+                  </span>
+                </td>
+                <td data-label="Project path">
+                  <code>{h.project_primary}</code>
+                  {moreProject > 0 && <span class="more">+{moreProject} more</span>}
+                </td>
+                <td data-label="User path">
+                  <code>{h.user_primary}</code>
+                  {moreUser > 0 && <span class="more">+{moreUser} more</span>}
+                </td>
+                <td class="docs-cell">
+                  <a href={h.docs} rel="noopener noreferrer" aria-label={`${h.name} skills documentation`}>
+                    Docs <span aria-hidden="true">↗</span>
+                  </a>
+                </td>
+              </tr>
+            );
+          })
+        }
+      </tbody>
+    </table>
+  </div>
+  <p class="matrix__source">
+    Generated from <code>skillporter/harnesses.py</code>, the registry the CLI reads. "+N more" counts additional
+    compatibility paths. <a class="text-link" href="/docs/harnesses">Full path list and definitions</a>
+  </p>
+</div>
+
+<style>
+  .matrix__legend {
+    display: grid;
+    gap: 1.75rem;
+    margin-bottom: 2.5rem;
+  }
+  .tiers {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0;
+    margin: 0;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .tiers__item {
+    padding: 1.25rem 1.25rem 1.35rem 0;
+  }
+  .tiers__item + .tiers__item {
+    padding-left: 1.25rem;
+    border-left: 1px solid var(--border);
+  }
+  .tiers dt {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+  .tiers__count {
+    font-size: 2rem;
+    line-height: 1;
+    letter-spacing: -0.03em;
+    color: var(--ivory);
+    font-variant-numeric: tabular-nums;
+  }
+  .tiers__count[data-zero] {
+    color: var(--text-3);
+  }
+  .tiers dd {
+    margin: 0.7rem 0 0;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+  }
+  .matrix__support {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.75rem;
+    align-items: baseline;
+    font-size: 0.8125rem;
+  }
+  .matrix__support code {
+    color: var(--ivory);
+    font-size: 0.75rem;
+  }
+
+  .matrix__filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1.25rem;
+  }
+  .filter {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 40px;
+    padding: 0 0.85rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 0.8125rem;
+    color: var(--text-2);
+    transition:
+      color var(--dur) var(--ease),
+      border-color var(--dur) var(--ease),
+      background-color var(--dur) var(--ease);
+  }
+  .filter:hover {
+    color: var(--ivory);
+    border-color: var(--text-3);
+  }
+  .filter[aria-pressed='true'] {
+    color: var(--midnight);
+    background: var(--ivory);
+    border-color: var(--ivory);
+  }
+  .filter__count {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    opacity: 0.75;
+  }
+
+  .matrix__scroll {
+    border-top: 1px solid var(--border);
+    overflow-x: auto;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--text-small);
+  }
+  thead th {
+    padding: 0.85rem 1rem 0.85rem 0;
+    text-align: left;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 400;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    border-bottom: 1px solid var(--border);
+  }
+  tbody th,
+  tbody td {
+    padding: 0.8rem 1rem 0.8rem 0;
+    text-align: left;
+    vertical-align: middle;
+    border-bottom: 1px solid var(--border-soft);
+    font-weight: 400;
+  }
+  tbody tr:hover th,
+  tbody tr:hover td {
+    background: var(--deep-navy);
+  }
+  .h-name {
+    display: block;
+    color: var(--ivory);
+    font-weight: 500;
+  }
+  .h-id {
+    font-size: 0.6875rem;
+    color: var(--text-3);
+  }
+  td code {
+    font-size: 0.75rem;
+    color: var(--text-2);
+    white-space: nowrap;
+  }
+  .more {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    color: var(--text-3);
+  }
+  .docs-cell {
+    text-align: right;
+    padding-right: 0;
+    white-space: nowrap;
+  }
+  .docs-cell a {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    min-height: 36px;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-2);
+  }
+  .docs-cell a:hover {
+    color: var(--ivory);
+  }
+  .matrix__source {
+    margin-top: 1.25rem;
+    font-size: 0.8125rem;
+    color: var(--text-3);
+  }
+  .matrix__source code {
+    color: var(--text-2);
+  }
+
+  @media (max-width: 980px) {
+    .tiers {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .tiers__item:nth-child(3) {
+      padding-left: 0;
+      border-left: 0;
+    }
+    .tiers__item:nth-child(n + 3) {
+      border-top: 1px solid var(--border);
+    }
+  }
+
+  /* Small screens: each harness becomes a compact record, not a squeezed row. */
+  @media (max-width: 900px) {
+    thead {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+    }
+    table,
+    tbody {
+      display: block;
+    }
+    tbody tr {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-areas:
+        'name docs'
+        'tier support'
+        'project project'
+        'user user';
+      gap: 0.15rem 1rem;
+      align-items: center;
+      padding: 0.9rem 0 1rem;
+      border-bottom: 1px solid var(--border-soft);
+    }
+    tbody th,
+    tbody td {
+      display: block;
+      padding: 0;
+      border: 0;
+    }
+    tbody tr:hover th,
+    tbody tr:hover td {
+      background: transparent;
+    }
+    tbody th {
+      grid-area: name;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 0 0.6rem;
+    }
+    tbody td[data-label='Verification'] {
+      grid-area: tier;
+    }
+    tbody td[data-label='Support'] {
+      grid-area: support;
+      justify-self: end;
+    }
+    .docs-cell {
+      grid-area: docs;
+      justify-self: end;
+    }
+    tbody td[data-label='Project path'] {
+      grid-area: project;
+      margin-top: 0.35rem;
+    }
+    tbody td[data-label='User path'] {
+      grid-area: user;
+    }
+    tbody td[data-label$='path'] {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 0 0.6rem;
+    }
+    tbody td[data-label$='path']::before {
+      flex: none;
+      width: 3.6rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-3);
+    }
+    tbody td[data-label='Project path']::before {
+      content: 'Project';
+    }
+    tbody td[data-label='User path']::before {
+      content: 'User';
+    }
+    tbody td[data-label$='path'] code {
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+    .more {
+      display: inline;
+    }
+  }
+  @media (min-width: 620px) and (max-width: 900px) {
+    tbody {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      column-gap: var(--gutter);
+    }
+  }
+  @media (max-width: 480px) {
+    .tiers {
+      grid-template-columns: 1fr;
+    }
+    .tiers__item,
+    .tiers__item + .tiers__item {
+      display: grid;
+      grid-template-columns: 1fr;
+      padding: 1rem 0;
+      border-left: 0;
+    }
+    .tiers__item + .tiers__item {
+      border-top: 1px solid var(--border);
+    }
+    .tiers dt {
+      flex-direction: row;
+      align-items: baseline;
+      gap: 0.85rem;
+    }
+    .tiers__count {
+      font-size: 1.5rem;
+      min-width: 1.6rem;
+    }
+  }
+</style>

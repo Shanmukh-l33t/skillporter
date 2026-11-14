@@ -1,0 +1,3 @@
+# exit: 0
+$ skillporter rollback pdf --dry-run
+would-rollback pdf -> backup 20261114T121243Z-e08dcf6fa1c6 (v1.0.0)

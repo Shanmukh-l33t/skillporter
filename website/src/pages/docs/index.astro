@@ -1,0 +1,193 @@
+---
+import CopyButton from '../../components/CopyButton.astro';
+import { DOC_SECTIONS } from '../../data/docs.mjs';
+import { LINKS, release } from '../../data/site';
+import Docs from '../../layouts/Docs.astro';
+
+const starters = [
+  { command: 'uvx skillporter demo', label: 'Try it without installing' },
+  { command: 'uv tool install skillporter', label: 'Install the CLI' },
+  { command: 'skillporter add anthropics/skills --skill pdf --harness all', label: 'Add your first skill' },
+];
+---
+
+<Docs
+  slug={null}
+  title="Skillporter documentation"
+  description={`Guides and reference for Skillporter ${release.version}: installing skills across harnesses, lockfiles, synchronization, the security model and automation.`}
+>
+  <div class="docs-home">
+    <section class="starters" aria-label="First commands">
+      {
+        starters.map((item) => (
+          <div class="starter">
+            <span class="starter__label">{item.label}</span>
+            <div class="starter__cmd">
+              <code>
+                <span class="t-prompt" aria-hidden="true">
+                  ${' '}
+                </span>
+                {item.command}
+              </code>
+              <CopyButton text={item.command} label={`Copy command: ${item.command}`} />
+            </div>
+          </div>
+        ))
+      }
+      <p class="starters__next">
+        New here? Read <a class="text-link" href="/docs/getting-started">Getting started</a>, then the
+        <a class="text-link" href="/docs/quick-start">Quick start</a>.
+      </p>
+    </section>
+
+    {
+      DOC_SECTIONS.map((section) => (
+        <section class="docs-section" aria-labelledby={`sec-${section.title.toLowerCase().replace(/\W+/g, '-')}`}>
+          <h2 id={`sec-${section.title.toLowerCase().replace(/\W+/g, '-')}`}>{section.title}</h2>
+          <ul>
+            {section.pages.map((page) => (
+              <li>
+                <a href={`/docs/${page.slug}`}>
+                  <b>{page.title}</b>
+                  <span>{page.description}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))
+    }
+
+    <section class="docs-section docs-section--ext" aria-labelledby="sec-elsewhere">
+      <h2 id="sec-elsewhere">Elsewhere</h2>
+      <ul>
+        <li>
+          <a href={LINKS.changelog} rel="noopener">
+            <b>Changelog ↗</b>
+            <span>What changed in each release.</span>
+          </a>
+        </li>
+        <li>
+          <a href={LINKS.security} rel="noopener">
+            <b>Security policy ↗</b>
+            <span>Supported versions and how to report a vulnerability privately.</span>
+          </a>
+        </li>
+        <li>
+          <a href={LINKS.issues} rel="noopener">
+            <b>Issues ↗</b>
+            <span>Report a bug or request a harness adapter.</span>
+          </a>
+        </li>
+      </ul>
+    </section>
+  </div>
+</Docs>
+
+<style>
+  .docs-home {
+    max-width: 52rem;
+  }
+  .starters {
+    display: grid;
+    gap: 0.9rem;
+    padding-block: 2rem 2.25rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .starter {
+    display: grid;
+    grid-template-columns: 12.5rem minmax(0, 1fr);
+    gap: 0.4rem 1.5rem;
+    align-items: center;
+  }
+  .starter__label {
+    font-size: 0.9375rem;
+    color: var(--ivory);
+  }
+  .starter__cmd {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    min-width: 0;
+    padding: 0.35rem 0.4rem 0.35rem 0.85rem;
+    background: var(--deep-navy);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-m);
+  }
+  .starter__cmd code {
+    min-width: 0;
+    overflow-x: auto;
+    white-space: nowrap;
+    font-size: 0.8125rem;
+    color: var(--ivory);
+    scrollbar-width: none;
+  }
+  .starter__cmd code::-webkit-scrollbar {
+    display: none;
+  }
+  .t-prompt {
+    color: var(--amber);
+    user-select: none;
+  }
+  .starters__next {
+    margin-top: 0.5rem;
+    font-size: 0.9375rem;
+  }
+
+  .docs-section {
+    display: grid;
+    grid-template-columns: 12.5rem minmax(0, 1fr);
+    gap: 0.75rem 1.5rem;
+    padding-block: 1.75rem;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .docs-section h2 {
+    padding-top: 0.7rem;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 400;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+  .docs-section ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .docs-section a {
+    display: block;
+    padding: 0.6rem 0.85rem;
+    margin-inline: -0.85rem;
+    border-radius: var(--radius-m);
+    transition: background-color var(--dur) var(--ease);
+  }
+  .docs-section a:hover {
+    background: var(--deep-navy);
+  }
+  .docs-section b {
+    display: block;
+    font-weight: 500;
+    color: var(--ivory);
+  }
+  .docs-section span {
+    display: block;
+    margin-top: 0.15rem;
+    font-size: 0.9375rem;
+    line-height: 1.5;
+  }
+  .docs-section--ext {
+    border-bottom: 0;
+  }
+
+  @media (max-width: 640px) {
+    .starter,
+    .docs-section {
+      grid-template-columns: 1fr;
+    }
+    .docs-section h2 {
+      padding-top: 0;
+    }
+  }
+</style>

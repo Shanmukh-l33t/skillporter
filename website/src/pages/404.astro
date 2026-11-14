@@ -1,0 +1,40 @@
+---
+import Base from '../layouts/Base.astro';
+---
+
+<Base title="Page not found" description="This page does not exist on skillporter.dev. Go back to the home page or search the documentation." path="/404" noindex>
+  <main id="main" class="wrap missing">
+    <p class="overline">Error 404</p>
+    <h1>This path is not installed.</h1>
+    <p class="missing__lead">The page you asked for does not exist, or it moved when the site was rebuilt.</p>
+    <div class="missing__actions">
+      <a class="btn btn--primary" href="/">Home</a>
+      <a class="btn btn--secondary" href="/docs">Documentation</a>
+      <button class="btn btn--ghost" type="button" data-search-open>Search the docs</button>
+    </div>
+  </main>
+</Base>
+
+<style>
+  .missing {
+    min-height: 62vh;
+    padding-block: clamp(4rem, 2rem + 10vw, 9rem);
+  }
+  h1 {
+    margin-top: 1.25rem;
+    font-size: var(--text-h2);
+    line-height: 1.05;
+    letter-spacing: -0.03em;
+  }
+  .missing__lead {
+    margin-top: 1.25rem;
+    max-width: 32rem;
+    font-size: var(--text-lead);
+  }
+  .missing__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 2.25rem;
+  }
+</style>

@@ -1,0 +1,133 @@
+---
+import { release } from '../data/site';
+import { getRecording, renderTranscript, type RenderOptions } from '../lib/terminal';
+import CopyButton from './CopyButton.astro';
+
+interface Tab {
+  id: string;
+  label: string;
+  recording: string;
+  options?: RenderOptions;
+  /** What the viewer is looking at, in one line. */
+  caption: string;
+  docs: { href: string; text: string };
+}
+
+const tabs: Tab[] = [
+  {
+    id: 'install',
+    label: 'Install',
+    recording: 'add',
+    caption: 'One skill from GitHub, installed for all 19 harnesses. Twelve directories are written, not nineteen.',
+    docs: { href: '/docs/skill-management', text: 'Skill management' },
+  },
+  {
+    id: 'diagnose',
+    label: 'Diagnose',
+    recording: 'diagnose-drift',
+    caption: 'One copy was edited by hand. Every copy is hashed, so the mismatch is named.',
+    docs: { href: '/docs/synchronization#drift', text: 'Drift' },
+  },
+  {
+    id: 'scan',
+    label: 'Security scan',
+    recording: 'scan-unsafe-fixture',
+    caption: 'A deliberately unsafe test skill, written for this recording. Not a real published skill.',
+    docs: { href: '/docs/security-scanning', text: 'Security scanning' },
+  },
+  {
+    id: 'matrix',
+    label: 'Harness matrix',
+    recording: 'matrix',
+    options: { cutAt: /^Notes:/, cutNote: 'per-adapter notes omitted' },
+    caption: 'The adapter registry, printed by the CLI. The table on this page is generated from the same data.',
+    docs: { href: '/docs/harnesses', text: 'Harness compatibility' },
+  },
+  {
+    id: 'sync',
+    label: 'Synchronize',
+    recording: 'sync-drift',
+    caption: 'Sync refuses to overwrite a drifted copy until it is told which one is authoritative.',
+    docs: { href: '/docs/synchronization', text: 'Synchronization' },
+  },
+];
+
+const rendered = tabs.map((tab) => {
+  const rec = getRecording(tab.recording);
+  const t = renderTranscript(tab.recording, tab.options);
+  return {
+    ...tab,
+    ...t,
+    command: rec.commands[rec.commands.length - 1] ?? 'skillporter',
+    provenance: `Recorded output, skillporter ${release.version}${t.abridged ? ', abridged' : ''}. Workspace path shortened. Exit ${rec.exitCodes.join(', then ')}.`,
+  };
+});
+---
+
+<div class="frame demo" data-tabs>
+  <div class="frame__bar">
+    <div class="tabs" role="tablist" aria-label="CLI demonstration">
+      {
+        rendered.map((tab, i) => (
+          <button
+            class="tab"
+            type="button"
+            role="tab"
+            id={`demo-tab-${tab.id}`}
+            aria-selected={i === 0 ? 'true' : 'false'}
+            aria-controls={`demo-panel-${tab.id}`}
+            tabindex={i === 0 ? 0 : -1}
+          >
+            {tab.label}
+          </button>
+        ))
+      }
+    </div>
+  </div>
+  {
+    rendered.map((tab, i) => (
+      <div
+        class="demo__panel"
+        role="tabpanel"
+        id={`demo-panel-${tab.id}`}
+        aria-labelledby={`demo-tab-${tab.id}`}
+        hidden={i !== 0}
+      >
+        <div class="demo__caption">
+          <p>{tab.caption}</p>
+          <CopyButton text={tab.command} label={`Copy command: ${tab.command}`} />
+        </div>
+        <pre class="term term--tall" tabindex="0" aria-label={`Recorded output of ${tab.command}`}><code set:html={tab.html} /></pre>
+        <div class="frame__foot">
+          <span>{tab.provenance}</span>
+          <a href={tab.docs.href}>{tab.docs.text}</a>
+        </div>
+      </div>
+    ))
+  }
+</div>
+
+<style>
+  .demo__caption {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.75rem 0.75rem 0.75rem 1.15rem;
+    border-bottom: 1px solid var(--border);
+    font-size: var(--text-small);
+    color: var(--text-2);
+  }
+  .demo__caption p {
+    max-width: 44rem;
+  }
+  .demo :global(.term--tall) {
+    height: 27rem;
+  }
+  @media (max-width: 640px) {
+    .demo :global(.term--tall) {
+      height: 22rem;
+      font-size: 0.75rem;
+    }
+  }
+</style>

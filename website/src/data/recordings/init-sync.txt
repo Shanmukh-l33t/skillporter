@@ -1,0 +1,25 @@
+# exit: 0,0
+$ skillporter init
+initialized ~/acme-api/skillporter.yaml (1 skill(s), harnesses: aider, antigravity, claude-code, cline, codex, continue, cursor, gemini-cli, github-copilot, goose, hermes, junie, openclaw, opencode, openhands, replit, roo-code, windsurf, zed)
+
+$ skillporter sync
+wrote ~/acme-api/skillporter.lock (1 locked skill(s))
+created   aider            ~/acme-api/.aider-desk/skills/pdf
+unchanged antigravity      ~/acme-api/.agents/skills/pdf
+created   claude-code      ~/acme-api/.claude/skills/pdf
+created   cline            ~/acme-api/.cline/skills/pdf
+unchanged codex            ~/acme-api/.agents/skills/pdf
+created   continue         ~/acme-api/.continue/skills/pdf
+unchanged cursor           ~/acme-api/.agents/skills/pdf
+unchanged gemini-cli       ~/acme-api/.agents/skills/pdf
+created   github-copilot   ~/acme-api/.github/skills/pdf
+unchanged goose            ~/acme-api/.agents/skills/pdf
+created   hermes           ~/acme-api/.hermes/skills/pdf
+created   junie            ~/acme-api/.junie/skills/pdf
+created   openclaw         ~/acme-api/.openclaw/skills/pdf
+created   opencode         ~/acme-api/.opencode/skills/pdf
+unchanged openhands        ~/acme-api/.agents/skills/pdf
+unchanged replit           ~/acme-api/.agents/skills/pdf
+created   roo-code         ~/acme-api/.roo/skills/pdf
+created   windsurf         ~/acme-api/.windsurf/skills/pdf
+unchanged zed              ~/acme-api/.agents/skills/pdf

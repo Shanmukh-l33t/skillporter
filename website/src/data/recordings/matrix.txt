@@ -1,0 +1,51 @@
+# exit: 0
+$ skillporter matrix
+skillporter 3.0.0 — universal harness compatibility matrix (19 harnesses)
+
+HARNESS         SUPPORT     VERIFICATION            PRIMARY PROJECT PATH
+--------------  ----------  ----------------------  ------------------------------------
+aider           ADAPTED     FIXTURE_TESTED          .aider-desk/skills
+antigravity     NATIVE      FIXTURE_TESTED          .agents/skills (+1 compat)
+claude-code     NATIVE      INTEGRATION_TESTED      .claude/skills
+cline           NATIVE      FIXTURE_TESTED          .cline/skills (+3 compat)
+codex           NATIVE      INTEGRATION_TESTED      .agents/skills
+continue        COMPATIBLE  FIXTURE_TESTED          .continue/skills
+cursor          NATIVE      INTEGRATION_TESTED      .agents/skills (+3 compat)
+gemini-cli      NATIVE      FIXTURE_TESTED          .agents/skills (+1 compat)
+github-copilot  NATIVE      FIXTURE_TESTED          .github/skills (+2 compat)
+goose           NATIVE      FIXTURE_TESTED          .agents/skills (+1 compat)
+hermes          NATIVE      RUNTIME_VERIFIED        .hermes/skills
+junie           NATIVE      FIXTURE_TESTED          .junie/skills (+1 compat)
+openclaw        NATIVE      FIXTURE_TESTED          .openclaw/skills (+2 compat)
+opencode        NATIVE      FIXTURE_TESTED          .opencode/skills (+2 compat)
+openhands       NATIVE      FIXTURE_TESTED          .agents/skills (+2 compat)
+replit          NATIVE      FIXTURE_TESTED          .agents/skills (+1 compat)
+roo-code        NATIVE      FIXTURE_TESTED          .roo/skills (+1 compat)
+windsurf        NATIVE      FIXTURE_TESTED          .windsurf/skills
+zed             NATIVE      FIXTURE_TESTED          .agents/skills
+
+Notes:
+  aider: AiderDesk reads .aider-desk/skills/<name>/SKILL.md. Core Aider CLI requires `aider --read <skill>/SKILL.md` or adapted export to CONVENTIONS.md.
+  antigravity: Project scope uses .agents/skills; global scope shared between App and CLI is ~/.gemini/config/skills.
+  claude-code: Reads only .claude/skills. A skill authored in .agents/skills is invisible here unless bridged -- the most common silent failure.
+  cline: Scans .cline/skills (recommended), .clinerules/skills, .claude/skills, and .agents/skills.
+  codex: Reads .agents/skills only. A skill authored in .claude/skills is invisible here unless bridged.
+  continue: Continue loadMarkdownSkills loader reads .continue/skills/<name>/SKILL.md; older versions require adapted rules in .continue/rules/<name>.md.
+  cursor: Walks skill roots recursively, so nested category folders resolve.
+  cursor: Local user skills are not copied to Cloud Agents or remote workers.
+  gemini-cli: Discovers skills in .agents/skills (higher precedence) and .gemini/skills.
+  gemini-cli: Workspace skills require the project folder to be trusted in Gemini CLI.
+  github-copilot: Reads .github/skills, .agents/skills, and .claude/skills in projects; ~/.copilot/skills and ~/.agents/skills for personal scope.
+  goose: Reads ~/.agents/skills and .agents/skills, plus legacy .goose/skills and ~/.config/goose/skills.
+  hermes: Profile-scoped: resolves against $HERMES_HOME, never a hardcoded path.
+  hermes: Walks nested category directories ($HERMES_HOME/skills/<category>/<name>/SKILL.md).
+  junie: Works across Junie CLI and JetBrains IDEs (IntelliJ IDEA, PyCharm, WebStorm, GoLand, etc.).
+  openclaw: Loads <workspace>/skills, <workspace>/.agents/skills, ~/.agents/skills, and ~/.openclaw/skills up to 6 levels deep.
+  opencode: Searches .opencode/skills, .agents/skills, and .claude/skills across project and global scopes.
+  opencode: Supports nested grouping directories containing SKILL.md.
+  openhands: .agents/skills takes precedence over legacy .openhands/skills and .openhands/microagents.
+  replit: Discovers enabled skills under .agents/skills and .claude/skills, including nested directories.
+  roo-code: Reads .roo/skills (highest priority) and .agents/skills in project and user scopes.
+  roo-code: Also supports mode-specific folders such as .roo/skills-code/ and .roo/skills-architect/.
+  windsurf: Cascade reads project skills from .windsurf/skills and global skills from ~/.codeium/windsurf/skills.
+  zed: Zed Agent loads skills exclusively from <worktree>/.agents/skills and ~/.agents/skills with live reload.

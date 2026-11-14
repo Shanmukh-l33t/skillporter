@@ -1,0 +1,60 @@
+{
+  "generated_at": "2026-11-14T12:12:41Z",
+  "manifest_schema_version": 2,
+  "reproducible": true,
+  "schema_version": 2,
+  "skills": {
+    "pdf": {
+      "adapt": false,
+      "adapter_version": "3.0.0",
+      "dependencies": {},
+      "direct": true,
+      "file_hashes": {
+        "LICENSE.txt": "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd",
+        "SKILL.md": "d1c7caf5f35eb7d37877dd7fc33a095037be2b34fb5d2f7f4d43bde3165bb4ee",
+        "forms.md": "9530b3f57034792e0242a3abfe8b3c296466329551916f2ff6c5a70db78f7e44",
+        "reference.md": "03a5f964f8abecbbe156f363356e927e864d7ee964f1012c84ee1bfc8acbeb95",
+        "scripts/check_bounding_boxes.py": "0ced522402dd7b3c82a0be9518cf4e485fa9cc0467d7beab6ddb04cb36fcc3e1",
+        "scripts/check_fillable_fields.py": "1fe10b9980a5493c9bbec8c20630c603eaa475b45403751c08f26738736647b8",
+        "scripts/convert_pdf_to_images.py": "7f58e292a67e18a8ff000d30bad2469389546731f7e8a698cc1d0aed001ea15d",
+        "scripts/create_validation_image.py": "8fa9fd7962c9f940045b81cf6b991e7c1057c1838e3f9cc6d305007a222ffebf",
+        "scripts/extract_form_field_info.py": "bb235b36f497bbb1c7c6821cecf527bbba7213520de11219da99f7b13a38c109",
+        "scripts/extract_form_structure.py": "6814e3fe8f78c2b16d766c132b5a727ff7a31b71d76a7d46bd6e40fe50bc97c5",
+        "scripts/fill_fillable_fields.py": "d140872c2e92e41b1e05370ae8d270c5b7f5ebdf55d9905f03bc974a9c708ff5",
+        "scripts/fill_pdf_form_with_annotations.py": "8a56e063a49ed53c0b0e1d312ecf8023af76816ed139486ec3b539873de202fd"
+      },
+      "installed_targets": [
+        "aider",
+        "antigravity",
+        "claude-code",
+        "cline",
+        "codex",
+        "continue",
+        "cursor",
+        "gemini-cli",
+        "github-copilot",
+        "goose",
+        "hermes",
+        "junie",
+        "openclaw",
+        "opencode",
+        "openhands",
+        "replit",
+        "roo-code",
+        "windsurf",
+        "zed"
+      ],
+      "locked_at": "2026-11-14T12:12:41Z",
+      "manifest_schema_version": 2,
+      "name": "pdf",
+      "pin_state": "PINNED_COMMIT",
+      "resolved_commit": "2c5958ecac7cee2b583967a2c4981d0f4a75c579",
+      "risk_score": 0,
+      "scope": "project",
+      "source": "https://github.com/anthropics/skills.git",
+      "strategy": "copy",
+      "tree_hash": "6b86f0c798b5a47987bdd48a97964c0d349ea8ecbc4b886f10dcc38ab0580c32",
+      "version": "1.0.0"
+    }
+  }
+}

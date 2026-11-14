@@ -1,0 +1,27 @@
+---
+import { getCollection } from 'astro:content';
+import { DOC_PAGES } from '../../data/docs.mjs';
+import Docs from '../../layouts/Docs.astro';
+import { transformDocHtml } from '../../lib/docs-html.mjs';
+
+export async function getStaticPaths() {
+  const entries = await getCollection('docs');
+  const byId = new Map(entries.map((entry) => [entry.id, entry]));
+  return DOC_PAGES.map((page) => {
+    const entry = byId.get(page.slug);
+    if (!entry) throw new Error(`Missing documentation source: docs/${page.dir}/README.md`);
+    return { params: { slug: page.slug }, props: { entry, page } };
+  });
+}
+
+const { entry, page } = Astro.props;
+// The glob loader renders Markdown at sync time. Post-process that HTML so
+// GitHub-relative links become site routes (see src/lib/docs-html.mjs).
+if (!entry.rendered) throw new Error(`Documentation page was not rendered: ${page.slug}`);
+const html = transformDocHtml(entry.rendered.html);
+const headings = (entry.rendered.metadata?.headings ?? []) as { depth: number; slug: string; text: string }[];
+---
+
+<Docs slug={page.slug} title={page.title} description={page.description} headings={headings}>
+  <Fragment set:html={html} />
+</Docs>

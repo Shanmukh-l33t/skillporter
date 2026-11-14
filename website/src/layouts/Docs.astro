@@ -1,0 +1,597 @@
+---
+import { DOC_PAGES, DOC_SECTIONS, GITHUB_REPO } from '../data/docs.mjs';
+import { SITE } from '../data/site';
+import Base from './Base.astro';
+
+interface Heading {
+  depth: number;
+  slug: string;
+  text: string;
+}
+
+interface Props {
+  /** Slug of the current page, or null for the documentation index. */
+  slug: string | null;
+  title: string;
+  description: string;
+  headings?: Heading[];
+}
+
+const { slug, title, description, headings = [] } = Astro.props;
+
+const index = slug ? DOC_PAGES.findIndex((page) => page.slug === slug) : -1;
+const current = index >= 0 ? DOC_PAGES[index] : undefined;
+const prev = index > 0 ? DOC_PAGES[index - 1] : undefined;
+const next = index >= 0 && index < DOC_PAGES.length - 1 ? DOC_PAGES[index + 1] : slug === null ? DOC_PAGES[0] : undefined;
+const section = current ? DOC_SECTIONS.find((s) => s.pages.includes(current)) : undefined;
+const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
+const path = slug ? `/docs/${slug}` : '/docs';
+const editUrl = current ? `${GITHUB_REPO}/edit/main/docs/${current.dir}/README.md` : undefined;
+
+const crumbs = [
+  { name: 'Skillporter', url: SITE.url },
+  { name: 'Documentation', url: `${SITE.url}/docs` },
+  ...(current ? [{ name: current.title, url: `${SITE.url}${path}` }] : []),
+];
+
+const structuredData: Record<string, unknown>[] = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: crumbs.map((crumb, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      name: crumb.name,
+      item: crumb.url,
+    })),
+  },
+];
+if (current) {
+  structuredData.push({
+    '@context': 'https://schema.org',
+    '@type': 'TechArticle',
+    headline: current.title,
+    description,
+    url: `${SITE.url}${path}`,
+    isPartOf: { '@type': 'WebSite', name: SITE.name, url: SITE.url },
+  });
+}
+---
+
+<Base title={slug ? `${title} | Docs` : title} description={description} path={path} ogType="article" structuredData={structuredData}>
+  <div class="docs wrap">
+    <div class="docs__mobilebar">
+      <button class="docs__toggle" type="button" data-docs-nav-toggle aria-expanded="false" aria-controls="docs-nav">
+        <span class="docs__toggle-icon" aria-hidden="true"></span>
+        <span>Documentation menu</span>
+        <span class="docs__toggle-current">{current ? current.title : 'Overview'}</span>
+      </button>
+    </div>
+
+    <nav class="docs__nav" id="docs-nav" aria-label="Documentation" data-docs-nav data-open="false">
+      <a class="docs__navlink docs__navlink--top" href="/docs" aria-current={slug === null ? 'page' : undefined}>
+        Overview
+      </a>
+      {
+        DOC_SECTIONS.map((group) => (
+          <div class="docs__group">
+            <h2>{group.title}</h2>
+            <ul>
+              {group.pages.map((page) => (
+                <li>
+                  <a
+                    class="docs__navlink"
+                    href={`/docs/${page.slug}`}
+                    aria-current={page.slug === slug ? 'page' : undefined}
+                  >
+                    {page.title}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))
+      }
+    </nav>
+
+    <main class="docs__main" id="main">
+      <nav class="crumbs" aria-label="Breadcrumb">
+        <ol>
+          <li><a href="/docs">Docs</a></li>
+          {section && <li>{section.title}</li>}
+          {current && <li aria-current="page">{current.title}</li>}
+          {!current && <li aria-current="page">Overview</li>}
+        </ol>
+      </nav>
+
+      <article data-pagefind-body={slug ? '' : undefined}>
+        <header class="docs__header">
+          <h1 data-pagefind-meta="title">{title}</h1>
+          <p class="docs__lead">{description}</p>
+        </header>
+        <div class:list={[{ prose: slug !== null }]}>
+          <slot />
+        </div>
+      </article>
+
+      <footer class="docs__foot" data-pagefind-ignore>
+        <div class="pager">
+          {
+            prev ? (
+              <a class="pager__link" href={`/docs/${prev.slug}`} rel="prev">
+                <span>Previous</span>
+                <b>{prev.title}</b>
+              </a>
+            ) : (
+              <span />
+            )
+          }
+          {
+            next && (
+              <a class="pager__link pager__link--next" href={`/docs/${next.slug}`} rel="next">
+                <span>Next</span>
+                <b>{next.title}</b>
+              </a>
+            )
+          }
+        </div>
+        {
+          editUrl && (
+            <p class="docs__edit">
+              <a href={editUrl} rel="noopener">
+                Edit this page on GitHub <span aria-hidden="true">↗</span>
+              </a>
+            </p>
+          )
+        }
+      </footer>
+    </main>
+
+    {
+      toc.length > 1 && (
+        <aside class="docs__toc" aria-label="On this page" data-toc>
+          <h2>On this page</h2>
+          <ul>
+            {toc.map((heading) => (
+              <li class:list={{ 'is-sub': heading.depth === 3 }}>
+                <a href={`#${heading.slug}`}>{heading.text}</a>
+              </li>
+            ))}
+          </ul>
+        </aside>
+      )
+    }
+  </div>
+</Base>
+
+<style is:global>
+  .docs {
+    display: grid;
+    grid-template-columns: 14.5rem minmax(0, 1fr) 13rem;
+    gap: 0 clamp(2rem, 1rem + 3vw, 4rem);
+    align-items: start;
+    padding-bottom: 5rem;
+  }
+  .docs__mobilebar {
+    display: none;
+  }
+
+  /* ---- sidebar */
+  .docs__nav {
+    position: sticky;
+    top: var(--header-h);
+    max-height: calc(100dvh - var(--header-h));
+    overflow-y: auto;
+    padding: 2.5rem 0 3rem;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .docs__group {
+    margin-top: 1.6rem;
+  }
+  .docs__group h2 {
+    margin-bottom: 0.35rem;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 400;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+  .docs__nav ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .docs__navlink {
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-height: 34px;
+    padding: 0.2rem 0 0.2rem 0.9rem;
+    border-left: 1px solid var(--border);
+    font-size: 0.875rem;
+    color: var(--text-2);
+    transition: color var(--dur) var(--ease);
+  }
+  .docs__navlink--top {
+    border-left-color: transparent;
+    padding-left: 0;
+    color: var(--ivory);
+  }
+  .docs__navlink:hover {
+    color: var(--ivory);
+  }
+  .docs__navlink[aria-current='page'] {
+    color: var(--ivory);
+    border-left-color: var(--amber);
+  }
+  .docs__navlink--top[aria-current='page'] {
+    color: var(--amber);
+    border-left-color: transparent;
+  }
+
+  /* ---- main column */
+  .docs__main {
+    min-width: 0;
+    padding-top: 2.5rem;
+  }
+  .crumbs ol {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-3);
+  }
+  .crumbs li + li::before {
+    content: '/';
+    margin-right: 0.5rem;
+    color: var(--border);
+  }
+  .crumbs a:hover {
+    color: var(--ivory);
+  }
+  .crumbs [aria-current] {
+    color: var(--text-2);
+  }
+  .docs__header {
+    margin-top: 1.25rem;
+    padding-bottom: 2rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .docs__header h1 {
+    font-size: clamp(2rem, 1.5rem + 2vw, 2.75rem);
+    line-height: 1.08;
+    letter-spacing: -0.03em;
+  }
+  .docs__lead {
+    margin-top: 0.9rem;
+    max-width: 40rem;
+    font-size: var(--text-lead);
+    line-height: 1.5;
+  }
+
+  /* ---- prose */
+  .prose {
+    max-width: 46rem;
+    padding-top: 0.5rem;
+    font-size: 1rem;
+    line-height: 1.7;
+  }
+  .prose > * + * {
+    margin-top: 1.15rem;
+  }
+  .prose h2 {
+    margin-top: 3rem;
+    padding-top: 0.25rem;
+    font-size: 1.5rem;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+  }
+  .prose h3 {
+    margin-top: 2.25rem;
+    font-size: 1.125rem;
+    line-height: 1.3;
+    letter-spacing: -0.01em;
+  }
+  .prose h3 code,
+  .prose h2 code {
+    font-size: 0.92em;
+    color: var(--ivory);
+    background: none;
+    border: 0;
+    padding: 0;
+  }
+  .prose h2 + *,
+  .prose h3 + * {
+    margin-top: 0.85rem;
+  }
+  .prose strong {
+    color: var(--ivory);
+    font-weight: 500;
+  }
+  .prose a {
+    color: var(--ivory);
+    text-decoration: underline;
+    text-decoration-color: var(--text-3);
+    text-underline-offset: 0.22em;
+    text-decoration-thickness: 1px;
+  }
+  .prose a:hover {
+    text-decoration-color: var(--amber);
+  }
+  .prose a.external::after {
+    content: ' ↗';
+    font-family: var(--font-mono);
+    font-size: 0.8em;
+    color: var(--text-3);
+  }
+  .prose ul,
+  .prose ol {
+    padding-left: 1.3rem;
+  }
+  .prose li + li {
+    margin-top: 0.4rem;
+  }
+  .prose li::marker {
+    color: var(--text-3);
+  }
+  .prose li > ul,
+  .prose li > ol,
+  .prose li > pre,
+  .prose li > .codeblock,
+  .prose li > .table-scroll {
+    margin-top: 0.6rem;
+  }
+  .prose :not(pre) > code {
+    font-size: 0.86em;
+    color: var(--ivory);
+    background: var(--surface);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-s);
+    padding: 0.08em 0.36em;
+    overflow-wrap: anywhere;
+  }
+  .prose pre {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-m);
+  }
+  .prose .codeblock {
+    position: relative;
+  }
+  .prose .codeblock pre {
+    padding-right: 4.5rem;
+  }
+  .prose .codeblock__copy {
+    position: absolute;
+    top: 0.55rem;
+    right: 0.55rem;
+    min-height: 32px;
+    background: var(--deep-navy);
+  }
+  .prose .table-scroll {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-m);
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .prose table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+  .prose th,
+  .prose td {
+    padding: 0.6rem 0.9rem;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .prose thead th {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 400;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    background: var(--deep-navy);
+    border-bottom-color: var(--border);
+    white-space: nowrap;
+  }
+  .prose tbody tr:last-child td {
+    border-bottom: 0;
+  }
+  .prose td code {
+    white-space: nowrap;
+  }
+  .prose blockquote {
+    margin-inline: 0;
+    padding: 0.1rem 0 0.1rem 1.1rem;
+    border-left: 2px solid var(--amber);
+    color: var(--text-2);
+  }
+  .prose hr {
+    height: 1px;
+    border: 0;
+    background: var(--border);
+    margin-block: 2.5rem;
+  }
+
+  /* ---- page footer */
+  .docs__foot {
+    max-width: 46rem;
+    margin-top: 4rem;
+  }
+  .pager {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+  .pager__link {
+    display: block;
+    padding: 0.9rem 1.1rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-m);
+    transition: border-color var(--dur) var(--ease);
+  }
+  .pager__link:hover {
+    border-color: var(--text-3);
+  }
+  .pager__link span {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+  .pager__link b {
+    display: block;
+    margin-top: 0.25rem;
+    font-weight: 500;
+    color: var(--ivory);
+  }
+  .pager__link--next {
+    text-align: right;
+  }
+  .docs__edit {
+    margin-top: 1.5rem;
+    font-size: 0.8125rem;
+    color: var(--text-3);
+  }
+  .docs__edit a:hover {
+    color: var(--ivory);
+  }
+
+  /* ---- table of contents */
+  .docs__toc {
+    position: sticky;
+    top: var(--header-h);
+    max-height: calc(100dvh - var(--header-h));
+    overflow-y: auto;
+    padding: 2.5rem 0 3rem;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .docs__toc h2 {
+    margin-bottom: 0.6rem;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 400;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+  .docs__toc ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .docs__toc a {
+    display: block;
+    padding: 0.28rem 0;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+    color: var(--text-3);
+    transition: color var(--dur) var(--ease);
+  }
+  .docs__toc .is-sub a {
+    padding-left: 0.85rem;
+  }
+  .docs__toc a:hover {
+    color: var(--ivory);
+  }
+  .docs__toc a[aria-current] {
+    color: var(--amber);
+  }
+
+  /* ---- responsive */
+  @media (max-width: 1180px) {
+    .docs {
+      grid-template-columns: 14.5rem minmax(0, 1fr);
+    }
+    .docs__toc {
+      display: none;
+    }
+  }
+  @media (max-width: 860px) {
+    .docs {
+      display: block;
+    }
+    .docs__mobilebar {
+      display: block;
+      position: sticky;
+      top: var(--header-h);
+      z-index: 50;
+      margin-inline: calc(var(--gutter) * -1);
+      padding-inline: var(--gutter);
+      background: var(--midnight);
+      border-bottom: 1px solid var(--border);
+    }
+    .docs__toggle {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      width: 100%;
+      min-height: 48px;
+      font-size: 0.875rem;
+      color: var(--ivory);
+      text-align: left;
+    }
+    .docs__toggle-icon {
+      width: 8px;
+      height: 8px;
+      border-right: 1.5px solid var(--amber);
+      border-bottom: 1.5px solid var(--amber);
+      transform: rotate(-45deg);
+      transition: transform var(--dur) var(--ease);
+    }
+    .docs__toggle[aria-expanded='true'] .docs__toggle-icon {
+      transform: rotate(45deg);
+    }
+    .docs__toggle-current {
+      margin-left: auto;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--text-3);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .docs__nav {
+      display: none;
+      position: static;
+      max-height: none;
+      padding: 0.75rem 0 1.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .docs__nav[data-open='true'] {
+      display: block;
+    }
+    .docs__navlink {
+      min-height: 44px;
+    }
+    .docs__main {
+      padding-top: 1.75rem;
+    }
+    .pager {
+      grid-template-columns: 1fr;
+    }
+    .pager__link--next {
+      text-align: left;
+    }
+    .prose .codeblock pre {
+      padding-right: 1.15rem;
+      padding-top: 2.9rem;
+    }
+    .prose td:last-child {
+      min-width: 13rem;
+    }
+  }
+</style>

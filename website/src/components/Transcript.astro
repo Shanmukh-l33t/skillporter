@@ -1,0 +1,39 @@
+---
+import { release } from '../data/site';
+import { getRecording, renderTranscript, type RenderOptions } from '../lib/terminal';
+import CopyButton from './CopyButton.astro';
+
+interface Props {
+  recording: string;
+  title: string;
+  options?: RenderOptions;
+  /** Extra context shown in the footer, before the provenance line. */
+  note?: string;
+  tall?: boolean;
+  /** Wrap long lines instead of scrolling sideways. */
+  wrap?: boolean;
+}
+
+const { recording, title, options, note, tall = false, wrap = false } = Astro.props;
+const rec = getRecording(recording);
+const { html, abridged } = renderTranscript(recording, options);
+const command = rec.commands[rec.commands.length - 1] ?? 'skillporter';
+const provenance = `${note ? `${note} ` : ''}Recorded output, skillporter ${release.version}${abridged ? ', abridged' : ''}.`;
+---
+
+<figure class="frame transcript">
+  <div class="frame__bar">
+    <span class="frame__title">{title}</span>
+    <CopyButton text={command} label={`Copy command: ${command}`} />
+  </div>
+  <pre class:list={['term', { 'term--tall': tall, 'term--wrap': wrap }]} tabindex="0" aria-label={`Recorded output of ${command}`}><code set:html={html} /></pre>
+  <figcaption class="frame__foot">
+    <span>{provenance}</span>
+  </figcaption>
+</figure>
+
+<style>
+  .transcript {
+    margin: 0;
+  }
+</style>

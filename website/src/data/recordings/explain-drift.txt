@@ -1,0 +1,16 @@
+# exit: 0
+$ skillporter explain DRIFT
+DRIFT — SHA-256 Content Drift Across Installed Skill Copies (diagnostics)
+
+Cause:
+  Two or more harness directories (for example `.claude/skills/<skill>` and `.agents/skills/<skill>`) contain different file contents for the same skill.
+
+Why it matters:
+  Claude Code and Codex/Cursor will execute different versions of the same skill, causing inconsistent agent behavior across teammates.
+
+Suggested fix:
+  Synchronize all harness copies from your preferred authoritative copy (existing copies are backed up to `.skillporter/backups/` automatically).
+
+Run:
+  $ skillporter sync --force
+  $ skillporter sync --prefer .claude/skills/<skill>

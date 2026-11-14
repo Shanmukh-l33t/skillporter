@@ -1,0 +1,27 @@
+# exit: 0
+$ skillporter demo
+skillporter 3.0.0 — interactive multi-harness demo (isolated temp workspace)
+
+1. BEFORE (Diagnosing fragmented workspace with broken worktree symlink & SHA-256 drift):
+   - claude-code: broken symlink(s) under /tmp/skillporter-demo-XXXXXXXX/.claude/skills — the target no longer exists (legacy-helper)
+   - cursor: broken symlink(s) under /tmp/skillporter-demo-XXXXXXXX/.claude/skills — the target no longer exists (legacy-helper)
+   - skill 'api-reviewer' has content drift across copies: .agents/skills/api-reviewer (20b9c522), .claude/skills/api-reviewer (88612087)
+   - skill 'sql-optimizer' is not visible to: codex (visible to: claude-code, cursor)
+
+2. EXECUTING: skillporter doctor --fix && skillporter sync --force && skillporter lock
+
+3. BEFORE vs. AFTER DIFF:
+   --- before (broken symlink + SHA-256 drift + missing reachability)
+   +++ after  (skillporter sync --force && skillporter doctor --fix)
+   @@ -1,4 +1,3 @@
+   - .claude/skills/legacy-helper -> ../missing-worktree/legacy-helper [BROKEN SYMLINK]
+   - api-reviewer: claude-code=DRIFT, codex=DRIFT, cursor=DRIFT (2 diverging hashes)
+   - sql-optimizer: claude-code=yes, codex=MISSING, cursor=MISSING
+   + api-reviewer: claude-code=yes, codex=yes, cursor=yes (SHA-256 synchronized & locked)
+   + sql-optimizer: claude-code=yes, codex=yes, cursor=yes (shared .agents/skills deduplicated)
+
+4. AFTER (All harnesses reachable, 0 drift, 0 broken symlinks, skillporter.lock pinned):
+   api-reviewer     claude-code=yes, codex=yes, cursor=yes
+   sql-optimizer    claude-code=yes, codex=yes, cursor=yes
+
+Temporary workspace cleaned up (0 files written to your current directory).
