@@ -14,6 +14,9 @@ export default defineConfig({
   },
   compressHTML: true,
   markdown: {
+    // Keep flags verbatim: smartypants rewrites "--check" into an en dash,
+    // which breaks both the visible text and the structured data that quotes it.
+    smartypants: false,
     syntaxHighlight: 'shiki',
     shikiConfig: {
       themes: {
