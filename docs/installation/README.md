@@ -12,6 +12,8 @@ Every distribution channel runs the same Python core. Pick the one that fits how
 
 Python 3.9 or newer is required in every case. The package has no runtime dependencies.
 
+Every install channel, including the checks that verify the standalone download, is on the [install page](https://www.skillporter.dev/install).
+
 ## Run without installing
 
 ```bash
@@ -142,4 +144,4 @@ For the standalone installer, run it again with a newer `SKILLPORTER_VERSION` to
 
 ## Next
 
-[Getting started](../getting-started/README.md) walks through the first commands. [MCP integration](../mcp/README.md) covers running Skillporter as a tool server inside a harness.
+[Getting started](../getting-started/README.md) walks through the first commands. [MCP integration](../mcp/README.md) covers running Skillporter as a tool server inside a harness. Questions about channels, platforms and upgrades are answered in the [FAQ](https://www.skillporter.dev/faq).

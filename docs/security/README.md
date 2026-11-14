@@ -17,6 +17,8 @@ Skillporter keeps these separate. A good answer to one says nothing about the ot
 
 **A clean scan does not prove a skill is safe at runtime.**
 
+[Scanning agent skills before you install them](https://www.skillporter.dev/blog/scanning-agent-skills-before-install) covers the review steps that go around a static scan.
+
 ## Skillporter never runs skill code
 
 During cloning, extraction, validation, scanning and installation, Skillporter does not execute scripts, hooks or setup files from a skill. Analysis reads files. It does not import or run them.
@@ -83,7 +85,7 @@ Static analysis has hard limits, and Skillporter does not hide them.
 - **Obfuscation.** Encoded-payload inspection is bounded. Multi-layer encoding, encryption or logic that only triggers on certain dates or inputs can evade it.
 - **Host isolation.** Which tools an agent may call, and what those tools can reach, is decided by the harness and the host environment. Skillporter does not sandbox the agent.
 
-Use the scanner to remove known hazards and to make review faster. Do not use it as the only control.
+Use the scanner to remove known hazards and to make review faster. Do not use it as the only control. Questions about what a clean result means in practice are answered in the [FAQ](https://www.skillporter.dev/faq).
 
 ## Reporting a vulnerability
 

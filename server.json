@@ -4,7 +4,7 @@
   "title": "Skillporter",
   "description": "Read-only MCP server that audits agent skills in one workspace: drift, duplicates, harness support.",
   "version": "3.0.0",
-  "websiteUrl": "https://skillporter.dev",
+  "websiteUrl": "https://www.skillporter.dev",
   "repository": {
     "url": "https://github.com/Shanmukh-l33t/skillporter",
     "source": "github",

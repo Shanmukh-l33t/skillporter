@@ -57,6 +57,8 @@ This entry was produced by `skillporter add anthropics/skills --skill pdf --harn
 }
 ```
 
+[Skill lockfiles explained](https://www.skillporter.dev/blog/skill-lockfiles-explained) goes through what these fields pin and what they leave open.
+
 ## Fields
 
 | Field | Purpose |
@@ -92,6 +94,8 @@ It does not promise more than that:
 - If the pinned commit can no longer be fetched from the source, the install cannot be reproduced from that lockfile.
 - A different Skillporter version may place files differently. `adapter_version` records which version wrote the lockfile.
 - The lockfile pins skill content. It does not pin what a skill's scripts download when an agent runs them.
+
+How those copies are placed across harnesses, and what happens when one of them drifts, is covered in [Syncing agent skills across harnesses](https://www.skillporter.dev/blog/sync-skills-across-harnesses).
 
 ## Changed sources are refused, not absorbed
 

@@ -46,7 +46,7 @@ skillporter detect .
 skillporter add anthropics/skills --skill pdf --harness all
 ```
 
-Skillporter resolves the source, validates the skill against the Agent Skills specification, runs the static security assessment, and only then writes files. Harnesses that share `.agents/skills` receive one copy, not one each.
+Skillporter resolves the source, validates the skill against the Agent Skills specification, runs the static security assessment, and only then writes files. Harnesses that share `.agents/skills` receive one copy, not one each. If the package layout is new to you, [what is an agent skill](https://www.skillporter.dev/blog/what-is-an-agent-skill) explains what a `SKILL.md` directory contains.
 
 Preview the plan first if you prefer:
 
@@ -84,3 +84,4 @@ skillporter lock --check
 - [Harness compatibility](../harnesses/README.md): the 19 adapters and how each was verified.
 - [Security model](../security/README.md): what the scanner checks and what it cannot prove.
 - [CLI reference](../commands/README.md): every command and flag.
+- [FAQ](https://www.skillporter.dev/faq): short answers on installs, drift, rollback and harness coverage.

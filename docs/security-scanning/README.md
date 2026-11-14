@@ -113,3 +113,5 @@ quick-setup: BLOCKED  (risk: 100/100 · REJECT · posture: CRITICAL_DETECTED_RIS
 ```
 
 The output is abridged. Four further findings and the per-finding fix lines are omitted.
+
+A worked review of a scan before you act on it is in [Scanning agent skills before you install them](https://www.skillporter.dev/blog/scanning-agent-skills-before-install).
