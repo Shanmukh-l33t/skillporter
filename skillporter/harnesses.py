@@ -157,6 +157,7 @@ class DetectedHarness:
     binary_path: str | None = None
     version: str | None = None
     reasons: list[str] = field(default_factory=list)
+    skills_present: bool = False
 
 
 HARNESSES: dict[str, Harness] = {
@@ -215,8 +216,8 @@ HARNESSES: dict[str, Harness] = {
         ),
         detection=DetectionSpec(
             binaries=("codex",),
-            user_dirs=(".codex", ".agents/skills"),
-            project_markers=(".codex", ".agents/skills", "AGENTS.md"),
+            user_dirs=(".codex",),
+            project_markers=(".codex", "AGENTS.md"),
             env_vars=("CODEX_HOME",),
         ),
         notes=(
@@ -292,7 +293,7 @@ HARNESSES: dict[str, Harness] = {
         detection=DetectionSpec(
             binaries=("github-copilot-cli",),
             user_dirs=(".copilot",),
-            project_markers=(".github/skills", ".github/copilot-instructions.md", ".github/instructions"),
+            project_markers=(".github/copilot-instructions.md", ".github/instructions"),
         ),
         notes=(
             "Reads .github/skills, .agents/skills, and .claude/skills in projects; "
@@ -885,13 +886,45 @@ def load_adapter_file(path: Path) -> list[Harness]:
     return loaded
 
 
+def _is_skills_only_dir(path: Path) -> bool:
+    """Return True if *path* is solely a skill container directory rather than independent agent config."""
+    if not path.is_dir():
+        return False
+    if path.name == "skills":
+        return True
+    try:
+        entries = [e.name for e in path.iterdir() if e.name not in {".DS_Store"}]
+    except OSError:
+        return False
+    return entries == ["skills"]
+
+
+def _has_installed_skills(base_dir: Path, *, recursive: bool = False) -> bool:
+    """Return True if *base_dir* contains at least one installed skill directory."""
+    if not base_dir.is_dir():
+        return False
+    try:
+        for entry in base_dir.iterdir():
+            if entry.name.startswith("."):
+                continue
+            if (entry / "SKILL.md").is_file():
+                return True
+            if recursive and entry.is_dir():
+                for sub in entry.rglob("SKILL.md"):
+                    if sub.is_file():
+                        return True
+    except OSError:
+        return False
+    return False
+
+
 def detect_harnesses(
     root: Path | None = None,
     home: Path | None = None,
     *,
     probe_versions: bool = False,
 ) -> list[DetectedHarness]:
-    """Detect which AI agent harnesses are installed or active in the project."""
+    """Detect which AI agent harnesses are genuinely installed or active (independent of SkillPorter dirs)."""
     root = (root or Path.cwd()).resolve()
     home = (home or Path(os.path.expanduser("~"))).resolve()
     results: list[DetectedHarness] = []
@@ -904,6 +937,7 @@ def detect_harnesses(
         version: str | None = None
         project_active = False
         user_present = False
+        skills_present = False
 
         for bin_name in det.binaries:
             found_bin = shutil.which(bin_name)
@@ -933,19 +967,31 @@ def detect_harnesses(
                 reasons.append(f"env:{env_key}")
 
         for udir in det.user_dirs:
-            if (home / udir).exists():
+            upath = home / udir
+            if upath.exists() and not _is_skills_only_dir(upath):
                 user_present = True
                 reasons.append(f"user:~/{udir}")
 
         for marker in det.project_markers:
-            if (root / marker).exists():
+            mpath = root / marker
+            if mpath.exists() and not _is_skills_only_dir(mpath):
                 project_active = True
                 reasons.append(f"project:{marker}")
 
-        if h.primary_project_path and (root / h.primary_project_path.path).exists():
-            project_active = True
-            if f"project:{h.primary_project_path.path}" not in reasons:
-                reasons.append(f"project:{h.primary_project_path.path}")
+        for sp in h.project_paths:
+            if _has_installed_skills(root / sp.path, recursive=h.recursive):
+                skills_present = True
+                break
+        if not skills_present:
+            for sp in h.user_paths:
+                if sp.path.startswith("$HERMES_HOME"):
+                    hbase = Path(os.environ.get("HERMES_HOME") or (home / ".hermes"))
+                    up = hbase / sp.path.split("$HERMES_HOME", 1)[1].lstrip("/")
+                else:
+                    up = home / sp.path
+                if _has_installed_skills(up, recursive=h.recursive):
+                    skills_present = True
+                    break
 
         installed = bool(binary_path or user_present or project_active)
         results.append(
@@ -957,6 +1003,7 @@ def detect_harnesses(
                 binary_path=binary_path,
                 version=version,
                 reasons=reasons,
+                skills_present=skills_present,
             )
         )
     return results

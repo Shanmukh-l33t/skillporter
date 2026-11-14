@@ -1,6 +1,6 @@
 # Roadmap
 
-See the root [ROADMAP.md](../ROADMAP.md) for the three-generation product roadmap.
+See [audits/ROADMAP.md](audits/ROADMAP.md) for the three-generation product roadmap.
 
 ## Prioritized Engineering Roadmap Status
 
@@ -16,7 +16,7 @@ See the root [ROADMAP.md](../ROADMAP.md) for the three-generation product roadma
   - Explicit lifecycle states (`FOUND`, `VALID`, `COMPATIBLE`, `INSTALLED`, `VERIFIED`, `UNVERIFIED`, `MISSING`) in `skillporter doctor`.
   - Obfuscated shell execution (`base64 -d | sh`) and HTTP data exfiltration detection in `skillporter scan`.
 - **P2 (Completed)**:
-  - Comprehensive audit documentation (`docs/ENGINEERING_AUDIT.md`, `TECHNICAL_DEBT.md`, `docs/TESTING.md`, `docs/HARNESS_COMPATIBILITY.md`).
+  - Comprehensive audit documentation (`docs/ENGINEERING_AUDIT.md`, `docs/audits/TECHNICAL_DEBT.md`, `docs/TESTING.md`, `docs/HARNESS_COMPATIBILITY.md`).
   - Cross-platform CI across Ubuntu (Python 3.9–3.13), macOS, and Windows.
 - **P3 (Future)**:
   - Live headless runtime discovery probes (`skillporter verify-runtime`) for harnesses when their CLI binaries are present on the host.

@@ -653,6 +653,19 @@ def _build_import_plan_from_extracted(
             if issues:
                 sec_blocked.append(f"{sname}: spec error ({issues[0]})")
             srep = scan_skill(sdir, offline=True)
+            if target_scope == "project":
+                from .policy import evaluate_policy, load_policy
+
+                pol = load_policy(root)
+                pol_errs = evaluate_policy(
+                    pol,
+                    skill_dirs=[sdir],
+                    source_candidates=[str(smeta.get("source", ""))],
+                    resolved_commit=str(smeta.get("resolved_commit", "")),
+                    target_harnesses=targets,
+                    sec_reports={sdir.name: srep},
+                )
+                sec_blocked.extend(f"{sname}: {pe}" for pe in pol_errs)
             for f in srep.findings:
                 fd = f.to_dict()
                 fd["skill"] = sname

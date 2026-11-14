@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 
+from .authoring_cmd import cmd_lint, cmd_new, cmd_preview, cmd_test
 from .environment_cmd import (
     cmd_adopt,
     cmd_diff,
@@ -16,8 +17,17 @@ from .environment_cmd import (
     cmd_status,
 )
 from .harness_cmd import cmd_harness
+from .instructions_cmd import cmd_consolidate, cmd_context
+from .intelligence_cmd import cmd_insights, cmd_suggest
+from .policy_cmd import cmd_policy
 
 HELP_EPILOG = """Workflow command groups:
+  Instructions & Context
+    consolidate  Discover, deduplicate, conflict-check, and unify agent instructions
+    context      Inspect active instructions, ignored files, and startup token stack
+    suggest      Recommend relevant, security-graded skills for this repository
+    insights     Measure skill/instruction token overhead and opt-in local usage
+
   Environment & Portability
     status       Unified workspace, lockfile, harness, and drift control center
     diff         Compare workspace against a .skillpack, directory, or profile
@@ -37,6 +47,12 @@ HELP_EPILOG = """Workflow command groups:
     rollback     Restore a skill (and dependencies) to a verified snapshot
     init / lock  Initialize skillporter.yaml or pin/verify skillporter.lock
 
+  Authoring & Quality
+    new          Scaffold a spec-compliant skill with scripts, references, and tests
+    lint         Validate metadata, local file references, scripts, and limits
+    preview      Preview exact native and adapted outputs received by each harness
+    test         Run skill.test.yaml trigger activation and structural test suites
+
   Harnesses & Diagnostics
     harness      List, inspect, and check status across 19 AI agent harnesses
     detect       Auto-detect installed AI coding and autonomous agents
@@ -46,6 +62,7 @@ HELP_EPILOG = """Workflow command groups:
 
   Security & Agent Integration
     scan         Run static supply-chain & prompt-injection checks (JSON/SARIF)
+    policy       Initialize, show, or enforce project skillporter.policy.yaml rules
     validate     Validate SKILL.md compliance and compute 0-100 risk score
     audit        Inspect provenance, lockfile integrity, and audit.jsonl log
     self-skill   Install the official Skillporter skill into your AI agents
@@ -313,3 +330,146 @@ def register_evolution_commands(sub: argparse._SubParsersAction, shared_parent: 
     ss.add_argument("--format", choices=["text", "json"], default="")
     ss.add_argument("--json", action="store_true")
     ss.set_defaults(func=cmd_self_skill)
+
+    # new (skill scaffolding)
+    nw = sub.add_parser(
+        "new",
+        parents=[shared_parent],
+        help="scaffold a new spec-compliant skill directory",
+    )
+    nw.add_argument("name", help="skill name (lowercase alphanumeric with hyphens)")
+    nw.add_argument("--path", default=".", help="parent directory to create skill inside (default: .)")
+    nw.add_argument("--description", default="", help="skill description including trigger guidance")
+    nw.add_argument("--author", default="developer", help="author metadata field")
+    nw.add_argument("--with-scripts", action="store_true", help="include starter scripts/helper.py")
+    nw.add_argument("--with-references", action="store_true", help="include starter references/guide.md")
+    nw.add_argument("--with-tests", action="store_true", help="include starter skill.test.yaml")
+    nw.add_argument("--force", action="store_true", help="overwrite existing skill directory")
+    nw.add_argument("--format", choices=["text", "json"], default="")
+    nw.add_argument("--json", action="store_true")
+    nw.set_defaults(func=cmd_new)
+
+    # lint (deep authoring & reference linter)
+    ln = sub.add_parser(
+        "lint",
+        parents=[shared_parent],
+        help="validate metadata, file references, scripts, limits, and security",
+    )
+    ln.add_argument("path", nargs="?", default=".", help="skill directory or workspace root")
+    ln.add_argument("--harness", action="append", help="check token/capability limits for specific harness(es)")
+    ln.add_argument("--strict", action="store_true", help="treat warnings as failures (exit code 1)")
+    ln.add_argument("--format", choices=["text", "json"], default="")
+    ln.add_argument("--json", action="store_true")
+    ln.set_defaults(func=cmd_lint)
+
+    # preview (native & adapted delivery preview)
+    pv = sub.add_parser(
+        "preview",
+        parents=[shared_parent],
+        help="preview exact native or adapted content each target harness receives",
+    )
+    pv.add_argument("target", help="installed skill name or path to skill directory")
+    pv.add_argument("--harness", action="append", help="target harness(es) (e.g. cursor, claude-code, aider)")
+    pv.add_argument("--adapt-format", default="", help="explicit adapted format override")
+    pv.add_argument("--scope", choices=["project", "user"], default="project")
+    pv.add_argument("--path", default=".", help="workspace root when resolving by skill name")
+    pv.add_argument("--format", choices=["text", "json"], default="")
+    pv.add_argument("--json", action="store_true")
+    pv.set_defaults(func=cmd_preview)
+
+    # test (skill.test.yaml activation & structural test runner)
+    ts = sub.add_parser(
+        "test",
+        parents=[shared_parent],
+        help="run skill.test.yaml trigger activation and structural checks",
+    )
+    ts.add_argument("path", nargs="?", default=".", help="skill directory, workspace root, or skill.test.yaml")
+    ts.add_argument("--model", default="", help="optional LLM provider:model for model-assisted routing eval")
+    ts.add_argument("--yes-send", action="store_true", help="authorize sending descriptions/prompts to --model API")
+    ts.add_argument("--format", choices=["text", "json"], default="")
+    ts.add_argument("--json", action="store_true")
+    ts.set_defaults(func=cmd_test)
+
+    # consolidate (multi-agent rules consolidation & bidirectional sync)
+    cs = sub.add_parser(
+        "consolidate",
+        parents=[shared_parent],
+        help="discover, deduplicate, conflict-check, and synchronize agent instruction files",
+    )
+    cs.add_argument("path", nargs="?", default=".", help="workspace root (default: .)")
+    cs.add_argument("--harness", action="append", help="target harness(es) to generate native instruction files for")
+    cs.add_argument("--apply", action="store_true", help="back up originals and write canonical.md + native files")
+    cs.add_argument("--status", action="store_true", help="check managed instruction files for manual modifications")
+    cs.add_argument("--reconcile", action="store_true", help="merge manual edits from agent files into canonical.md")
+    cs.add_argument("--rollback", action="store_true", help="restore pre-consolidation original instruction files")
+    cs.add_argument("--force", action="store_true", help="overwrite manually modified managed files")
+    cs.add_argument("--format", choices=["text", "json"], default="")
+    cs.add_argument("--json", action="store_true")
+    cs.set_defaults(func=cmd_consolidate)
+
+    # context (active harness instruction & skill stack inspector)
+    cx = sub.add_parser(
+        "context",
+        parents=[shared_parent],
+        help="inspect exact active instructions, ignored files, and skills loaded by a harness",
+    )
+    cx.add_argument("path", nargs="?", default=".", help="workspace root (default: .)")
+    cx.add_argument("--harness", action="append", help="specific harness(es) to inspect")
+    cx.add_argument("--scope", choices=["project", "user"], default="project")
+    cx.add_argument("--format", choices=["text", "json"], default="")
+    cx.add_argument("--json", action="store_true")
+    cx.set_defaults(func=cmd_context)
+
+    # policy {init,check,show}
+    pol = sub.add_parser(
+        "policy",
+        parents=[shared_parent],
+        help="manage and enforce project skillporter.policy.yaml rules",
+    )
+    pol.add_argument("--path", default=".")
+    pol.add_argument("--format", choices=["text", "json"], default="")
+    pol.add_argument("--json", action="store_true")
+    pol_sub = pol.add_subparsers(dest="policy_action", required=False)
+
+    pol_init = pol_sub.add_parser("init", parents=[shared_parent], help="create starter skillporter.policy.yaml")
+    pol_init.add_argument("path", nargs="?", default=".")
+    pol_init.add_argument("--force", action="store_true")
+    pol_init.add_argument("--format", choices=["text", "json"], default="")
+    pol_init.add_argument("--json", action="store_true")
+
+    pol_chk = pol_sub.add_parser("check", parents=[shared_parent], help="evaluate installed skills against policy")
+    pol_chk.add_argument("path", nargs="?", default=".")
+    pol_chk.add_argument("--format", choices=["text", "json"], default="")
+    pol_chk.add_argument("--json", action="store_true")
+
+    pol_sh = pol_sub.add_parser("show", parents=[shared_parent], help="display active policy configuration")
+    pol_sh.add_argument("path", nargs="?", default=".")
+    pol_sh.add_argument("--format", choices=["text", "json"], default="")
+    pol_sh.add_argument("--json", action="store_true")
+    pol.set_defaults(func=cmd_policy)
+
+    # suggest (smart local-first project skill recommendations)
+    sg = sub.add_parser(
+        "suggest",
+        parents=[shared_parent],
+        help="recommend relevant, security-graded skills based on local project stack",
+    )
+    sg.add_argument("path", nargs="?", default=".", help="workspace root (default: .)")
+    sg.add_argument("--harness", action="append", help="filter compatibility for specific harness(es)")
+    sg.add_argument("--format", choices=["text", "json"], default="")
+    sg.add_argument("--json", action="store_true")
+    sg.set_defaults(func=cmd_suggest)
+
+    # insights (context cost & opt-in local usage insights)
+    ig = sub.add_parser(
+        "insights",
+        parents=[shared_parent],
+        help="measure skill and instruction token overhead and opt-in local usage",
+    )
+    ig.add_argument("path", nargs="?", default=".", help="workspace root (default: .)")
+    ig.add_argument("--scope", choices=["project", "user"], default="project")
+    ig.add_argument("--record-usage", default="", help="record a local opt-in activation event for <skill>")
+    ig.add_argument("--harness-used", default="", help="optional harness ID for --record-usage")
+    ig.add_argument("--format", choices=["text", "json"], default="")
+    ig.add_argument("--json", action="store_true")
+    ig.set_defaults(func=cmd_insights)

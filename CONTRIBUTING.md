@@ -20,7 +20,7 @@ env -u PYTHONPATH .venv/bin/pip install -e ".[dev]"
 ## Required Quality Gates Before Opening a PR
 
 ```bash
-env -u PYTHONPATH .venv/bin/python -m pytest tests/ -v   # all 60+ tests must pass
+env -u PYTHONPATH .venv/bin/python -m pytest tests/ -v   # all 240+ tests must pass
 env -u PYTHONPATH .venv/bin/ruff check .                 # zero lint errors
 env -u PYTHONPATH .venv/bin/python -m skillporter validate .
 env -u PYTHONPATH .venv/bin/python -m skillporter scan .

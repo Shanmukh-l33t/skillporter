@@ -1,6 +1,6 @@
 # Security Model & Defensive Controls
 
-See the root [SECURITY.md](../SECURITY.md) and [SECURITY_AUDIT.md](../SECURITY_AUDIT.md) for the full threat model and audit report.
+See the root [SECURITY.md](../SECURITY.md) and [SECURITY_AUDIT.md](audits/SECURITY_AUDIT.md) for the full threat model and audit report.
 
 ## Summary of Defensive Layers
 

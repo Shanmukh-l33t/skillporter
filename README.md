@@ -39,9 +39,9 @@
 **Skillporter, is the package manager for AI agent skills.** It is a zero runtime dependency CLI and MCP server that installs, pins, audits, synchronizes and rolls back `SKILL.md` packages across 19 AI coding and autonomous agent harnesses, including Claude Code, OpenAI Codex, Cursor, Windsurf, GitHub Copilot, Gemini CLI, Hermes Agent, OpenHands and Goose.
 
 ```bash
-uvx skillporter diagnose .                        # run the CLI without installing it (uv)
+uvx skillporter@latest diagnose .                 # run latest CLI without installing (uv)
 pipx install skillporter                          # install the CLI globally (PEP 668 safe)
-npx @shanmukhdheekonda/skillporter diagnose .     # run the CLI without installing it (npm)
+npx @shanmukhdheekonda/skillporter@latest diagnose . # run latest CLI without installing (npm)
 ```
 
 <p align="center">
@@ -74,14 +74,18 @@ Skillporter treats skills the way a package manager treats dependencies: one man
 | **Portable `.skillpack` environments** | Packages managed skills, provenance, lockfiles, and profiles into a SHA-256 verified offline archive (`export` / `import` / `diff`). |
 | **Granular harness & profile control** | Supports `--exclude-harness`, `--isolated`, `--on-conflict`, `move`, `adopt`, `harness` inspection, and named `profile` switching. |
 | **Crash-safe transactions** | Stages multi-harness installs behind a write-ahead `journal.json` and snapshots replaced copies into `.skillporter/backups/`. |
+| **Agent instruction consolidation** | Discovers `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `.cursor/rules/*.mdc`, `.github/copilot-instructions.md`, `.windsurfrules`, and `CONVENTIONS.md`, detecting overlap, contradictions, outdated refs, and bidirectional edits (`consolidate`). |
+| **Smart project recommendations & insights** | Inspects local project manifests offline (`suggest`), estimates per-harness token overhead (`insights`, `context`), and tests skill triggers (`new`, `lint`, `preview`, `test`). |
+| **Capability & policy governance** | Compares declared vs. inferred capabilities (`capabilities:`), previews human-readable update diffs (`update --check`), and enforces `skillporter.policy.yaml` (`policy`). |
 | **Agent skill & hardened MCP server** | Ships an official `skillporter` skill (`self-skill install`) plus a workspace-bounded JSON-RPC 2.0 MCP server (`--allow-writes` opt-in). |
 
 ## Installation
 
 ```bash
 # Option A: run immediately without a global install, via uvx or npx
-uvx skillporter diagnose .
-npx @shanmukhdheekonda/skillporter diagnose .
+# Pass @latest so uvx/npx never reuse an older cached tool environment
+uvx skillporter@latest diagnose .
+npx @shanmukhdheekonda/skillporter@latest diagnose .
 
 # Option B: install from PyPI with uv or pipx (PEP 668 safe)
 uv tool install skillporter
@@ -103,8 +107,12 @@ Python 3.9 or newer is required, and the standalone installer checks for it befo
 # 1. Run the zero residue interactive demo (heals broken symlinks and SHA-256 drift in a temp dir)
 skillporter demo
 
-# 2. Install a skill across harnesses (validates spec, runs static security scan, deduplicates .agents/skills)
-skillporter add anthropics/skills --skill pdf --harness all
+# 2. Consolidate scattered CLAUDE.md, AGENTS.md, and Cursor rules, or get local skill recommendations
+skillporter consolidate
+skillporter suggest
+
+# 3. Install a skill conservatively into detected/configured harnesses (pass --harness all for all 19)
+skillporter add anthropics/skills --skill pdf --harness detected
 
 # 3. Inspect and security scan skills (text, JSON, or SARIF 2.1.0 for GitHub Code Scanning)
 skillporter scan .
@@ -183,7 +191,7 @@ Each harness record ships its detection rules, path precedence, and vendor docum
 
 ## MCP server
 
-`skillporter mcp` runs a hardened JSON-RPC 2.0 Model Context Protocol server so an agent can query a workspace instead of shelling out. It exposes 13 tools (`diagnose`, `detect`, `scan`, `inspect`, `matrix`, `status`, `diff`, `add`, `install`, `sync`, `remove`, `export`, `import`), is read-only by default, refuses paths outside the workspace root, and requires an explicit opt-in before any write tool becomes available:
+`skillporter mcp` runs a hardened JSON-RPC 2.0 Model Context Protocol server so an agent can query a workspace instead of shelling out. It exposes 18 tools (`diagnose`, `detect`, `scan`, `inspect`, `matrix`, `status`, `diff`, `consolidate_preview`, `suggest`, `insights`, `context`, `preview`, `add`, `install`, `sync`, `remove`, `export`, `import`), is read-only by default, refuses paths outside the workspace root, and requires an explicit opt-in before any write tool becomes available:
 
 ```bash
 skillporter mcp                                   # read-only
@@ -197,6 +205,15 @@ Client setup for Claude Code and other MCP clients is covered in the [MCP guide]
 
 | Command | Description |
 |---|---|
+| `skillporter consolidate [path]` | Discover, deduplicate, conflict-check, reconcile, and synchronize multi-agent instruction files (`--apply`, `--status`, `--reconcile`, `--rollback`) |
+| `skillporter context [path]` | Inspect exact active instruction files, ignored foreign files, reachable skills, and startup token stack (`--harness`) |
+| `skillporter suggest [path]` | Recommend relevant, security-graded skills from local project manifests (`package.json`, `pyproject.toml`, `Dockerfile`, Prisma, CI) |
+| `skillporter insights [path]` | Measure skill and instruction context token overhead, duplicate waste, and opt-in local activation events |
+| `skillporter new <name>` | Scaffold a spec-compliant skill directory (`--with-scripts`, `--with-references`, `--with-tests`) |
+| `skillporter lint [path]` | Validate metadata, local file links, script references, capability declarations, and token limits (`--strict`) |
+| `skillporter preview <target>` | Preview exact native and adapted rule outputs plus capability-loss notes for any harness (`--harness`) |
+| `skillporter test [path]` | Run `skill.test.yaml` activation trigger and structural test suites (`--model`, `--yes-send`) |
+| `skillporter policy [action]` | Initialize (`init`), display (`show`), or enforce (`check`) `skillporter.policy.yaml` governance rules |
 | `skillporter status [path]` | Unified environment control center: manifest, lockfile, profiles, managed vs. unmanaged skills, and drift |
 | `skillporter export [file.skillpack]` | Package managed skills, provenance, lockfile, and profiles into a SHA-256 verified portable `.skillpack` archive |
 | `skillporter import <file.skillpack>` | Validate integrity, run static security checks, preview conflicts (`--dry-run`), and restore an environment offline |
@@ -210,7 +227,7 @@ Client setup for Claude Code and other MCP clients is covered in the [MCP guide]
 | `skillporter remove <skill>` | Safely remove a skill while preserving shared `.agents/skills/` still owned by other harnesses (`--dry-run`, `--json`) |
 | `skillporter sync [path]` | Resolve pinned and transitive dependencies, verify lockfile hashes, and synchronize harnesses (`--dry-run`, `--json`) |
 | `skillporter outdated [skill]` | Check managed skills against upstream versions and SHA-256 tree hashes without modifying files |
-| `skillporter update [skill]` | Fetch, security gate, back up, and update tracked skills (`--dry-run`, `--allow-risky`, `--json`) |
+| `skillporter update [skill]` | Preview human-readable diffs (`--check`) or fetch, security/policy gate, back up, and update tracked skills (`--dry-run`, `--allow-risky`, `--json`) |
 | `skillporter rollback <skill>` | Atomically restore a skill and its dependency graph from SHA-256 verified `.skillporter/backups/` (`--dry-run`, `--json`) |
 | `skillporter lock [path] [--check]` | Write or CI verify (`--check`) the deterministic `skillporter.lock` |
 | `skillporter scan [path]` | Run static security and supply chain assessment (`--format text\|json\|sarif`, `--max-risk-score`) |
@@ -222,7 +239,7 @@ Client setup for Claude Code and other MCP clients is covered in the [MCP guide]
 | `skillporter graph [path]` | Render or export (`--json`) the topological skill dependency graph |
 | `skillporter self-skill [install]` | Bootstrap the official `skillporter` AI agent skill into detected or selected harnesses |
 | `skillporter sandbox run <skill>` | **[Experimental]** Opt in, non-mutating dry run behavioral trace |
-| `skillporter explain <finding>` | Explain any diagnostic, lockfile, validation, or `sec-*` finding code with remediation commands |
+| `skillporter explain <finding>` | Explain any diagnostic, lockfile, validation, capability, policy, or `sec-*` code (`--list` for all codes) |
 | `skillporter search / info / pack / publish` | Search the catalog, inspect metadata, build a deterministic `.tar.gz` with `provenance.json`, or publish |
 | `skillporter detect / matrix / demo` | Detect installed harnesses, print the 19 harness matrix, or run the zero residue demo |
 | `skillporter mcp` | Run the hardened JSON-RPC 2.0 MCP server (read-only by default; `--allow-writes` opt in) |

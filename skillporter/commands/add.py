@@ -13,10 +13,12 @@ from ..frontmatter import parse_skill, validate
 from ..install import InstallError, install_many, plan_install
 from ..install import install as run_install
 from ..manifest import ManifestSkillSpec, load_manifest, save_manifest
+from ..policy import evaluate_policy, load_policy
 from ..security import scan_skill
 from ..sources import SourceError, resolve_source
 from ..state import load_state
 from ..ui import BOLD, CYAN, action_symbol, badge, render_next_steps, style
+from ..update_review import review_skill_update
 from .common import (
     EXIT_ERROR,
     EXIT_OK,
@@ -69,9 +71,12 @@ def cmd_add(args: argparse.Namespace) -> int:
             skill_dirs = [d for d in skill_dirs if d.name in wanted]
 
         manifest = load_manifest(root)
+        policy = load_policy(root) if args.scope == "project" else None
         max_risk_score = getattr(args, "max_risk_score", None)
         if max_risk_score is None and manifest is not None:
             max_risk_score = manifest.max_risk_score
+        if max_risk_score is None and policy is not None and policy.max_risk_score is not None:
+            max_risk_score = policy.max_risk_score
 
         plan = plan_install(
             root,
@@ -131,26 +136,50 @@ def cmd_add(args: argparse.Namespace) -> int:
             )
             return EXIT_PROBLEM if (spec_errors or sec_critical or sec_high or risk_threshold_exceeded) else EXIT_OK
 
+        incomplete_skills = [sname for sname, r in sec_reports.items() if not r.scan_complete]
+        policy_violations = evaluate_policy(
+            policy,
+            skill_dirs=skill_dirs,
+            source_candidates=[args.source, resolved.canonical_source],
+            resolved_commit=resolved.resolved_commit,
+            ref=args.ref or "",
+            target_harnesses=targets,
+            sec_reports=sec_reports,
+        )
+        has_structural = any(r.has_structural_escape for r in sec_reports.values())
+        will_block = (
+            has_structural
+            or bool(policy_violations)
+            or (bool(risk_threshold_exceeded) and not args.allow_risky)
+            or ((sec_critical > 0 or sec_high > 0 or bool(incomplete_skills)) and not args.allow_risky)
+        )
+
         if (
             not is_json
             and not is_quiet(args)
-            and (is_verbose(args) or args.dry_run or sec_critical or sec_high or spec_errors)
+            and (is_verbose(args) or args.dry_run or will_block or sec_critical or sec_high or spec_errors)
         ):
-            print(style("SKILLPORTER", BOLD, CYAN))
+            header_status = (
+                f" · {badge('BLOCKED')}"
+                if will_block
+                else (f" · {badge('WARNING')}" if (sec_critical or sec_high) else "")
+            )
+            print(style("SKILLPORTER", BOLD, CYAN) + header_status)
             print(f"\nSource: {resolved.kind}:{args.source}")
             if resolved.resolved_commit:
                 print(f"Commit: {resolved.resolved_commit[:12]}")
             print("\nFound skills:")
             for sdir in skill_dirs:
                 srep_i = sec_reports[sdir.name]
-                print(f"  {sdir.name}  (risk: {srep_i.risk_score}/100 · {srep_i.recommendation})")
+                print(f"  {sdir.name}  (risk: {srep_i.risk_score}/100 · {badge(srep_i.recommendation)})")
             print("\nTarget harnesses:")
             for t in targets:
                 print(f"  {harnesses.get(t).label} ({t})")
-            print("\nInstallation plan:")
-            print(f"  {len(plan.destinations)} destination(s) across {len(targets)} harness(es)")
-            if plan.shared_count:
-                print(f"  {plan.shared_count} shared destination(s) deduplicated (.agents/skills)")
+            if not will_block:
+                print("\nInstallation plan:")
+                print(f"  {len(plan.destinations)} destination(s) across {len(targets)} harness(es)")
+                if plan.shared_count:
+                    print(f"  {plan.shared_count} shared destination(s) deduplicated (.agents/skills)")
             val_label = "PASSED" if not spec_errors else f"FAILED ({len(spec_errors)} error(s))"
             print(f"\nValidation: {badge(val_label)}")
             for err in spec_errors:
@@ -162,6 +191,9 @@ def cmd_add(args: argparse.Namespace) -> int:
                 for f in srep_d.findings:
                     loc = f"{f.file}:{f.line}" if f.line else f.file
                     print(f"  [{f.severity}] {f.code} ({sname}/{loc}): {f.message}")
+                    if f.remediation and will_block:
+                        print(f"      Fix: {f.remediation}")
+            sys.stdout.flush()
 
         scan_audit = {
             sname: {
@@ -173,7 +205,7 @@ def cmd_add(args: argparse.Namespace) -> int:
             for sname, r in sec_reports.items()
         }
 
-        if any(r.has_structural_escape for r in sec_reports.values()):
+        if has_structural:
             record_audit_event(
                 root,
                 interface="cli",
@@ -189,8 +221,29 @@ def cmd_add(args: argparse.Namespace) -> int:
                 scope=args.scope,
             )
             print(
-                "\nerror: installation blocked by structural filesystem escape "
+                "error: installation blocked by structural filesystem escape "
                 "(escaping symlinks or path traversal cannot be overridden with --allow-risky or --force)",
+                file=sys.stderr,
+            )
+            return EXIT_PROBLEM
+
+        if policy_violations:
+            record_audit_event(
+                root,
+                interface="cli",
+                operation="add",
+                status="blocked",
+                source=resolved.canonical_source,
+                resolved_commit=resolved.resolved_commit,
+                harnesses=targets,
+                scan_results=scan_audit,
+                force=args.force,
+                risk_accepted=False,
+                detail="; ".join(policy_violations),
+                scope=args.scope,
+            )
+            print(
+                "error: installation blocked by project security policy: " + "; ".join(policy_violations),
                 file=sys.stderr,
             )
             return EXIT_PROBLEM
@@ -211,13 +264,12 @@ def cmd_add(args: argparse.Namespace) -> int:
                 scope=args.scope,
             )
             print(
-                f"\nerror: installation blocked by configured security.max_risk_score ({max_risk_score}): "
+                f"error: installation blocked by configured security.max_risk_score ({max_risk_score}): "
                 + ", ".join(risk_threshold_exceeded),
                 file=sys.stderr,
             )
             return EXIT_PROBLEM
 
-        incomplete_skills = [sname for sname, r in sec_reports.items() if not r.scan_complete]
         if (sec_critical > 0 or sec_high > 0 or incomplete_skills) and not args.allow_risky:
             record_audit_event(
                 root,
@@ -239,7 +291,7 @@ def cmd_add(args: argparse.Namespace) -> int:
                 else "static security policy"
             )
             print(
-                f"\nerror: installation blocked by {reason} "
+                f"error: installation blocked by {reason} "
                 "(--force only overrides destination conflicts; pass --allow-risky after reviewing `skillporter scan`)",
                 file=sys.stderr,
             )
@@ -394,6 +446,20 @@ def cmd_install(args: argparse.Namespace) -> int:
 
     if (skill_dir / "SKILL.md").is_file():
         srep = scan_skill(skill_dir)
+        policy = load_policy(root) if args.scope == "project" else None
+        pol_violations = evaluate_policy(
+            policy,
+            skill_dirs=[skill_dir],
+            source_candidates=[args.skill, str(skill_dir)],
+            target_harnesses=targets,
+            sec_reports={skill_dir.name: srep},
+        )
+        if pol_violations:
+            print(
+                "error: installation blocked by project security policy: " + "; ".join(pol_violations),
+                file=sys.stderr,
+            )
+            return EXIT_PROBLEM
         scan_audit = {
             skill_dir.name: {
                 "passed": srep.passed,
@@ -549,21 +615,31 @@ def cmd_update(args: argparse.Namespace) -> int:
             root = Path(target_arg).expanduser().resolve()
         target_arg = ""
 
+    check_only = bool(getattr(args, "check", False))
     dry_run = bool(getattr(args, "dry_run", False))
     is_json = fmt_mode(args) == "json"
     records = load_state(root, scope=args.scope)
     if not records:
         if is_json:
-            print(json.dumps({"dry_run": dry_run, "updated": []}, indent=2))
+            payload_empty = (
+                {"updates_available": 0, "reviews": []}
+                if check_only
+                else {"dry_run": dry_run, "updated": []}
+            )
+            print(json.dumps(payload_empty, indent=2))
         else:
             print("no managed skills recorded in .skillporter/state.json to update.")
         return EXIT_OK
 
     allow_risky = bool(getattr(args, "allow_risky", False))
     manifest = load_manifest(root)
+    policy = load_policy(root) if args.scope == "project" else None
     max_risk_score = manifest.max_risk_score if manifest is not None else None
+    if max_risk_score is None and policy is not None and policy.max_risk_score is not None:
+        max_risk_score = policy.max_risk_score
     names = [target_arg] if target_arg else sorted(records)
     updated_items: list[dict[str, object]] = []
+    reviews: list[dict[str, object]] = []
 
     for sname in names:
         rec = records.get(sname)
@@ -574,7 +650,31 @@ def cmd_update(args: argparse.Namespace) -> int:
         try:
             matching = [d for d in resolved.skill_dirs if d.name == sname] or resolved.skill_dirs
             for sdir in matching:
+                inst_dir = Path(rec.destinations[0]) if rec.destinations else sdir
+                rev = review_skill_update(
+                    sdir.name,
+                    inst_dir if inst_dir.is_dir() else sdir,
+                    sdir,
+                    current_version=rec.version,
+                    current_commit=rec.resolved_commit,
+                    upstream_commit=resolved.resolved_commit,
+                )
+                reviews.append(rev)
+                if check_only:
+                    continue
+
                 srep = scan_skill(sdir)
+                pol_v = evaluate_policy(
+                    policy,
+                    skill_dirs=[sdir],
+                    source_candidates=[rec.source, resolved.canonical_source],
+                    resolved_commit=resolved.resolved_commit,
+                    target_harnesses=rec.harnesses,
+                    sec_reports={sdir.name: srep},
+                )
+                if pol_v:
+                    print("error: update blocked by project security policy: " + "; ".join(pol_v), file=sys.stderr)
+                    return EXIT_PROBLEM
                 scan_audit = {
                     sdir.name: {
                         "passed": srep.passed,
@@ -661,8 +761,31 @@ def cmd_update(args: argparse.Namespace) -> int:
         finally:
             resolved.cleanup()
 
+    if check_only:
+        avail_cnt = sum(1 for r in reviews if r["has_changes"])
+        if is_json:
+            print(json.dumps({"updates_available": avail_cnt, "reviews": reviews}, indent=2))
+            return EXIT_OK
+        if not is_quiet(args):
+            if avail_cnt == 0:
+                print("All tracked skills match their upstream sources (0 updates available).")
+            else:
+                print(f"Update review: {avail_cnt} skill(s) have upstream changes:\n")
+                for r in reviews:
+                    if not r["has_changes"] and not is_verbose(args):
+                        continue
+                    print(
+                        f"  {style(str(r['skill']), BOLD)}  "
+                        f"v{r['current_version']} ({r['current_hash']}) -> "
+                        f"v{r['upstream_version']} ({r['upstream_hash']})"
+                    )
+                    for hl in r["highlights"]:  # type: ignore[union-attr]
+                        print(f"    - {hl}")
+                print("\n" + render_next_steps(["skillporter update                # apply reviewed updates"]))
+        return EXIT_OK
+
     if is_json:
-        print(json.dumps({"dry_run": dry_run, "updated": updated_items}, indent=2))
+        print(json.dumps({"dry_run": dry_run, "updated": updated_items, "reviews": reviews}, indent=2))
     elif dry_run:
         print(f"dry-run: {len(updated_items)} skill(s) ready to update (no files modified).")
     return EXIT_OK

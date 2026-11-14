@@ -106,6 +106,8 @@ _FINDING_CATEGORIES: dict[str, str] = {
     "sec-encoded-payload": "code_execution",
     "sec-cross-file-staged-exec": "code_execution",
     "sec-cross-file-remote-stage": "supply_chain",
+    "sec-unicode-tag-smuggling": "prompt_injection",
+    "sec-malicious-package-hook": "supply_chain",
 }
 
 # Patterns for embedded secrets and private keys
@@ -153,6 +155,12 @@ _PROMPT_PATTERNS: tuple[tuple[str, str, str, re.Pattern[str]], ...] = (
         "sec-hidden-unicode",
         "Hidden zero-width or bidirectional override Unicode characters detected",
         re.compile(r"[\u200b\u200c\u200d\u2060\u202a-\u202e\u2066-\u2069\ufeff]"),
+    ),
+    (
+        "CRITICAL",
+        "sec-unicode-tag-smuggling",
+        "Invisible Unicode Tag block characters (U+E0000..U+E007F) smuggling hidden prompt text",
+        re.compile(r"[\U000e0000-\U000e007f]"),
     ),
     (
         "MEDIUM",
@@ -302,6 +310,12 @@ _REMEDIATIONS: dict[str, str] = {
     "sec-encoded-payload": "Decode and replace obfuscated Base64/Hex command payloads with auditable source text.",
     "sec-cross-file-staged-exec": "Eliminate multi-file staged payload decoding and dynamic execution chains.",
     "sec-cross-file-remote-stage": "Do not download and execute unverified remote second-stage scripts.",
+    "sec-unicode-tag-smuggling": (
+        "Strip invisible U+E0000..U+E007F Unicode Tag characters from Markdown and source files."
+    ),
+    "sec-malicious-package-hook": (
+        "Remove shell/network commands from package.json preinstall/postinstall lifecycle hooks."
+    ),
 }
 
 
@@ -469,6 +483,13 @@ class SecurityReport:
         return self.risk_score > max_risk_score
 
     def to_dict(self) -> dict[str, object]:
+        from .capabilities import analyze_capabilities
+
+        cap_dict = (
+            analyze_capabilities(self.root).to_dict()
+            if self.root.is_dir()
+            else {}
+        )
         return {
             "root": str(self.root),
             "assessment_type": self.assessment_type,
@@ -481,6 +502,7 @@ class SecurityReport:
             "risk_level": self.risk_level,
             "recommendation": self.recommendation,
             "category_breakdown": self.category_breakdown,
+            "capabilities": cap_dict,
             "disclaimer": (
                 "Static analysis inspects files for known dangerous patterns and integrity anomalies; "
                 "a clean static scan does not prove or guarantee runtime safety."
@@ -763,16 +785,9 @@ def scan_skill(
                             report.findings.append(SecurityFinding(sev, code, rel, msg, line=idx))
 
             if is_markdown:
-                html_pat = _PROMPT_PATTERNS[2][3]
-                if html_pat.search(text):
-                    report.findings.append(
-                        SecurityFinding(
-                            _PROMPT_PATTERNS[2][0],
-                            _PROMPT_PATTERNS[2][1],
-                            rel,
-                            _PROMPT_PATTERNS[2][2],
-                        )
-                    )
+                for h_sev, h_code, h_msg, h_pat in _PROMPT_PATTERNS:
+                    if h_code == "sec-html-comment-instruction" and h_pat.search(text):
+                        report.findings.append(SecurityFinding(h_sev, h_code, rel, h_msg))
 
             if "\\\n" in text or "\\\r\n" in text:
                 joined_text = re.sub(r"\\\r?\n[ \t]*", " ", text)
@@ -792,6 +807,29 @@ def scan_skill(
                 extra_hits.extend(analyze_js_ts(rel, text, fsig))
             if is_markdown:
                 extra_hits.extend(analyze_markdown_instructions(rel, text, fsig))
+            if fpath.name == "package.json":
+                try:
+                    pkg_obj = json.loads(text)
+                    scripts_map = pkg_obj.get("scripts", {}) if isinstance(pkg_obj, dict) else {}
+                    if isinstance(scripts_map, dict):
+                        for hook_k in ("preinstall", "install", "postinstall", "prepare"):
+                            hook_cmd = str(scripts_map.get(hook_k, ""))
+                            if re.search(
+                                r"\b(?:curl|wget|nc|bash|sh|powershell|pwsh|base64|node\s+-e|python[23]?\s+-c)\b",
+                                hook_cmd,
+                                re.IGNORECASE,
+                            ):
+                                report.findings.append(
+                                    SecurityFinding(
+                                        "CRITICAL",
+                                        "sec-malicious-package-hook",
+                                        rel,
+                                        f"Suspicious {hook_k!r} hook in bundled package.json: {hook_cmd[:80]}",
+                                        line=1,
+                                    )
+                                )
+                except json.JSONDecodeError:
+                    pass
             extra_hits.extend(analyze_encoded_content(rel, text, fsig))
 
             for hit in extra_hits:

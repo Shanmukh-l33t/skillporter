@@ -97,6 +97,44 @@
       ],
       "help": "generate a Markdown/JSON PR diagnostic & security report"
     },
+    "consolidate": {
+      "flags": [
+        "--apply",
+        "--force",
+        "--format",
+        "--harness",
+        "--json",
+        "--no-color",
+        "--quiet",
+        "--reconcile",
+        "--rollback",
+        "--status",
+        "--verbose",
+        "-q",
+        "-v"
+      ],
+      "positionals": [
+        "path"
+      ],
+      "help": "discover, deduplicate, conflict-check, and synchronize agent instruction files"
+    },
+    "context": {
+      "flags": [
+        "--format",
+        "--harness",
+        "--json",
+        "--no-color",
+        "--quiet",
+        "--scope",
+        "--verbose",
+        "-q",
+        "-v"
+      ],
+      "positionals": [
+        "path"
+      ],
+      "help": "inspect exact active instructions, ignored files, and skills loaded by a harness"
+    },
     "demo": {
       "flags": [
         "--format",
@@ -184,6 +222,7 @@
       "flags": [
         "--format",
         "--json",
+        "--list",
         "--no-color",
         "--quiet",
         "--verbose",
@@ -354,6 +393,24 @@
       ],
       "help": "initialize skillporter.yaml in a project"
     },
+    "insights": {
+      "flags": [
+        "--format",
+        "--harness-used",
+        "--json",
+        "--no-color",
+        "--quiet",
+        "--record-usage",
+        "--scope",
+        "--verbose",
+        "-q",
+        "-v"
+      ],
+      "positionals": [
+        "path"
+      ],
+      "help": "measure skill and instruction token overhead and opt-in local usage"
+    },
     "inspect": {
       "flags": [
         "--format",
@@ -397,6 +454,23 @@
         "skill"
       ],
       "help": "install a local skill directory into one or more harnesses"
+    },
+    "lint": {
+      "flags": [
+        "--format",
+        "--harness",
+        "--json",
+        "--no-color",
+        "--quiet",
+        "--strict",
+        "--verbose",
+        "-q",
+        "-v"
+      ],
+      "positionals": [
+        "path"
+      ],
+      "help": "validate metadata, file references, scripts, limits, and security"
     },
     "list": {
       "flags": [
@@ -484,6 +558,28 @@
       ],
       "help": "move an installed skill between harnesses safely"
     },
+    "new": {
+      "flags": [
+        "--author",
+        "--description",
+        "--force",
+        "--format",
+        "--json",
+        "--no-color",
+        "--path",
+        "--quiet",
+        "--verbose",
+        "--with-references",
+        "--with-scripts",
+        "--with-tests",
+        "-q",
+        "-v"
+      ],
+      "positionals": [
+        "name"
+      ],
+      "help": "scaffold a new spec-compliant skill directory"
+    },
     "outdated": {
       "flags": [
         "--format",
@@ -516,6 +612,84 @@
         "path"
       ],
       "help": "build an immutable .tar.gz skill release bundle"
+    },
+    "policy": {
+      "flags": [
+        "--format",
+        "--json",
+        "--no-color",
+        "--path",
+        "--quiet",
+        "--verbose",
+        "-q",
+        "-v"
+      ],
+      "positionals": [],
+      "subcommands": {
+        "check": {
+          "flags": [
+            "--format",
+            "--json",
+            "--no-color",
+            "--quiet",
+            "--verbose",
+            "-q",
+            "-v"
+          ],
+          "positionals": [
+            "path"
+          ]
+        },
+        "init": {
+          "flags": [
+            "--force",
+            "--format",
+            "--json",
+            "--no-color",
+            "--quiet",
+            "--verbose",
+            "-q",
+            "-v"
+          ],
+          "positionals": [
+            "path"
+          ]
+        },
+        "show": {
+          "flags": [
+            "--format",
+            "--json",
+            "--no-color",
+            "--quiet",
+            "--verbose",
+            "-q",
+            "-v"
+          ],
+          "positionals": [
+            "path"
+          ]
+        }
+      },
+      "help": "manage and enforce project skillporter.policy.yaml rules"
+    },
+    "preview": {
+      "flags": [
+        "--adapt-format",
+        "--format",
+        "--harness",
+        "--json",
+        "--no-color",
+        "--path",
+        "--quiet",
+        "--scope",
+        "--verbose",
+        "-q",
+        "-v"
+      ],
+      "positionals": [
+        "target"
+      ],
+      "help": "preview exact native or adapted content each target harness receives"
     },
     "profile": {
       "flags": [
@@ -660,11 +834,14 @@
         "--json",
         "--no-color",
         "--path",
+        "--purge-source",
         "--quiet",
         "--scope",
         "--verbose",
+        "--yes",
         "-q",
-        "-v"
+        "-v",
+        "-y"
       ],
       "positionals": [
         "skill"
@@ -709,6 +886,8 @@
     },
     "scan": {
       "flags": [
+        "--ai-model",
+        "--ai-review",
         "--engine",
         "--format",
         "--json",
@@ -717,6 +896,7 @@
         "--offline",
         "--quiet",
         "--verbose",
+        "--yes-send",
         "-q",
         "-v"
       ],
@@ -778,6 +958,22 @@
       ],
       "help": "show unified environment, manifest, lockfile, harness, and drift status"
     },
+    "suggest": {
+      "flags": [
+        "--format",
+        "--harness",
+        "--json",
+        "--no-color",
+        "--quiet",
+        "--verbose",
+        "-q",
+        "-v"
+      ],
+      "positionals": [
+        "path"
+      ],
+      "help": "recommend relevant, security-graded skills based on local project stack"
+    },
     "sync": {
       "flags": [
         "--allow-risky",
@@ -802,6 +998,23 @@
       ],
       "help": "synchronize skills and dependencies across harnesses"
     },
+    "test": {
+      "flags": [
+        "--format",
+        "--json",
+        "--model",
+        "--no-color",
+        "--quiet",
+        "--verbose",
+        "--yes-send",
+        "-q",
+        "-v"
+      ],
+      "positionals": [
+        "path"
+      ],
+      "help": "run skill.test.yaml trigger activation and structural checks"
+    },
     "uninstall": {
       "flags": [
         "--dry-run",
@@ -811,11 +1024,14 @@
         "--json",
         "--no-color",
         "--path",
+        "--purge-source",
         "--quiet",
         "--scope",
         "--verbose",
+        "--yes",
         "-q",
-        "-v"
+        "-v",
+        "-y"
       ],
       "positionals": [
         "skill"
@@ -825,6 +1041,7 @@
     "update": {
       "flags": [
         "--allow-risky",
+        "--check",
         "--dry-run",
         "--format",
         "--json",

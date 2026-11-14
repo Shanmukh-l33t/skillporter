@@ -45,6 +45,11 @@ MCP_READ_TOOLS = frozenset(
         "skillporter_matrix",
         "skillporter_status",
         "skillporter_diff",
+        "skillporter_consolidate_preview",
+        "skillporter_suggest",
+        "skillporter_insights",
+        "skillporter_context",
+        "skillporter_preview",
     }
 )
 
@@ -168,6 +173,10 @@ def _require_harnesses(
     if key not in args:
         if required:
             raise ValueError(f"missing required MCP parameter {key!r}")
+        if scope == "project" and root is not None:
+            manifest = load_manifest(root)
+            if manifest and manifest.harnesses:
+                return [harnesses.get(h).name for h in manifest.harnesses]
         return ["claude-code", "codex", "cursor"]
     raw = args[key]
     if not isinstance(raw, list) or len(raw) == 0:
@@ -279,10 +288,35 @@ def _evaluate_skills_security(
     accept_risk: bool,
     max_risk_score: int | None,
 ) -> tuple[dict[str, object], list[dict[str, object]]]:
+    from .policy import evaluate_policy, load_policy
+
+    policy = load_policy(root)
     all_findings: list[dict[str, object]] = []
     scan_summary: dict[str, object] = {}
     for sdir in skill_dirs:
         sec = scan_skill(sdir)
+        pol_errs = evaluate_policy(
+            policy,
+            skill_dirs=[sdir],
+            source_candidates=[source],
+            resolved_commit=resolved_commit,
+            target_harnesses=targets,
+            sec_reports={sdir.name: sec},
+        )
+        if pol_errs:
+            record_audit_event(
+                root,
+                interface="mcp",
+                operation=operation,
+                status="blocked",
+                source=source,
+                resolved_commit=resolved_commit,
+                harnesses=targets,
+                force=force,
+                risk_accepted=False,
+                detail="; ".join(pol_errs),
+            )
+            raise RuntimeError("project security policy blocked operation: " + "; ".join(pol_errs))
         scan_summary[sdir.name] = {
             "passed": sec.passed,
             "posture": sec.posture,
@@ -474,7 +508,7 @@ MCP_TOOLS = [
                 "harnesses": {"type": "array", "items": {"type": "string"}},
                 "path": {"type": "string", "default": "."},
             },
-            "required": ["skill", "harnesses"],
+            "required": ["skill"],
         },
     },
     {
@@ -542,6 +576,76 @@ MCP_TOOLS = [
                 "accept_risk": {"type": "boolean", "default": False},
             },
             "required": ["pack"],
+        },
+    },
+    {
+        "name": "skillporter_consolidate_preview",
+        "description": (
+            "[READ] Discover agent instruction files (CLAUDE.md, AGENTS.md, .cursor/rules, copilot-instructions, etc.) "
+            "and report overlap percentage, contradictions, and outdated file references without modifying files."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "default": "."},
+            },
+        },
+    },
+    {
+        "name": "skillporter_suggest",
+        "description": (
+            "[READ] Analyze local project manifests and configuration (100% local, zero uploads) "
+            "and recommend relevant, security-graded skills."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "default": "."},
+            },
+        },
+    },
+    {
+        "name": "skillporter_insights",
+        "description": (
+            "[READ] Measure estimated token overhead of skills and instruction files, detect duplicates, "
+            "and report local opt-in usage insights."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "default": "."},
+            },
+        },
+    },
+    {
+        "name": "skillporter_context",
+        "description": (
+            "[READ] Inspect exact active instruction files, ignored foreign files, reachable skills, "
+            "and startup token budget for a specific harness."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "harness": {"type": "string", "description": "Target harness ID (e.g. claude-code, codex, cursor)"},
+                "path": {"type": "string", "default": "."},
+            },
+            "required": ["harness"],
+        },
+    },
+    {
+        "name": "skillporter_preview",
+        "description": (
+            "[READ] Preview the exact native or adapted rule content a target harness receives "
+            "for a workspace skill, including any translation limitations."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "target": {"type": "string", "description": "Workspace-relative skill path or installed skill name"},
+                "harness": {"type": "string", "description": "Target harness ID (e.g. cursor, github-copilot, aider)"},
+                "path": {"type": "string", "default": "."},
+            },
+            "required": ["target", "harness"],
         },
     },
 ]
@@ -1014,12 +1118,33 @@ def _call_tool(
         }
 
     if name == "skillporter_remove":
+        from .state import load_state
+
         raw_p = _require_str(args, "path", default=".")
         root = resolve_mcp_path(raw_p, workspace_root=ws_root)
         raw_skill_name = _require_str(args, "skill")
         skill_name = validate_skill_name_segment(raw_skill_name)
-        targets = _require_harnesses(args, "harnesses", required=True, root=root, scope="project")
-        _enforce_write_permission(root, name, allow_writes=allow_writes, source=skill_name, harnesses_list=targets)
+        req_h_preview = (
+            _require_harnesses(args, "harnesses", required=True, root=root, scope="project")
+            if "harnesses" in args
+            else None
+        )
+        _enforce_write_permission(
+            root, name, allow_writes=allow_writes, source=skill_name, harnesses_list=req_h_preview
+        )
+        if req_h_preview is not None:
+            targets = req_h_preview
+        else:
+            recs = load_state(root, scope="project")
+            diag_rm = diagnose(root, scope="project")
+            raw_owners: list[str] = [
+                *(recs[skill_name].harnesses if skill_name in recs else []),
+                *[h for h, rep in diag_rm.reports.items() if rep.loads(skill_name)],
+            ]
+            owners: list[str] = list(dict.fromkeys(raw_owners))
+            if not owners:
+                raise ValueError(f"skill {skill_name!r} is not installed in workspace")
+            targets = owners
 
         removed = uninstall(root, skill_name, targets, scope="project", record_state=True)
         record_audit_event(
@@ -1130,6 +1255,50 @@ def _call_tool(
                 risk_accepted=accept_risk,
             )
         return res
+
+    if name == "skillporter_consolidate_preview":
+        from .instructions import analyze_instructions
+
+        raw_p = _require_str(args, "path", default=".")
+        root = resolve_mcp_path(raw_p, workspace_root=ws_root)
+        return analyze_instructions(root)
+
+    if name == "skillporter_suggest":
+        from .suggest import recommend_skills_for_project
+
+        raw_p = _require_str(args, "path", default=".")
+        root = resolve_mcp_path(raw_p, workspace_root=ws_root)
+        return recommend_skills_for_project(root)
+
+    if name == "skillporter_insights":
+        from .insights import compute_workspace_insights
+
+        raw_p = _require_str(args, "path", default=".")
+        root = resolve_mcp_path(raw_p, workspace_root=ws_root)
+        return compute_workspace_insights(root, scope="project")
+
+    if name == "skillporter_context":
+        from .instructions import inspect_harness_context
+
+        raw_p = _require_str(args, "path", default=".")
+        raw_h = _require_str(args, "harness")
+        root = resolve_mcp_path(raw_p, workspace_root=ws_root)
+        return inspect_harness_context(root, harnesses.get(raw_h).name, scope="project")
+
+    if name == "skillporter_preview":
+        from .authoring import preview_skill_for_harness, resolve_skill_dir_for_inspection
+
+        raw_p = _require_str(args, "path", default=".")
+        raw_t = _require_str(args, "target")
+        raw_h = _require_str(args, "harness")
+        root = resolve_mcp_path(raw_p, workspace_root=ws_root)
+        if "/" in raw_t or "\\" in raw_t or raw_t.startswith("."):
+            sdir = resolve_mcp_path(raw_t, workspace_root=ws_root)
+        else:
+            sdir = resolve_skill_dir_for_inspection(raw_t, root, scope="project")
+            rel_chk = str(sdir.relative_to(ws_root)) if sdir.is_relative_to(ws_root) else raw_t
+            resolve_mcp_path(rel_chk, workspace_root=ws_root)
+        return preview_skill_for_harness(sdir, harnesses.get(raw_h).name, scope="project")
 
     raise ValueError(f"unknown tool: {name}")
 

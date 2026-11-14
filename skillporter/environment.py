@@ -233,6 +233,19 @@ def capture_environment(
                     f"{sname} ({rel_p}): locked {locked.tree_hash[:12]} != disk {actual_hash[:12]}"
                 )
 
+    state_drift: set[str] = set()
+    for sname, rec in sorted(records.items()):
+        if not rec.tree_hash or sname in lock.skills:
+            continue
+        for cdir in diag.skill_copies.get(sname, []):
+            actual_hash, _ = compute_tree_hash(cdir)
+            if actual_hash and actual_hash != rec.tree_hash:
+                state_drift.add(sname)
+                rel_p = cdir.relative_to(root) if cdir.is_relative_to(root) else cdir
+                lock_drift.append(
+                    f"{sname} ({rel_p}): recorded {rec.tree_hash[:12]} != disk {actual_hash[:12]}"
+                )
+
     all_names = sorted(
         set(diag.skill_names)
         | set(records)
@@ -382,6 +395,9 @@ def capture_environment(
         )
     )
 
+    all_drifted_names = sorted(
+        set(diag.drifted) | {k for k, v in skills_map.items() if v.drifted or v.lock_drifted}
+    )
     return EnvironmentSnapshot(
         label=f"{scope}:{root}",
         root=root,
@@ -395,7 +411,7 @@ def capture_environment(
         selected_harnesses=selected_harnesses,
         skills=skills_map,
         lock_drift=lock_drift,
-        drifted_skills=sorted(diag.drifted),
+        drifted_skills=all_drifted_names,
         duplicate_skills=diag.duplicates,
         findings=findings,
         remediations=remediations,

@@ -29,6 +29,7 @@ from ..manifest import (
     save_lockfile,
     save_manifest,
 )
+from ..policy import evaluate_policy, load_policy
 from ..resolver import DependencyConflictError, DependencyCycleError, DependencyError, resolve_dependency_graph
 from ..security import compute_tree_hash, scan_skill
 from ..sources import resolve_source
@@ -272,9 +273,19 @@ def cmd_sync(args: argparse.Namespace) -> int:
 
         diag = run_diagnose(root, scope=args.scope)
 
+        policy = load_policy(root) if args.scope == "project" else None
         for sname, copies in sorted(diag.skill_copies.items()):
             for cdir in copies:
                 srep = scan_skill(cdir)
+                pol_v = evaluate_policy(
+                    policy,
+                    skill_dirs=[cdir],
+                    target_harnesses=targets,
+                    sec_reports={cdir.name: srep},
+                )
+                if pol_v:
+                    print("error: sync blocked by project security policy: " + "; ".join(pol_v), file=sys.stderr)
+                    return EXIT_PROBLEM
                 if srep.has_structural_escape or ((not srep.passed or not srep.scan_complete) and not allow_risky):
                     print(
                         f"error: sync blocked by static security policy on {sname!r} ({cdir}); "
@@ -387,6 +398,21 @@ def cmd_sync(args: argparse.Namespace) -> int:
                     if node.skill_dir and node.skill_dir.exists():
                         sdir = node.skill_dir
                         srep = scan_skill(sdir)
+                        pol_v_node = evaluate_policy(
+                            policy,
+                            skill_dirs=[sdir],
+                            source_candidates=[spec.source if spec else node.source, node.source],
+                            resolved_commit=node.resolved_commit,
+                            ref=spec.ref if spec else "",
+                            target_harnesses=skill_targets,
+                            sec_reports={sdir.name: srep},
+                        )
+                        if pol_v_node:
+                            print(
+                                "error: sync blocked by project security policy: " + "; ".join(pol_v_node),
+                                file=sys.stderr,
+                            )
+                            return EXIT_PROBLEM
                         if srep.has_structural_escape or (not srep.passed and not allow_risky):
                             print(f"error: sync blocked by static security policy on {sdir.name!r}", file=sys.stderr)
                             return EXIT_PROBLEM
@@ -434,6 +460,21 @@ def cmd_sync(args: argparse.Namespace) -> int:
                                         )
                                         return EXIT_PROBLEM
                                 srep = scan_skill(sdir)
+                                pol_v_spec = evaluate_policy(
+                                    policy,
+                                    skill_dirs=[sdir],
+                                    source_candidates=[spec.source, resolved.canonical_source],
+                                    resolved_commit=resolved.resolved_commit,
+                                    ref=pinned_ref,
+                                    target_harnesses=skill_targets,
+                                    sec_reports={sdir.name: srep},
+                                )
+                                if pol_v_spec:
+                                    print(
+                                        "error: sync blocked by project security policy: " + "; ".join(pol_v_spec),
+                                        file=sys.stderr,
+                                    )
+                                    return EXIT_PROBLEM
                                 if srep.has_structural_escape or (not srep.passed and not allow_risky):
                                     print(
                                         f"error: sync blocked by static security policy on {sdir.name!r}",
@@ -520,11 +561,23 @@ def cmd_sync(args: argparse.Namespace) -> int:
                     print(f"dry-run: would synchronize {len(canonical_by_name)} skill(s) across {targets}")
                 return EXIT_OK
 
-            for _sname, sdir in sorted(canonical_by_name.items()):
+            spec_by_name_fallback = {s.name: s for s in manifest.skills} if (manifest and manifest.skills) else {}
+            records_fallback = load_state(root, scope=args.scope)
+            for sname_fb, sdir in sorted(canonical_by_name.items()):
+                if args.harness:
+                    eff_targets = targets
+                elif sname_fb in spec_by_name_fallback and spec_by_name_fallback[sname_fb].harnesses:
+                    eff_targets = [harnesses.get(h).name for h in spec_by_name_fallback[sname_fb].harnesses]
+                elif manifest and manifest.harnesses:
+                    eff_targets = [harnesses.get(h).name for h in manifest.harnesses]
+                elif sname_fb in records_fallback and records_fallback[sname_fb].harnesses:
+                    eff_targets = [harnesses.get(h).name for h in records_fallback[sname_fb].harnesses]
+                else:
+                    eff_targets = targets
                 res = run_install(
                     root,
                     sdir,
-                    targets,
+                    eff_targets,
                     strategy=args.strategy,
                     scope=args.scope,
                     force=True,

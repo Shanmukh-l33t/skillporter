@@ -1,6 +1,6 @@
 # Architecture
 
-See the root [ARCHITECTURE.md](../ARCHITECTURE.md) and [ARCHITECTURE_REVIEW.md](../ARCHITECTURE_REVIEW.md) for the full system diagram and architectural audit.
+See the root [ARCHITECTURE.md](../ARCHITECTURE.md) and [ARCHITECTURE_REVIEW.md](audits/ARCHITECTURE_REVIEW.md) for the full system diagram and architectural audit.
 
 ## Module Layering (Zero Runtime Dependencies)
 

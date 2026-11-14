@@ -106,10 +106,12 @@ def build_parser() -> argparse.ArgumentParser:
     for cmd_name in ("uninstall", "remove"):
         u = sub.add_parser(cmd_name, parents=[shared], help="remove a skill from harnesses safely")
         u.add_argument("skill", help="skill name")
-        u.add_argument("--harness", action="append", required=(cmd_name == "uninstall"))
+        u.add_argument("--harness", action="append", required=False, help="specific harness(es); default: all managed")
         attach_harness_control_flags(u)
         u.add_argument("--scope", choices=["project", "user"], default="project")
         u.add_argument("--path", default=".")
+        u.add_argument("-y", "--yes", action="store_true", help="confirm removal without interactive prompt")
+        u.add_argument("--purge-source", action="store_true", help="also delete local workspace source directory")
         u.add_argument("--dry-run", action="store_true", help="preview removal without deleting files")
         u.add_argument("--format", choices=["text", "json"], default="")
         u.add_argument("--json", action="store_true", help="machine-readable JSON output")
@@ -132,6 +134,9 @@ def build_parser() -> argparse.ArgumentParser:
     sc.add_argument("--max-risk-score", type=int, default=None)
     sc.add_argument("--engine", choices=["auto", "skillspector", "static"], default="auto")
     sc.add_argument("--offline", action="store_true")
+    sc.add_argument("--ai-review", action="store_true", help="run optional advisory LLM second-opinion security review")
+    sc.add_argument("--ai-model", default="", help="provider:model for --ai-review (e.g. openai:gpt-4o-mini)")
+    sc.add_argument("--yes-send", action="store_true", help="authorize transmitting skill text to --ai-review API")
     sc.add_argument("--json", action="store_true")
     sc.set_defaults(func=cmd_scan)
 
@@ -161,7 +166,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     # explain
     ex = sub.add_parser("explain", parents=[shared], help="translate diagnostic or security codes into plain English")
-    ex.add_argument("finding", nargs="+", help="finding code (e.g. DRIFT, BROKEN, sec-prompt-override) or message")
+    ex.add_argument("finding", nargs="*", help="finding code (e.g. DRIFT, BROKEN, sec-prompt-override) or message")
+    ex.add_argument("--list", action="store_true", help="list all supported diagnostic, validation, and security codes")
     ex.add_argument("--format", choices=["text", "json"], default="")
     ex.add_argument("--json", action="store_true")
     ex.set_defaults(func=cmd_explain)
@@ -268,6 +274,7 @@ def build_parser() -> argparse.ArgumentParser:
     up.add_argument("skill", nargs="?", default="")
     up.add_argument("--scope", choices=["project", "user"], default="project")
     up.add_argument("--path", default=".")
+    up.add_argument("--check", action="store_true", help="preview human-readable file, capability, and risk diffs")
     up.add_argument("--dry-run", action="store_true", help="check upstream and scan without modifying files")
     up.add_argument("--allow-risky", action="store_true", help="explicitly accept non-structural security findings")
     up.add_argument("--format", choices=["text", "json"], default="")
@@ -375,6 +382,15 @@ KNOWN_COMMANDS = (
     "adopt",
     "outdated",
     "self-skill",
+    "new",
+    "lint",
+    "preview",
+    "test",
+    "consolidate",
+    "context",
+    "policy",
+    "suggest",
+    "insights",
 )
 
 

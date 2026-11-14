@@ -81,7 +81,11 @@ def cmd_list(args: argparse.Namespace) -> int:
             str(r["version"]),
             "yes" if r["managed"] else "no",
             str(r["tree_hash"]),
-            ", ".join(r["harnesses"]) if r["harnesses"] else "(none)",
+            (
+                ", ".join(r["harnesses"][:4]) + f" (+{len(r['harnesses']) - 4})"
+                if len(r["harnesses"]) > 4 and not is_verbose(args)
+                else (", ".join(r["harnesses"]) if r["harnesses"] else "(none)")
+            ),
         ]
         for r in rows
     ]

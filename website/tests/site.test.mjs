@@ -209,7 +209,7 @@ test('the pinned digest in the docs is the published release artifact', () => {
 
 /* --------------------------------------------------------- CLI accuracy */
 
-const LAUNCHERS = /^(?:\$ )?(?:uvx |npx @shanmukhdheekonda\/skillporter(?=\s)|\.venv\/bin\/python -m |python3? -m |[\w./~-]*\/)?(?:skillporter )?/;
+const LAUNCHERS = /^(?:\$ )?(?:uvx |npx @shanmukhdheekonda\/skillporter(?:@latest)?(?=\s)|\.venv\/bin\/python -m |python3? -m |[\w./~-]*\/)?(?:skillporter(?:@latest)? )?/;
 
 function checkCommand(line, where) {
   const body = line.replace(LAUNCHERS, '').trim();
@@ -234,8 +234,8 @@ function checkCommand(line, where) {
 }
 
 const isInvocation = (line) =>
-  /^(?:\$ )?(?:uvx |\.venv\/bin\/python -m |python3? -m )?skillporter(?:\s|$)/.test(line) ||
-  /^(?:\$ )?npx @shanmukhdheekonda\/skillporter\s/.test(line);
+  /^(?:\$ )?(?:uvx |\.venv\/bin\/python -m |python3? -m )?skillporter(?:@latest)?(?:\s|$)/.test(line) ||
+  /^(?:\$ )?npx @shanmukhdheekonda\/skillporter(?:@latest)?\s/.test(line);
 
 test('every skillporter command and flag shown on the site exists in the CLI', () => {
   let checked = 0;

@@ -4,8 +4,8 @@ Every distribution channel runs the same Python core. Pick the one that fits how
 
 | Channel | Command | Needs |
 |---|---|---|
-| Run once | `uvx skillporter diagnose .` | `uv` |
-| Run once | `npx @shanmukhdheekonda/skillporter diagnose .` | Node 16+, Python 3.9+ |
+| Run once | `uvx skillporter@latest diagnose .` | `uv` |
+| Run once | `npx @shanmukhdheekonda/skillporter@latest diagnose .` | Node 16+, Python 3.9+ |
 | Install | `uv tool install skillporter` | `uv` |
 | Install | `pipx install skillporter` | `pipx` |
 | Install | Standalone release installer | `sh`, `python3`, `curl` or `wget` |
@@ -17,14 +17,14 @@ Every install channel, including the checks that verify the standalone download,
 ## Run without installing
 
 ```bash
-uvx skillporter diagnose .
+uvx skillporter@latest diagnose .
 ```
 
 ```bash
-npx @shanmukhdheekonda/skillporter diagnose .
+npx @shanmukhdheekonda/skillporter@latest diagnose .
 ```
 
-The npm package is a thin launcher around the same Python zipapp. It still needs `python3` on `PATH`.
+`uvx` caches ephemeral tool environments locally. If you previously ran an earlier release, `uvx skillporter` without `@latest` may reuse that cached environment; pass `skillporter@latest` (or run `uv cache clean skillporter`) to fetch the newest PyPI release. The npm package is a thin launcher around the same Python zipapp and needs `python3` on `PATH`.
 
 ## Install from PyPI
 

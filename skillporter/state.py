@@ -248,6 +248,22 @@ def record_installation(
     existing = records.get(skill_name)
     tree_hash, _ = compute_tree_hash(skill_dir)
 
+    # Persist a clean content-addressed baseline copy under .skillporter/store/
+    # so single-copy drift or corrupted initial installs can be verified and restored.
+    if tree_hash and skill_dir.is_dir() and not skill_dir.is_symlink():
+        sdir = state_dir(root, scope=scope, home=home)
+        store_dest = sdir / "store" / skill_name / tree_hash[:12] / skill_name
+        if not (store_dest / "SKILL.md").is_file():
+            store_dest.parent.mkdir(parents=True, exist_ok=True)
+            tmp_store = store_dest.parent / f".stage-{uuid.uuid4().hex[:8]}"
+            try:
+                shutil.copytree(skill_dir, tmp_store, symlinks=True)
+                if store_dest.exists():
+                    shutil.rmtree(store_dest, ignore_errors=True)
+                shutil.move(str(tmp_store), str(store_dest))
+            except OSError:
+                shutil.rmtree(tmp_store, ignore_errors=True)
+
     history: list[BackupEntry] = list(existing.history) if existing else []
     candidates: list[BackupEntry] = []
     if backup_entry:

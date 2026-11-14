@@ -8,11 +8,11 @@ import sys
 from pathlib import Path
 
 from .. import __version__
-from ..explain import explain_finding
+from ..explain import UnknownFindingCodeError, explain_finding, list_known_explanations
 from ..frontmatter import Issue, discover, parse_skill, validate
 from ..sandbox import run_sandbox
 from ..security import CATEGORY_KEYS, SCANNER_ENGINE_VERSION, scan_skill, to_sarif
-from ..ui import BOLD, CYAN, DIM, badge, style
+from ..ui import BOLD, CYAN, DIM, badge, render_table, style
 from .common import EXIT_ERROR, EXIT_OK, EXIT_PROBLEM, fmt_mode
 
 
@@ -149,6 +149,20 @@ def cmd_scan(args: argparse.Namespace) -> int:
         )
         for d in skill_dirs
     }
+    ai_reviews: dict[str, dict[str, object]] = {}
+    if getattr(args, "ai_review", False):
+        from ..ai_review import AIReviewError, run_optional_ai_security_review
+
+        try:
+            for d in skill_dirs:
+                ai_reviews[d.name] = run_optional_ai_security_review(
+                    d,
+                    model_spec=getattr(args, "ai_model", "") or "",
+                    authorize_send=bool(getattr(args, "yes_send", False)),
+                )
+        except AIReviewError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return EXIT_ERROR
     max_risk_threshold = getattr(args, "max_risk_score", None)
     blocked = any(
         (not r.passed) or r.has_structural_escape or r.exceeds_risk_threshold(max_risk_threshold)
@@ -162,18 +176,16 @@ def cmd_scan(args: argparse.Namespace) -> int:
     if fmt == "json":
         max_score = max((r.risk_score for r in reports.values()), default=0)
         first_rep = next(iter(reports.values()), None)
-        print(
-            json.dumps(
-                {
-                    "passed": not blocked,
-                    "risk_score": max_score,
-                    "engine": first_rep.engine if first_rep else "skillporter-static",
-                    "engine_version": first_rep.engine_version if first_rep else SCANNER_ENGINE_VERSION,
-                    "reports": {k: v.to_dict() for k, v in reports.items()},
-                },
-                indent=2,
-            )
-        )
+        payload_out: dict[str, object] = {
+            "passed": not blocked,
+            "risk_score": max_score,
+            "engine": first_rep.engine if first_rep else "skillporter-static",
+            "engine_version": first_rep.engine_version if first_rep else SCANNER_ENGINE_VERSION,
+            "reports": {k: v.to_dict() for k, v in reports.items()},
+        }
+        if ai_reviews:
+            payload_out["advisory_ai_reviews"] = ai_reviews
+        print(json.dumps(payload_out, indent=2))
         return EXIT_PROBLEM if blocked else EXIT_OK
 
     print(f"skillporter {__version__} — security assessment\n")
@@ -264,14 +276,43 @@ def cmd_sandbox(args: argparse.Namespace) -> int:
 
 
 def cmd_explain(args: argparse.Namespace) -> int:
-    query = " ".join(args.finding).strip()
+    if getattr(args, "list", False):
+        items = list_known_explanations()
+        if fmt_mode(args) == "json":
+            print(
+                json.dumps(
+                    [{"code": e.code, "category": e.category, "title": e.title} for e in items],
+                    indent=2,
+                )
+            )
+            return EXIT_OK
+        rows = [[e.code, e.category, e.title] for e in items]
+        print(render_table(["CODE", "CATEGORY", "DESCRIPTION"], rows))
+        return EXIT_OK
+
+    raw_parts = getattr(args, "finding", None) or []
+    query = " ".join(raw_parts).strip()
     if not query:
         print(
-            "error: provide a finding code or message to explain (e.g. `skillporter explain DRIFT`)",
+            "error: provide a finding code or message to explain "
+            "(e.g. `skillporter explain DRIFT` or `skillporter explain --list`)",
             file=sys.stderr,
         )
         return EXIT_ERROR
-    exp = explain_finding(query)
+    try:
+        exp = explain_finding(query)
+    except UnknownFindingCodeError as exc:
+        if fmt_mode(args) == "json":
+            print(
+                json.dumps(
+                    {"error": str(exc.args[0]), "query": exc.query, "suggestions": exc.suggestions},
+                    indent=2,
+                )
+            )
+        else:
+            print(f"error: {exc.args[0]}", file=sys.stderr)
+        return EXIT_ERROR
+
     if fmt_mode(args) == "json":
         print(json.dumps(exp.to_dict(), indent=2))
         return EXIT_OK

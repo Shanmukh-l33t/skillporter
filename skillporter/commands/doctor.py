@@ -6,6 +6,7 @@ import argparse
 import contextlib
 import json
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 
 from .. import __version__, harnesses
@@ -16,12 +17,12 @@ from ..install import InstallError
 from ..install import install as run_install
 from ..manifest import LOCKFILE_FILENAME, MANIFEST_FILENAME, LockfileError, load_lockfile, load_manifest
 from ..security import compute_tree_hash, scan_skill
-from ..state import load_state
-from ..ui import badge
-from .common import EXIT_ERROR, EXIT_OK, EXIT_PROBLEM, fmt_mode, latest_tree_mtime_ns
+from ..state import ManagedSkillRecord, load_state, state_dir
+from ..ui import badge, render_table
+from .common import EXIT_ERROR, EXIT_OK, EXIT_PROBLEM, fmt_mode, is_verbose, latest_tree_mtime_ns
 
 
-def print_matrix(as_json: bool, category: str | None = None) -> int:
+def print_matrix(as_json: bool, category: str | None = None, *, verbose: bool = False) -> int:
     rows = []
     for name in harnesses.names():
         h = harnesses.get(name)
@@ -70,15 +71,18 @@ def print_matrix(as_json: bool, category: str | None = None) -> int:
             f"{r['verification_level']:22}  "
             f"{proj}"
         )
-    print("\nNotes:")
-    for r in rows:
-        for n in r["notes"]:
-            print(f"  {r['harness']}: {n}")
+    if verbose:
+        print("\nNotes:")
+        for r in rows:
+            for n in r["notes"]:
+                print(f"  {r['harness']}: {n}")
+    else:
+        print("\nTip: pass --verbose or run `skillporter harness inspect <id>` for per-harness notes.")
     return EXIT_OK
 
 
 def cmd_matrix(args: argparse.Namespace) -> int:
-    return print_matrix(fmt_mode(args) == "json", getattr(args, "category", None))
+    return print_matrix(fmt_mode(args) == "json", getattr(args, "category", None), verbose=is_verbose(args))
 
 
 def cmd_diagnose(args: argparse.Namespace) -> int:
@@ -209,8 +213,65 @@ def cmd_detect(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _collect_unified_drift(
+    diag,
+    lock,
+    records: Mapping[str, ManagedSkillRecord],
+    root: Path,
+) -> dict[str, dict[str, str]]:
+    """Compute unified drift map across copy divergence, lockfile pins, and state records."""
+    drift_map: dict[str, dict[str, str]] = {k: dict(v) for k, v in diag.drifted.items()}
+    for sname, copies in sorted(diag.skill_copies.items()):
+        locked_entry = lock.skills.get(sname)
+        rec = records.get(sname)
+        expected_hash = ""
+        expected_source_label = ""
+        if locked_entry and locked_entry.tree_hash:
+            expected_hash = locked_entry.tree_hash
+            expected_source_label = LOCKFILE_FILENAME
+        elif rec is not None and rec.tree_hash:
+            expected_hash = rec.tree_hash
+            expected_source_label = ".skillporter/state.json"
+        if not expected_hash:
+            continue
+        for cdir in copies:
+            chash, _ = compute_tree_hash(cdir)
+            if chash and chash != expected_hash:
+                rel_c = cdir.relative_to(root).as_posix() if cdir.is_relative_to(root) else str(cdir)
+                entry_map = drift_map.setdefault(sname, {})
+                entry_map[expected_source_label] = expected_hash
+                entry_map[rel_c] = chash
+    return drift_map
+
+
+def _find_verified_snapshot(root: Path, scope: str, sname: str, expected_hash: str) -> Path | None:
+    """Locate a clean local store or backup directory matching *expected_hash*."""
+    sdir = state_dir(root, scope=scope)
+    candidates: list[Path] = []
+    store_cand = sdir / "store" / sname / expected_hash[:12] / sname
+    if store_cand.is_dir():
+        candidates.append(store_cand)
+    backups_root = sdir / "backups" / sname
+    if backups_root.is_dir():
+        for bsub in sorted(backups_root.iterdir(), reverse=True):
+            bcand = bsub / sname
+            if bcand.is_dir():
+                candidates.append(bcand)
+    for cand in candidates:
+        chash, _ = compute_tree_hash(cand)
+        if chash == expected_hash:
+            srep = scan_skill(cand, offline=True)
+            if srep.passed and not srep.has_structural_escape:
+                return cand
+    return None
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     root = Path(args.path).expanduser().resolve()
+    manifest = load_manifest(root) if args.scope == "project" else None
+    manifest_skill_map = {s.name: s for s in manifest.skills} if (manifest and manifest.skills) else {}
+    records = load_state(root, scope=args.scope)
+
     diag = run_diagnose(root, only=args.harness or None, scope=args.scope)
     detected = [d for d in harnesses.detect_harnesses(root) if d.installed]
     dry_run = bool(getattr(args, "dry_run", False))
@@ -220,49 +281,106 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         lock = load_lockfile(root / ".nonexistent")
         diag.findings.append(f"lockfile error: {exc}")
 
-    if args.fix and not dry_run and diag.skills:
+    if args.harness:
+        default_targets = [harnesses.get(h).name for h in args.harness]
+    elif manifest and manifest.harnesses:
+        default_targets = [harnesses.get(h).name for h in manifest.harnesses]
+    else:
+        active_proj = {d.harness.name for d in detected if d.project_active}
+        default_targets = sorted({"claude-code", "codex", "cursor"} | active_proj)
+
+    drift_before_fix = _collect_unified_drift(diag, lock, records, root)
+    repaired: list[str] = []
+
+    has_broken = any(loc.broken_links for r in diag.reports.values() for loc in r.locations)
+    if args.fix and not dry_run and (diag.skills or has_broken):
         for rep in diag.reports.values():
             for loc in rep.locations:
                 for blink in loc.broken_links:
                     bp = Path(blink)
                     if bp.is_symlink():
                         bp.unlink(missing_ok=True)
-        active_proj = {d.harness.name for d in detected if d.project_active}
-        targets = args.harness or sorted({"claude-code", "codex", "cursor"} | active_proj)
+                        repaired.append(f"removed broken symlink {bp}")
+
         for skill_md in diag.skills:
             sname = skill_md.parent.name
             copies = diag.skill_copies.get(sname, [skill_md.parent])
             locked_entry = lock.skills.get(sname)
+            rec = records.get(sname)
+
+            if args.harness:
+                skill_targets = default_targets
+            elif sname in manifest_skill_map and manifest_skill_map[sname].harnesses:
+                skill_targets = [harnesses.get(h).name for h in manifest_skill_map[sname].harnesses]
+            elif manifest and manifest.harnesses:
+                skill_targets = default_targets
+            elif rec and rec.harnesses:
+                skill_targets = [harnesses.get(h).name for h in rec.harnesses]
+            else:
+                skill_targets = default_targets
+
+            expected_hash = (
+                locked_entry.tree_hash
+                if (locked_entry and locked_entry.tree_hash)
+                else (rec.tree_hash if rec and rec.tree_hash else "")
+            )
 
             clean_copies: list[Path] = []
+            any_security_passed_on_disk = False
             for cdir in copies:
                 srep = scan_skill(cdir)
                 if not srep.passed or srep.has_structural_escape:
                     continue
-                if locked_entry and locked_entry.tree_hash:
+                any_security_passed_on_disk = True
+                if expected_hash:
                     chash, _ = compute_tree_hash(cdir)
-                    if chash != locked_entry.tree_hash:
+                    if chash != expected_hash:
                         continue
                 clean_copies.append(cdir)
+
+            # Restore single-copy benign drift from verified baseline snapshot,
+            # while refusing to auto-mask if ALL on-disk copies failed security scan.
+            if not clean_copies and expected_hash and any_security_passed_on_disk:
+                snap_dir = _find_verified_snapshot(root, args.scope, sname, expected_hash)
+                if snap_dir is not None:
+                    clean_copies.append(snap_dir)
 
             if not clean_copies:
                 continue
 
+            needs_repair = (
+                sname in drift_before_fix
+                or any(t in diag.reports and not diag.reports[t].loads(sname) for t in skill_targets)
+            )
+            if not needs_repair:
+                continue
+
             best_dir = max(clean_copies, key=latest_tree_mtime_ns)
             with contextlib.suppress(InstallError):
-                run_install(
+                res = run_install(
                     root,
                     best_dir,
-                    targets,
+                    skill_targets,
                     strategy="copy",
                     scope=args.scope,
                     force=True,
                     record_state=True,
+                    skill_name_override=sname,
                 )
-        diag = run_diagnose(root, only=targets, scope=args.scope)
+                for r in res:
+                    if r.action in ("created", "updated"):
+                        verified_h, _ = compute_tree_hash(r.dest)
+                        rel_dest = r.dest.relative_to(root) if r.dest.is_relative_to(root) else r.dest
+                        repaired.append(f"{sname} -> {r.harness} ({rel_dest}, sha256:{verified_h[:12]})")
+
+        records = load_state(root, scope=args.scope)
+        diag = run_diagnose(root, only=args.harness or default_targets, scope=args.scope)
+
+    remaining_drift = _collect_unified_drift(diag, lock, records, root)
 
     for sname, copies in sorted(diag.skill_copies.items()):
         locked_entry = lock.skills.get(sname)
+        rec = records.get(sname)
         for cdir in copies:
             rel_c = cdir.relative_to(root).as_posix() if cdir.is_relative_to(root) else str(cdir)
             srep = scan_skill(cdir)
@@ -280,29 +398,43 @@ def cmd_doctor(args: argparse.Namespace) -> int:
                     )
                     if lmsg not in diag.findings:
                         diag.findings.append(lmsg)
+            elif rec and rec.tree_hash:
+                chash, _ = compute_tree_hash(cdir)
+                if chash != rec.tree_hash:
+                    smsg = (
+                        f"state drift: {sname!r} at {rel_c} ({chash[:8]}) "
+                        f"differs from installed state ({rec.tree_hash[:8]})"
+                    )
+                    if smsg not in diag.findings:
+                        diag.findings.append(smsg)
 
-    active_names = (
-        [harnesses.get(h).name for h in args.harness]
-        if args.harness
-        else sorted({"claude-code", "codex", "cursor"} | {d.harness.name for d in detected if d.project_active})
-    )
+    active_names = default_targets
 
     skill_summaries = []
     for skill_md in diag.skills:
         sname = skill_md.parent.name
         valid = diag.is_skill_valid(sname)
+        is_drifted_now = sname in remaining_drift
         thash, _ = compute_tree_hash(skill_md.parent)
         per_harness = {}
+        reachable_in_checked = []
         for hname in active_names:
             if hname in diag.reports:
-                per_harness[hname] = diag.reports[hname].explicit_states(sname, is_valid=valid)
+                st_list = diag.reports[hname].explicit_states(sname, is_valid=valid)
+                if is_drifted_now and "HASH_VERIFIED" in st_list:
+                    st_list = ["DRIFT" if x == "HASH_VERIFIED" else x for x in st_list]
+                per_harness[hname] = st_list
+                if diag.reports[hname].loads(sname):
+                    reachable_in_checked.append(hname)
+        summary_state = "DRIFTED" if is_drifted_now else ("VALID" if valid else "INVALID")
         skill_summaries.append(
             {
                 "name": sname,
                 "path": str(skill_md.parent),
-                "state": "VALID" if valid else "INVALID",
+                "state": summary_state,
                 "tree_hash": thash[:12] if thash else "",
                 "copies": len(diag.skill_copies.get(sname, [])),
+                "reachable_harnesses": reachable_in_checked,
                 "harnesses": per_harness,
             }
         )
@@ -310,9 +442,11 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     remediations: list[str] = []
     if any("security:" in f for f in diag.findings):
         remediations.append("skillporter scan .         # inspect and remediate security findings")
-    if any("lockfile drift:" in f for f in diag.findings):
-        remediations.append("skillporter rollback <skill>  # or `skillporter lock` if edit was intentional")
-    if diag.drifted:
+    if any("lockfile drift:" in f or "state drift:" in f for f in diag.findings):
+        remediations.append(
+            "skillporter doctor --fix   # restore verified snapshot (or `skillporter lock` if intentional)"
+        )
+    if remaining_drift:
         remediations.append("skillporter sync --force   # reconcile drifted copies (snapshots backup first)")
     if any("not visible to:" in f or "broken symlink" in f for f in diag.findings):
         remediations.append("skillporter doctor --fix   # install missing skills and remove broken symlinks")
@@ -329,7 +463,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
                     "checked_harnesses": active_names,
                     "skills": diag.skill_names,
                     "skill_states": skill_summaries,
-                    "drifted": diag.drifted,
+                    "drift_before_fix": drift_before_fix,
+                    "repaired": repaired,
+                    "drifted": remaining_drift,
                     "duplicates": diag.duplicates,
                     "findings": diag.findings,
                     "remediations": remediations,
@@ -343,15 +479,56 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     print(f"skillporter {__version__} — doctor report for {root}\n")
     print(f"Detected harnesses: {', '.join(d.harness.name for d in detected) or '(none)'}")
     print(f"Checked harnesses:  {', '.join(active_names)}")
-    print(f"Discovered skills:  {', '.join(diag.skill_names) or '(none)'}")
-    print(f"Content drift:      {len(diag.drifted)} skill(s)")
+    print(f"Discovered skills:  {len(diag.skill_names)}")
+    if args.fix and not dry_run:
+        print(
+            f"Content drift:      {len(remaining_drift)} remaining "
+            f"(found before repair: {len(drift_before_fix)}, repaired: {len(repaired)})"
+        )
+    else:
+        print(f"Content drift:      {len(remaining_drift)} skill(s)")
+
+    if repaired:
+        print("\nRepairs applied:")
+        for item in repaired:
+            print(f"  ~ {item}")
 
     if skill_summaries:
-        print("\nSkill Status Matrix (FOUND / VALID / COMPATIBLE / INSTALLED / VERIFIED):")
-        for s in skill_summaries:
-            print(f"  {s['name']} [{s['state']}] (hash: {s['tree_hash']}, copies: {s['copies']})")
-            for hname, st_list in s["harnesses"].items():
-                print(f"    - {hname:16} {' -> '.join(st_list)}")
+        print()
+        if is_verbose(args):
+            print("Skill Status Matrix (on-disk integrity + adapter verification tier):")
+            for s in skill_summaries:
+                integrity_tag = "DRIFTED" if s["state"] == "DRIFTED" else "HASH_VERIFIED"
+                print(
+                    f"  {s['name']} [{s['state']} · {integrity_tag}] "
+                    f"(hash: {s['tree_hash']}, copies: {s['copies']})"
+                )
+                for hname, st_list in s["harnesses"].items():
+                    tier = harnesses.get(hname).verification_level
+                    display_chain = [
+                        f"ADAPTER:{tier}" if tok in ("VERIFIED", "UNVERIFIED") else tok
+                        for tok in st_list
+                    ]
+                    print(f"    - {hname:16} {' -> '.join(display_chain)}")
+        else:
+            trows = []
+            for s in skill_summaries:
+                rh = s["reachable_harnesses"]
+                h_cell = (
+                    ", ".join(rh[:4]) + f" (+{len(rh) - 4})"
+                    if len(rh) > 4
+                    else (", ".join(rh) if rh else "(none)")
+                )
+                trows.append([str(s["name"]), str(s["state"]), str(s["tree_hash"]), str(s["copies"]), h_cell])
+            print(
+                render_table(
+                    ["SKILL", "STATE", "SHA-256", "COPIES", "REACHABLE HARNESSES"],
+                    trows,
+                    max_rows=25,
+                    indent="  ",
+                    more_hint="pass --verbose for full list and per-harness verification states",
+                )
+            )
 
     if diag.findings:
         print("\nIssues found:")
@@ -363,7 +540,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
                 print(f"  $ {cmd}")
         print(f"\nStatus: {badge('UNHEALTHY')} ({len(diag.findings)} issue(s) found).")
         return EXIT_PROBLEM
-    print(f"\nStatus: {badge('HEALTHY')} (all checked skills reachable, valid, and in sync).")
+    print(f"\nStatus: {badge('HEALTHY')} (all checked skills reachable, valid, and hash-verified).")
     return EXIT_OK
 
 

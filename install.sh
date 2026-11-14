@@ -15,7 +15,7 @@
 set -eu
 
 REPO="${SKILLPORTER_REPO:-Shanmukh-l33t/skillporter}"
-VERSION="${SKILLPORTER_VERSION:-v3.0.0}"
+VERSION="${SKILLPORTER_VERSION:-v3.1.0}"
 RELEASE_BASE="${SKILLPORTER_RELEASE_BASE_URL:-https://github.com/${REPO}/releases/download}"
 SIGNER_WORKFLOW="${SKILLPORTER_SIGNER_WORKFLOW:-${REPO}/.github/workflows/publish.yml}"
 

@@ -25,7 +25,7 @@ Every product claim on skillporter.dev, where it comes from, and how it is kept 
 | Each harness's support type, tier, paths and vendor link | The adapter record | Automated: per-row test against `harnesses.json` |
 | 8 harnesses use `.agents/skills` as primary path, 6 read it as a compatibility path | Computed from adapter paths | Automated: generated count |
 | 12 directories for 19 harnesses | Distinct primary project paths in the registry; matches the recorded `add` output | Automated: computed at build time |
-| Tier definitions | `HARNESS_COMPATIBILITY_AUDIT.md` | Manual review |
+| Tier definitions | `docs/audits/HARNESS_COMPATIBILITY_AUDIT.md` | Manual review |
 | Claude Code reads only `.claude/skills`; Cline limits the skill body; core Aider needs a conventions file | `notes` and `limitations` in the adapter records | Manual review |
 
 ## CLI and output

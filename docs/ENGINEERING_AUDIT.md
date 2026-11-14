@@ -3,13 +3,13 @@
 _Date: 2026-11-11 · Baseline: `5ed7207b35f8b7b71655e94d45bdcb6db25cb329` (85 tests) · Post-Audit: 95 tests_
 
 This document synthesizes the independent investigations of the 7-specialist engineering team:
-- [ARCHITECTURE_REVIEW.md](../ARCHITECTURE_REVIEW.md) — Agent 1 (Principal Software Architect)
-- [PYTHON_CODE_REVIEW.md](../PYTHON_CODE_REVIEW.md) — Agent 2 (Python Backend Specialist)
-- [SECURITY_AUDIT.md](../SECURITY_AUDIT.md) — Agent 3 (Defensive Security Engineer)
-- [QA_AUDIT.md](../QA_AUDIT.md) — Agent 4 (QA & Test Automation Engineer)
-- [HARNESS_COMPATIBILITY_AUDIT.md](../HARNESS_COMPATIBILITY_AUDIT.md) — Agent 5 (Agent Harness Compatibility Specialist)
-- [PRODUCT_UX_AUDIT.md](../PRODUCT_UX_AUDIT.md) — Agent 6 (Product & Developer Experience Engineer)
-- [INDEPENDENT_REVIEW.md](../INDEPENDENT_REVIEW.md) — Agent 7 (Independent Red-Team Reviewer)
+- [ARCHITECTURE_REVIEW.md](audits/ARCHITECTURE_REVIEW.md) — Agent 1 (Principal Software Architect)
+- [PYTHON_CODE_REVIEW.md](audits/PYTHON_CODE_REVIEW.md) — Agent 2 (Python Backend Specialist)
+- [SECURITY_AUDIT.md](audits/SECURITY_AUDIT.md) — Agent 3 (Defensive Security Engineer)
+- [QA_AUDIT.md](audits/QA_AUDIT.md) — Agent 4 (QA & Test Automation Engineer)
+- [HARNESS_COMPATIBILITY_AUDIT.md](audits/HARNESS_COMPATIBILITY_AUDIT.md) — Agent 5 (Agent Harness Compatibility Specialist)
+- [PRODUCT_UX_AUDIT.md](audits/PRODUCT_UX_AUDIT.md) — Agent 6 (Product & Developer Experience Engineer)
+- [INDEPENDENT_REVIEW.md](audits/INDEPENDENT_REVIEW.md) — Agent 7 (Independent Red-Team Reviewer)
 
 ---
 

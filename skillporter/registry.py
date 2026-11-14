@@ -16,6 +16,8 @@ import hashlib
 import json
 import os
 import tarfile
+import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -402,8 +404,72 @@ def publish_skill(
     )
 
     target_registry = registry_url or os.environ.get("SKILLPORTER_REGISTRY_URL", "").strip()
-    published_to = "dry-run (client contract verified)"
-    if not dry_run and target_registry and not target_registry.startswith(("http://", "https://")):
+    if dry_run:
+        published_to = "dry-run (client contract verified)"
+    elif not target_registry:
+        raise ValueError(
+            "no target registry configured; pass --registry <index.json-or-url>, "
+            "set SKILLPORTER_REGISTRY_URL, or pass --dry-run (or use `skillporter pack` for local bundles)"
+        )
+    elif target_registry.startswith(("http://", "https://")):
+        parsed_u = urllib.parse.urlsplit(target_registry)
+        host = (parsed_u.hostname or "").lower()
+        is_loopback = host in ("127.0.0.1", "localhost", "::1")
+        if not host or any(ord(c) < 32 for c in target_registry):
+            raise ValueError(f"invalid registry URL {target_registry!r}")
+        if parsed_u.scheme == "http" and not is_loopback:
+            raise ValueError(
+                f"refusing cleartext HTTP registry URL {target_registry!r}; "
+                "use https:// (http:// is permitted only for localhost/127.0.0.1 testing)"
+            )
+
+        class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, req, fp, code, msg, headers, newurl):
+                new_p = urllib.parse.urlsplit(newurl)
+                new_host = (new_p.hostname or "").lower()
+                if new_p.scheme not in ("https", "http") or (
+                    new_p.scheme == "http" and new_host not in ("127.0.0.1", "localhost", "::1")
+                ):
+                    raise urllib.error.URLError(f"unsafe redirect to {newurl!r} blocked")
+                redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
+                if redirected is not None and new_host != host:
+                    redirected.headers.pop("Authorization", None)
+                    redirected.unredirected_hdrs.pop("Authorization", None)
+                return redirected
+
+        token = os.environ.get("SKILLPORTER_REGISTRY_TOKEN", "").strip()
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "skillporter-registry-client/1.0",
+        }
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        payload_bytes = json.dumps(
+            {
+                "contract_version": REGISTRY_CONTRACT_VERSION,
+                "package": entry.to_dict(),
+                "archive_sha256": packed.archive_sha256,
+                "tree_hash": packed.tree_hash,
+            }
+        ).encode("utf-8")
+        req = urllib.request.Request(target_registry, data=payload_bytes, headers=headers, method="POST")
+        opener = urllib.request.build_opener(_SafeRedirectHandler())
+        try:
+            with opener.open(req, timeout=15) as resp:
+                status_code = getattr(resp, "status", 200)
+                if status_code >= 400:
+                    raise ValueError(f"registry rejected publication with HTTP {status_code}")
+        except urllib.error.HTTPError as exc:
+            if exc.code in (401, 403):
+                raise ValueError(
+                    f"registry authentication failed (HTTP {exc.code}); verify SKILLPORTER_REGISTRY_TOKEN"
+                ) from exc
+            raise ValueError(f"registry publication failed with HTTP {exc.code}: {exc.reason}") from exc
+        except urllib.error.URLError as exc:
+            raise ValueError(f"network failure reaching registry {target_registry!r}: {exc.reason}") from exc
+        published_to = target_registry
+    else:
         idx_path = Path(target_registry).expanduser().resolve()
         existing_items: list[dict[str, object]] = []
         if idx_path.is_file():
@@ -414,15 +480,18 @@ def publish_skill(
                 existing_items = []
         existing_items = [x for x in existing_items if isinstance(x, dict) and x.get("slug") != slug]
         existing_items.append(entry.to_dict())
-        idx_path.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write_text(
-            idx_path,
-            json.dumps(
-                {"contract_version": REGISTRY_CONTRACT_VERSION, "packages": existing_items},
-                indent=2,
+        try:
+            idx_path.parent.mkdir(parents=True, exist_ok=True)
+            atomic_write_text(
+                idx_path,
+                json.dumps(
+                    {"contract_version": REGISTRY_CONTRACT_VERSION, "packages": existing_items},
+                    indent=2,
+                )
+                + "\n",
             )
-            + "\n",
-        )
+        except OSError as exc:
+            raise ValueError(f"cannot write registry index {idx_path}: {exc}") from exc
         published_to = str(idx_path)
 
     return {

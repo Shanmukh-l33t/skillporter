@@ -4,6 +4,7 @@
 
 | Version | Supported |
 |---|---|
+| 3.1.x | Yes |
 | 3.0.x | Yes |
 | 2.4.x | Security fixes only |
 | < 2.4 | Unsupported |
@@ -77,4 +78,5 @@ Skillporter never executes scripts bundled inside a skill (`scripts/*`, hooks, s
 - **No static scanner can prove a skill is safe.** Novel semantic prompt injections written in ordinary prose without known override phrases can still manipulate an LLM.
 - Legitimate-looking HTTPS endpoints may serve benign content during inspection and malicious payloads later at runtime.
 - Complex multi-layer obfuscation or logic bombs conditioned on runtime dates/inputs can evade static AST and pattern heuristics.
-- Host-level isolation depends on the executing agent harness's own sandboxing and tool-approval boundaries.
+- **Host isolation**: Host-level isolation depends on the executing agent harness's own sandboxing and tool-approval boundaries. Capability declarations (`capabilities:` in `SKILL.md`) are statically audited against inferred behaviors (`capabilities.py`), and project policies (`skillporter.policy.yaml`) fail closed during install, sync, update, import, and MCP operations, without claiming runtime kernel sandboxing.
+- **Optional advisory AI review**: `skillporter scan --ai-review --yes-send` requires explicit transmission consent and user-provided API credentials; its output is advisory only and never overrides deterministic static blocks.

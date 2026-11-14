@@ -335,6 +335,8 @@ def validate(doc: SkillDoc) -> list[Issue]:
         "description",
         "license",
         "compatibility",
+        "capabilities",
+        "dependencies",
         "metadata",
         "allowed-tools",
         "context",

@@ -58,13 +58,15 @@ skillporter install ./skills/release-notes --harness claude-code --harness codex
 
 ### `skillporter remove <skill>`
 
-Remove a skill from one or more harnesses. `uninstall` is an alias. A shared `.agents/skills` copy is kept while another managed harness still owns it.
+Remove a skill safely. `uninstall` is an alias with identical options. When `--harness` is omitted, it removes all Skillporter-managed installations of `<skill>` in the selected scope while preserving the original upstream source directory unless `--purge-source` is explicitly passed. A shared `.agents/skills` copy is kept while another managed harness still owns it.
 
 ```bash
+skillporter remove pdf
 skillporter remove pdf --harness cursor
+skillporter uninstall pdf --dry-run
 ```
 
-Options: `--harness`, `--exclude-harness`, `--scope`, `--path`, `--dry-run`.
+Options: `--harness`, `--exclude-harness`, `--scope`, `--path`, `-y` / `--yes`, `--purge-source`, `--dry-run`.
 
 ### `skillporter move <skill>`
 
@@ -98,9 +100,14 @@ Options: `--path`, `--scope`.
 
 ### `skillporter update [skill]`
 
-Fetch tracked skills from their recorded source again, run the security gate, snapshot the current version and replace it. Without a skill name it updates every tracked skill.
+Fetch tracked skills from their recorded source again, run the security and policy gates, snapshot the current version and replace it. Pass `--check` to inspect a human-readable update diff (added/removed files, modified instructions and scripts, new inferred capabilities, and risk score changes) before applying. Without a skill name it checks or updates every tracked skill.
 
-Options: `--scope`, `--path`, `--dry-run`, `--allow-risky`.
+```bash
+skillporter update --check
+skillporter update pdf
+```
+
+Options: `--scope`, `--path`, `--check`, `--dry-run`, `--allow-risky`.
 
 ### `skillporter rollback <skill>`
 
@@ -197,24 +204,124 @@ Inspect a local or remote package without installing it: structure, bundled scri
 
 ### `skillporter explain <finding>`
 
-Explain a diagnostic, lockfile or security finding code and print the commands that fix it.
+Explain a diagnostic, validation, lockfile, capability, policy, or security finding code and print the commands that fix it. Unknown codes exit with code `2` and suggest close matches. Pass `--list` to print all supported finding codes.
 
 ```bash
 skillporter explain DRIFT
 skillporter explain sec-curl-pipe-sh
+skillporter explain --list
 ```
+
+## Instructions, context and insights
+
+### `skillporter consolidate [path]`
+
+Discover agent instruction files (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `.cursor/rules/*.mdc`, `.github/copilot-instructions.md`, `.windsurfrules`, `.clinerules`, `.roorules`, `CONVENTIONS.md`, `.continuerules`, `.goosehints`), measure duplicated directives, detect contradictions and outdated file references, and propose a canonical source of truth. Read-only by default.
+
+```bash
+skillporter consolidate
+skillporter consolidate --apply
+skillporter consolidate --status
+skillporter consolidate --reconcile
+skillporter consolidate --rollback
+```
+
+Options: `--harness`, `--apply`, `--status`, `--reconcile`, `--rollback`, `--force`.
+
+### `skillporter context [path]`
+
+Inspect the exact active instruction files, ignored foreign instruction files, reachable skills, and estimated startup token budget for one or more harnesses.
+
+```bash
+skillporter context --harness codex
+```
+
+Options: `--harness`, `--scope`.
+
+### `skillporter suggest [path]`
+
+Inspect local repository manifests (`package.json`, `pyproject.toml`, `requirements.txt`, `Dockerfile`, `prisma/schema.prisma`, `.github/workflows`) offline without uploading project data, and recommend relevant, security-graded skills with compatibility notes.
+
+```bash
+skillporter suggest
+```
+
+Options: `--harness`.
+
+### `skillporter insights [path]`
+
+Estimate context token overhead across installed skills and instruction files, detect duplicate context waste, and summarize opt-in local activation events recorded in `.skillporter/usage.jsonl`.
+
+```bash
+skillporter insights
+skillporter insights --record-usage pdf
+```
+
+Options: `--scope`, `--record-usage <skill>`, `--harness-used <id>`.
+
+## Skill authoring and testing
+
+### `skillporter new <name>`
+
+Scaffold a spec-compliant skill directory with structured frontmatter and optional `scripts/`, `references/`, and `skill.test.yaml` templates.
+
+```bash
+skillporter new pdf-extractor --with-references --with-tests
+```
+
+Options: `--path`, `--description`, `--author`, `--with-scripts`, `--with-references`, `--with-tests`, `--force`.
+
+### `skillporter lint [path]`
+
+Validate `SKILL.md` frontmatter, local file links, bundled script references, capability declarations, harness token budgets, and static security rules. Pass `--strict` to fail on warnings.
+
+```bash
+skillporter lint . --strict
+```
+
+Options: `--harness`, `--strict`.
+
+### `skillporter preview <target>`
+
+Preview the exact native `SKILL.md` path, adapted rule output (`.mdc`, `.instructions.md`, `.windsurf/rules`, `CONVENTIONS.md`), and any lost capabilities for a target harness.
+
+```bash
+skillporter preview pdf --harness cursor
+```
+
+Options: `--harness`, `--adapt-format`, `--scope`, `--path`.
+
+### `skillporter test [path]`
+
+Run deterministic activation trigger checks and structural assertions defined in `skill.test.yaml`. Optional model-assisted routing evaluation (`--model`) requires user-provided API credentials and explicit `--yes-send` consent.
+
+```bash
+skillporter test .
+```
+
+Options: `--model`, `--yes-send`.
 
 ## Security
 
 ### `skillporter scan [path]`
 
-Run the static security assessment on every discovered skill.
+Run the static security and capability assessment on every discovered skill. Optional advisory LLM review (`--ai-review`) requires user-provided API credentials and explicit `--yes-send` consent.
 
 ```bash
 skillporter scan . --format sarif > skillporter.sarif
 ```
 
-Options: `--format text|json|sarif`, `--max-risk-score <n>`, `--engine`, `--offline`.
+Options: `--format text|json|sarif`, `--max-risk-score <n>`, `--engine`, `--offline`, `--ai-review`, `--ai-model`, `--yes-send`.
+
+### `skillporter policy [init|check|show]`
+
+Initialize, display, or enforce project governance rules from `skillporter.policy.yaml` (approved/restricted sources, risk score caps, banned capabilities, required capability declarations, and allowed harnesses).
+
+```bash
+skillporter policy init
+skillporter policy check
+skillporter policy show
+```
 
 ### `skillporter validate [path]`
 

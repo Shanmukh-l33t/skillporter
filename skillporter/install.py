@@ -879,8 +879,61 @@ def rollback_skill(
         recover_interrupted_transactions(root, scope=scope, home=home)
         records = load_state(root, scope=scope, home=home)
         rec = records.get(skill_name)
-        if not rec or not rec.history:
-            raise InstallError(f"no backup history available to roll back skill {skill_name!r}")
+        if not rec:
+            raise InstallError(
+                f"no backup history available to roll back skill {skill_name!r}: "
+                "skill is not installed or tracked by Skillporter (run `skillporter list`)"
+            )
+        if not rec.history:
+            sdir = state_dir(root, scope=scope, home=home)
+            store_cand = (
+                sdir / "store" / skill_name / rec.tree_hash[:12] / skill_name
+                if rec.tree_hash
+                else None
+            )
+            has_local_corruption = False
+            for d_str in rec.destinations:
+                dp = Path(d_str)
+                if not dp.exists():
+                    has_local_corruption = True
+                    break
+                cur_h, _ = compute_tree_hash(dp)
+                if rec.tree_hash and cur_h != rec.tree_hash:
+                    has_local_corruption = True
+                    break
+            if (
+                has_local_corruption
+                and store_cand is not None
+                and store_cand.is_dir()
+                and compute_tree_hash(store_cand)[0] == rec.tree_hash
+            ):
+                targets = rec.harnesses or ["claude-code", "codex", "cursor"]
+                results = install(
+                    root,
+                    store_cand,
+                    targets,
+                    strategy="copy",
+                    scope=scope,
+                    force=True,
+                    home=home,
+                    source=rec.source,
+                    resolved_commit=rec.resolved_commit,
+                    version=rec.version,
+                    record_state=False,
+                    skill_name_override=skill_name,
+                )
+                for r in results:
+                    if r.action == "created":
+                        r.action = "rolled-back"
+                    r.detail = f"restored clean initial baseline {rec.tree_hash[:12]}"
+                return results
+            raise InstallError(
+                f"no backup history available to roll back skill {skill_name!r}: "
+                f"currently at initial installed version {rec.version} ({rec.tree_hash[:12] or 'unhashed'}) "
+                "with no earlier update snapshots, and on-disk files match the clean install. "
+                f"Backups are created before updates or --force overwrites; run `skillporter remove {skill_name}` "
+                "to uninstall it."
+            )
 
         chosen = None
         if backup_id:

@@ -532,6 +532,35 @@ def cmd_profile(args: argparse.Namespace) -> int:
                         print(f"  Prune:     {', '.join(to_prune)}")
                 return EXIT_OK
 
+            from ..policy import evaluate_policy, load_policy
+
+            policy_prof = load_policy(root) if scope == "project" else None
+            # Validate all profile skills against security and policy BEFORE mutating manifest or disk!
+            for spec_chk in prof.skills:
+                targets_chk = spec_chk.harnesses or prof.harnesses
+                res_chk = resolve_source(spec_chk.source, base_dir=root, ref_override=spec_chk.ref)
+                try:
+                    matches_chk = [d for d in res_chk.skill_dirs if d.name == spec_chk.name] or res_chk.skill_dirs
+                    for sdir_chk in matches_chk:
+                        srep_chk = scan_skill(sdir_chk, offline=True)
+                        if srep_chk.has_structural_escape or not srep_chk.passed:
+                            raise ProfileError(f"skill {sdir_chk.name!r} in profile {pname!r} failed security scan")
+                        pol_errs = evaluate_policy(
+                            policy_prof,
+                            skill_dirs=[sdir_chk],
+                            source_candidates=[spec_chk.source, res_chk.canonical_source],
+                            resolved_commit=res_chk.resolved_commit,
+                            ref=spec_chk.ref,
+                            target_harnesses=targets_chk,
+                            sec_reports={sdir_chk.name: srep_chk},
+                        )
+                        if pol_errs:
+                            raise ProfileError(
+                                f"profile {pname!r} blocked by project security policy: " + "; ".join(pol_errs)
+                            )
+                finally:
+                    res_chk.cleanup()
+
             activate_profile_manifest(root, pname, scope=scope)
             installed_count = 0
             for spec in prof.skills:
