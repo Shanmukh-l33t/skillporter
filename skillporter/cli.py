@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import contextlib
 import difflib
+import os
+import stat
 import sys
 from pathlib import Path
 
@@ -358,13 +360,38 @@ KNOWN_COMMANDS = (
 )
 
 
+def _stdin_is_pipe() -> bool:
+    """True when stdin is a pipe or socket rather than a terminal or a device.
+
+    MCP clients and directory indexers launch a stdio server by spawning the
+    console script with a pipe attached. A shell user, or a script that
+    redirects /dev/null, gets a terminal or a character device instead.
+    """
+    try:
+        mode = os.fstat(sys.stdin.fileno()).st_mode
+    except (AttributeError, OSError, ValueError):
+        return False
+    return stat.S_ISFIFO(mode) or stat.S_ISSOCK(mode)
+
+
 def main(argv: list[str] | None = None) -> int:
     args_list = list(sys.argv[1:] if argv is None else argv)
     parser = build_parser()
 
     if not args_list:
-        parser.print_help()
-        return EXIT_OK
+        if _stdin_is_pipe():
+            # Directories and MCP clients that infer the launch command from the
+            # console script invoke `skillporter` with no subcommand and a pipe
+            # on stdin. Printing help there looks like a crash to them.
+            print(
+                "skillporter: no subcommand and a piped stdin, starting the MCP server "
+                "(use `skillporter mcp` to start it explicitly)",
+                file=sys.stderr,
+            )
+            args_list = ["mcp"]
+        else:
+            parser.print_help()
+            return EXIT_OK
 
     first = args_list[0]
     if not first.startswith("-") and first not in KNOWN_COMMANDS:

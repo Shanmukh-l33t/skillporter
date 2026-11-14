@@ -101,6 +101,15 @@ skillporter audit .
 
 The server speaks JSON-RPC 2.0 over stdio and reports MCP protocol version `2024-11-05`.
 
+## Starting the server
+
+`skillporter mcp` is the explicit form. Directory indexers and some MCP clients infer the launch
+command from the console script instead, spawning `skillporter` with no subcommand and a pipe on
+stdin. That invocation starts the server too, and prints one line to stderr so the choice is
+visible. A terminal, or a script that redirects `/dev/null`, still gets the help output rather than
+a server waiting on a pipe. `glama.json` at the repository root lists the maintainer who can claim
+the listing.
+
 ## Registry listing
 
 `server.json` at the repository root is the official MCP registry manifest (schema `2025-12-11`). It registers `io.github.Shanmukh-l33t/skillporter` as the npm package `@shanmukhdheekonda/skillporter`, launched as `npx -y @shanmukhdheekonda/skillporter mcp` over stdio, read-only.

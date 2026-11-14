@@ -145,3 +145,41 @@ def test_ci_and_release_workflows_gated_attested_and_injection_safe():
     for required_token in ("ubuntu-latest", "macos-latest", "windows-latest", "bandit", "twine check", "gitleaks"):
         assert required_token in ci_yml
 
+
+
+def test_bare_invocation_on_a_pipe_starts_the_mcp_server(monkeypatch):
+    """MCP clients and directory indexers spawn the console script with a pipe."""
+    import os
+    import sys
+
+    from skillporter import cli
+
+    read_fd, write_fd = os.pipe()
+    started = []
+    monkeypatch.setattr(cli, "run_mcp_stdio", lambda **kwargs: started.append(kwargs) or 0)
+    fake_stdin = os.fdopen(read_fd, "r")
+    monkeypatch.setattr(sys, "stdin", fake_stdin)
+    try:
+        rc = cli.main([])
+    finally:
+        os.close(write_fd)
+        fake_stdin.close()
+
+    assert rc == 0
+    assert len(started) == 1, "a piped stdin with no subcommand must start the MCP server"
+
+
+def test_bare_invocation_on_a_terminal_still_prints_help(monkeypatch, capsys):
+    """A character device on stdin, such as /dev/null, keeps the help output."""
+    import os
+    import sys
+
+    from skillporter import cli
+
+    with open(os.devnull, "r") as devnull:
+        monkeypatch.setattr(sys, "stdin", devnull)
+        rc = cli.main([])
+
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert "usage: skillporter" in captured.out
