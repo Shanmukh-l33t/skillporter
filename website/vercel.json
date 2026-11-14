@@ -1,6 +1,12 @@
 {
   "cleanUrls": true,
   "trailingSlash": false,
+  "rewrites": [
+    {
+      "source": "/google7e0e6122af515e66",
+      "destination": "/google7e0e6122af515e66.html"
+    }
+  ],
   "headers": [
     {
       "source": "/_astro/(.*)",

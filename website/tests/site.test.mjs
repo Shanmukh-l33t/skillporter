@@ -38,7 +38,14 @@ function walk(dir) {
   });
 }
 
-const htmlFiles = walk(DIST).filter((file) => file.endsWith('.html') && !file.includes(`${join(DIST, 'pagefind')}`));
+const htmlFiles = walk(DIST).filter(
+  (file) =>
+    file.endsWith('.html') &&
+    !file.includes(`${join(DIST, 'pagefind')}`) &&
+    // Third party ownership checks, not pages of the site.
+    !/google[0-9a-f]+\.html$/.test(file) &&
+    !/^indexnow-/.test(file),
+);
 const pages = new Map(htmlFiles.map((file) => [relative(DIST, file), readFileSync(file, 'utf8')]));
 
 /** The route a built file is served at. */

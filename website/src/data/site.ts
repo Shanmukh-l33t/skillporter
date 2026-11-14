@@ -9,6 +9,8 @@ export const SITE = {
   /** How people type the brand when they use two words. */
   alternateName: 'Skill Porter',
   url: 'https://www.skillporter.dev',
+  /** Google Search Console ownership token (HTML tag method). */
+  googleSiteVerification: '7MaV_R-_DNfdwuCESjBxJWG5E92LodXtJZ8p7OGK89k',
   tagline: 'One skill. Every agent.',
   positioning: 'Skill Porter is the package manager for AI agent skills.',
   description:
