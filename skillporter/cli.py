@@ -19,6 +19,7 @@ import sys
 from pathlib import Path
 
 from . import __version__, harnesses
+from .audit import record_audit_event
 from .ci_report import check_lockfile_staleness, generate_ci_report, post_github_pr_comment
 from .demo import run_demo
 from .diagnose import diagnose as run_diagnose
@@ -372,9 +373,37 @@ def _cmd_add(args: argparse.Namespace) -> int:
             print("\nSecurity assessment:")
             print(f"  {sec_info} informational/medium finding(s)")
             print(f"  {sec_critical + sec_high} critical/high finding(s)")
+            for sname, srep_d in sec_reports.items():
+                for f in srep_d.findings:
+                    loc = f"{f.file}:{f.line}" if f.line else f.file
+                    print(f"  [{f.severity}] {f.code} ({sname}/{loc}): {f.message}")
+
+        scan_audit = {
+            sname: {
+                "passed": r.passed,
+                "risk_score": r.risk_score,
+                "recommendation": r.recommendation,
+                "finding_codes": [f.code for f in r.findings],
+            }
+            for sname, r in sec_reports.items()
+        }
 
         has_structural_escape = any(r.has_structural_escape for r in sec_reports.values())
         if has_structural_escape:
+            record_audit_event(
+                root,
+                interface="cli",
+                operation="add",
+                status="blocked",
+                source=resolved.canonical_source,
+                resolved_commit=resolved.resolved_commit,
+                harnesses=targets,
+                scan_results=scan_audit,
+                force=args.force,
+                risk_accepted=args.allow_risky,
+                detail="structural filesystem escape",
+                scope=args.scope,
+            )
             print(
                 "\nerror: installation blocked by structural filesystem escape "
                 "(escaping symlinks or path traversal cannot be overridden with --allow-risky or --force)",
@@ -383,6 +412,20 @@ def _cmd_add(args: argparse.Namespace) -> int:
             return EXIT_PROBLEM
 
         if risk_threshold_exceeded and not args.allow_risky:
+            record_audit_event(
+                root,
+                interface="cli",
+                operation="add",
+                status="blocked",
+                source=resolved.canonical_source,
+                resolved_commit=resolved.resolved_commit,
+                harnesses=targets,
+                scan_results=scan_audit,
+                force=args.force,
+                risk_accepted=False,
+                detail="exceeded max_risk_score",
+                scope=args.scope,
+            )
             print(
                 f"\nerror: installation blocked by configured security.max_risk_score ({max_risk_score}): "
                 + ", ".join(risk_threshold_exceeded),
@@ -391,12 +434,32 @@ def _cmd_add(args: argparse.Namespace) -> int:
             return EXIT_PROBLEM
 
         if (sec_critical > 0 or sec_high > 0) and not args.allow_risky:
+            record_audit_event(
+                root,
+                interface="cli",
+                operation="add",
+                status="blocked",
+                source=resolved.canonical_source,
+                resolved_commit=resolved.resolved_commit,
+                harnesses=targets,
+                scan_results=scan_audit,
+                force=args.force,
+                risk_accepted=False,
+                detail="blocked by static security policy",
+                scope=args.scope,
+            )
             print(
                 "\nerror: installation blocked by static security policy "
-                "(re-run with --allow-risky after reviewing `skillporter scan` output)",
+                "(--force only overrides destination conflicts; pass --allow-risky after reviewing `skillporter scan`)",
                 file=sys.stderr,
             )
             return EXIT_PROBLEM
+
+        if args.allow_risky and (sec_critical > 0 or sec_high > 0 or risk_threshold_exceeded):
+            print(
+                "warning: proceeding with explicit --allow-risky security override; findings recorded in audit log.",
+                file=sys.stderr,
+            )
 
         if args.dry_run:
             if not is_json:
@@ -422,6 +485,22 @@ def _cmd_add(args: argparse.Namespace) -> int:
         except InstallError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return EXIT_ERROR
+
+        record_audit_event(
+            root,
+            interface="cli",
+            operation="add",
+            status="succeeded",
+            source=resolved.canonical_source,
+            resolved_commit=resolved.resolved_commit,
+            destinations=[str(r.dest) for r in all_results],
+            harnesses=targets,
+            scan_results=scan_audit,
+            overwrite=args.force,
+            force=args.force,
+            risk_accepted=args.allow_risky,
+            scope=args.scope,
+        )
 
         # Update manifest if skillporter.yaml exists
         if manifest and args.scope == "project":
@@ -477,8 +556,79 @@ def _cmd_install(args: argparse.Namespace) -> int:
     skill_dir = Path(args.skill).expanduser()
     if not skill_dir.is_absolute():
         skill_dir = (root / skill_dir).resolve()
+    allow_risky = bool(getattr(args, "allow_risky", False))
+    manifest = load_manifest(root)
+    max_risk_score = manifest.max_risk_score if manifest is not None else None
+
     try:
         targets = _resolve_target_harnesses(args.harness, root, scope=args.scope, default_detected=False)
+    except KeyError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+
+    if (skill_dir / "SKILL.md").is_file():
+        srep = scan_skill(skill_dir)
+        scan_audit = {
+            skill_dir.name: {
+                "passed": srep.passed,
+                "risk_score": srep.risk_score,
+                "recommendation": srep.recommendation,
+                "finding_codes": [f.code for f in srep.findings],
+            }
+        }
+        if srep.has_structural_escape:
+            record_audit_event(
+                root,
+                interface="cli",
+                operation="install",
+                status="blocked",
+                source=str(skill_dir),
+                harnesses=targets,
+                scan_results=scan_audit,
+                force=args.force,
+                risk_accepted=allow_risky,
+                detail="structural filesystem escape",
+                scope=args.scope,
+            )
+            print(
+                "error: installation blocked by structural filesystem escape "
+                "(cannot be overridden with --allow-risky or --force)",
+                file=sys.stderr,
+            )
+            return EXIT_PROBLEM
+        exceeds = srep.exceeds_risk_threshold(max_risk_score)
+        if (not srep.passed or exceeds) and not allow_risky:
+            for f in srep.findings:
+                loc = f"{f.file}:{f.line}" if f.line else f.file
+                print(f"  [{f.severity}] {f.code} ({loc}): {f.message}", file=sys.stderr)
+            record_audit_event(
+                root,
+                interface="cli",
+                operation="install",
+                status="blocked",
+                source=str(skill_dir),
+                harnesses=targets,
+                scan_results=scan_audit,
+                force=args.force,
+                risk_accepted=False,
+                detail=f"blocked by security policy (risk {srep.risk_score}/100)",
+                scope=args.scope,
+            )
+            print(
+                f"error: installation of {skill_dir.name!r} blocked by static security policy "
+                "(--force only overrides destination conflicts; pass --allow-risky to accept risk)",
+                file=sys.stderr,
+            )
+            return EXIT_PROBLEM
+        if allow_risky and (not srep.passed or exceeds):
+            for f in srep.findings:
+                loc = f"{f.file}:{f.line}" if f.line else f.file
+                print(f"  [{f.severity}] {f.code} ({loc}): {f.message}", file=sys.stderr)
+            print("warning: proceeding with explicit --allow-risky security override.", file=sys.stderr)
+    else:
+        scan_audit = {}
+
+    try:
         results = run_install(
             root,
             skill_dir,
@@ -493,6 +643,20 @@ def _cmd_install(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_ERROR
 
+    record_audit_event(
+        root,
+        interface="cli",
+        operation="install",
+        status="succeeded",
+        source=str(skill_dir),
+        destinations=[str(r.dest) for r in results],
+        harnesses=targets,
+        scan_results=scan_audit,
+        overwrite=args.force,
+        force=args.force,
+        risk_accepted=allow_risky,
+        scope=args.scope,
+    )
     for r in results:
         print(f"{r.action:9} {r.harness:12} {r.dest}  ({r.detail})")
     return EXIT_OK
@@ -1292,6 +1456,9 @@ def _cmd_update(args: argparse.Namespace) -> int:
         print("no managed skills recorded in .skillporter/state.json to update.")
         return EXIT_OK
 
+    allow_risky = bool(getattr(args, "allow_risky", False))
+    manifest = load_manifest(root)
+    max_risk_score = manifest.max_risk_score if manifest is not None else None
     names = [target_arg] if target_arg else sorted(records)
     updated_count = 0
     for sname in names:
@@ -1303,6 +1470,41 @@ def _cmd_update(args: argparse.Namespace) -> int:
         try:
             matching = [d for d in resolved.skill_dirs if d.name == sname] or resolved.skill_dirs
             for sdir in matching:
+                srep = scan_skill(sdir)
+                scan_audit = {
+                    sdir.name: {
+                        "passed": srep.passed,
+                        "risk_score": srep.risk_score,
+                        "recommendation": srep.recommendation,
+                        "finding_codes": [f.code for f in srep.findings],
+                    }
+                }
+                exceeds = srep.exceeds_risk_threshold(max_risk_score)
+                if srep.has_structural_escape or ((not srep.passed or exceeds) and not allow_risky):
+                    for f in srep.findings:
+                        loc = f"{f.file}:{f.line}" if f.line else f.file
+                        print(f"  [{f.severity}] {f.code} ({loc}): {f.message}", file=sys.stderr)
+                    record_audit_event(
+                        root,
+                        interface="cli",
+                        operation="update",
+                        status="blocked",
+                        source=resolved.canonical_source,
+                        resolved_commit=resolved.resolved_commit,
+                        harnesses=rec.harnesses,
+                        scan_results=scan_audit,
+                        overwrite=True,
+                        force=False,
+                        risk_accepted=False,
+                        detail=f"update blocked by security policy on {sdir.name}",
+                        scope=rec.scope,
+                    )
+                    print(
+                        f"error: update of {sdir.name!r} blocked by static security policy "
+                        f"(risk {srep.risk_score}/100); existing installation preserved.",
+                        file=sys.stderr,
+                    )
+                    return EXIT_PROBLEM
                 res = run_install(
                     root,
                     sdir,
@@ -1313,6 +1515,21 @@ def _cmd_update(args: argparse.Namespace) -> int:
                     source=resolved.canonical_source,
                     resolved_commit=resolved.resolved_commit,
                     record_state=True,
+                )
+                record_audit_event(
+                    root,
+                    interface="cli",
+                    operation="update",
+                    status="succeeded",
+                    source=resolved.canonical_source,
+                    resolved_commit=resolved.resolved_commit,
+                    destinations=[str(r.dest) for r in res],
+                    harnesses=rec.harnesses,
+                    scan_results=scan_audit,
+                    overwrite=True,
+                    force=False,
+                    risk_accepted=allow_risky,
+                    scope=rec.scope,
                 )
                 updated_count += 1
                 for r in res:
@@ -1975,7 +2192,12 @@ def build_parser() -> argparse.ArgumentParser:
     i.add_argument("--scope", choices=["project", "user"], default="project")
     i.add_argument("--path", default=".", help="repo root (default: .)")
     i.add_argument("--adapt", action="store_true", help="also emit adapted harness rule file")
-    i.add_argument("--force", action="store_true", help="overwrite an existing install")
+    i.add_argument(
+        "--allow-risky",
+        action="store_true",
+        help="proceed even if static security scan finds high/critical issues",
+    )
+    i.add_argument("--force", action="store_true", help="overwrite an existing install (never bypasses security)")
     i.set_defaults(func=_cmd_install)
 
     # uninstall / remove
@@ -2128,6 +2350,11 @@ def build_parser() -> argparse.ArgumentParser:
     up.add_argument("skill", nargs="?", default="")
     up.add_argument("--scope", choices=["project", "user"], default="project")
     up.add_argument("--path", default=".")
+    up.add_argument(
+        "--allow-risky",
+        action="store_true",
+        help="proceed even if upstream update triggers high/critical security findings",
+    )
     up.set_defaults(func=_cmd_update)
 
     # rollback
