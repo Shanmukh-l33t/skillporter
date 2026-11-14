@@ -113,19 +113,10 @@ if (crumbs.length > 0) {
     </div>
 
     {
-      faq.length > 0 && (
-        <section class="article__faq" aria-labelledby="faq-heading">
-          <h2 id="faq-heading">Questions and answers</h2>
-          <dl>
-            {faq.map((item) => (
-              <>
-                <dt>{item.q}</dt>
-                <dd>{item.a}</dd>
-              </>
-            ))}
-          </dl>
-        </section>
-      )
+      /* The answers live in the article body, grouped under headings. The
+         frontmatter list exists only to emit FAQPage structured data, so
+         rendering it here as well would print every question twice. */
+      faq.length > 0 && null
     }
 
     <footer class="article__foot">
