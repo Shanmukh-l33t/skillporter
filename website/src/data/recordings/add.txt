@@ -1,64 +1,19 @@
 # exit: 0
 $ skillporter add anthropics/skills --skill pdf --harness all
-SKILLPORTER
-
-Source: github:anthropics/skills
-Commit: 1780c5e5a552
-
-Found skills:
-  pdf  (risk: 0/100 · APPROVE)
-
-Target harnesses:
-  Aider / AiderDesk (aider)
-  Google Antigravity (antigravity)
-  Claude Code (claude-code)
-  Cline (cline)
-  OpenAI Codex (codex)
-  Continue (continue)
-  Cursor (cursor)
-  Gemini CLI (gemini-cli)
-  GitHub Copilot (github-copilot)
-  Goose (goose)
-  Hermes Agent (hermes)
-  JetBrains Junie / AI Assistant (junie)
-  OpenClaw (openclaw)
-  OpenCode (opencode)
-  OpenHands (openhands)
-  Replit Agent (replit)
-  Roo Code (roo-code)
-  Windsurf (windsurf)
-  Zed (zed)
-
-Installation plan:
-  12 destination(s) across 19 harness(es)
-  7 shared destination(s) deduplicated (.agents/skills)
-
-Validation: PASSED
-
-Security assessment:
-  0 informational/medium finding(s)
-  0 critical/high finding(s)
-
-Installing...
-
-Aider / AiderDesk      SUCCESS  (copy via .aider-desk/skills)
-Google Antigravity     SUCCESS  (copy via .agents/skills)
-Claude Code            SUCCESS  (copy via .claude/skills)
-Cline                  SUCCESS  (copy via .cline/skills)
-OpenAI Codex           SUCCESS  (shared path already installed for antigravity (copy via .agents/skills))
-Continue               SUCCESS  (copy via .continue/skills)
-Cursor                 SUCCESS  (shared path already installed for antigravity (copy via .agents/skills))
-Gemini CLI             SUCCESS  (shared path already installed for antigravity (copy via .agents/skills))
-GitHub Copilot         SUCCESS  (copy via .github/skills)
-Goose                  SUCCESS  (shared path already installed for antigravity (copy via .agents/skills))
-Hermes Agent           SUCCESS  (copy via .hermes/skills)
-JetBrains Junie / AI Assistant SUCCESS  (copy via .junie/skills)
-OpenClaw               SUCCESS  (copy via .openclaw/skills)
-OpenCode               SUCCESS  (copy via .opencode/skills)
-OpenHands              SUCCESS  (shared path already installed for antigravity (copy via .agents/skills))
-Replit Agent           SUCCESS  (shared path already installed for antigravity (copy via .agents/skills))
-Roo Code               SUCCESS  (copy via .roo/skills)
-Windsurf               SUCCESS  (copy via .windsurf/skills)
-Zed                    SUCCESS  (shared path already installed for antigravity (copy via .agents/skills))
++ Installed pdf across 19 harness(es) (+12 created, ~0 updated, =7 deduplicated/unchanged)
+  + Aider / AiderDesk    created    (copy via .aider-desk/skills)
+  + Google Antigravity   created    (copy via .agents/skills)
+  + Claude Code          created    (copy via .claude/skills)
+  + Cline                created    (copy via .cline/skills)
+  + Continue             created    (copy via .continue/skills)
+  + GitHub Copilot       created    (copy via .github/skills)
+  + Hermes Agent         created    (copy via .hermes/skills)
+  + JetBrains Junie / AI Assistant created    (copy via .junie/skills)
+  + OpenClaw             created    (copy via .openclaw/skills)
+  + OpenCode             created    (copy via .opencode/skills)
+  + Roo Code             created    (copy via .roo/skills)
+  + Windsurf             created    (copy via .windsurf/skills)
 
 Installation verified.
+Next steps:
+  skillporter status                # inspect installed state across harnesses

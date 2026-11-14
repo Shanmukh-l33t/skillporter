@@ -16,6 +16,10 @@ faq:
     a: "skillporter.lock records what is installed: the resolved Git commit, one SHA-256 over the whole skill directory, a hash per file, the pin state and the adapter version."
   - q: "What happens when copies of a skill drift?"
     a: "Drift means two copies of one skill have different content, usually after someone edits .claude/skills/<skill> and forgets .agents/skills/<skill>."
+  - q: "How do I move my skill setup to another machine?"
+    a: "Run skillporter export my-env.skillpack to bundle your skills, lockfile hashes and profiles into a SHA-256 verified archive (secrets and .env files are excluded), then run skillporter import my-env.skillpack on the new machine. Restoration works offline."
+  - q: "Can an AI coding agent manage Skill Porter for me?"
+    a: "Yes. Run skillporter self-skill install --harness detected to install the official Skillporter skill, or register skillporter mcp as a workspace-bounded Model Context Protocol server."
   - q: "How does rollback work?"
     a: "Installs are staged under .skillporter/tmp/ with a write-ahead journal, so a failed install restores the destinations it already wrote."
   - q: "Does Skill Porter need network access?"
@@ -76,6 +80,19 @@ Drift means two copies of one skill have different content, usually after someon
 skillporter diagnose .
 skillporter sync --force --prefer .agents/skills/pdf
 ```
+
+### How do I move my skill setup to another machine?
+
+Run `skillporter export my-env.skillpack` to package your skills, provenance, lockfile hashes and named profiles into a single `.tar.gz` archive. Dotfiles such as `.env` and key files are excluded, and export refuses skills containing embedded credentials. On the destination machine, compare with `skillporter diff my-env.skillpack`, preview with `skillporter import my-env.skillpack --dry-run`, and restore offline without re-cloning every upstream repository.
+
+```bash
+skillporter export my-env.skillpack
+skillporter import my-env.skillpack --only-detected --dry-run
+```
+
+### Can an AI coding agent manage Skill Porter for me?
+
+Yes. `skillporter self-skill install --harness detected` installs the official bundled `skillporter` skill so Claude Code, Codex, Cursor or Hermes can inspect status, move skills across harnesses, compare `.skillpack` archives and preview updates using `--dry-run` and `--json`. Alternatively, `skillporter mcp` exposes 13 workspace-bounded tools over stdio (read-only by default; pass `--allow-writes` to permit installations, exports and imports).
 
 ### How does rollback work?
 

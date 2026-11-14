@@ -13,7 +13,7 @@ from pathlib import Path
 from . import __version__
 from .commands.add import cmd_add, cmd_install, cmd_update
 from .commands.audit import cmd_audit
-from .commands.common import EXIT_ERROR, EXIT_OK, EXIT_PROBLEM
+from .commands.common import EXIT_ERROR, EXIT_OK, EXIT_PROBLEM, apply_ui_flags
 from .commands.doctor import (
     cmd_ci_report,
     cmd_demo,
@@ -21,7 +21,12 @@ from .commands.doctor import (
     cmd_diagnose,
     cmd_doctor,
     cmd_matrix,
-    cmd_status,
+)
+from .commands.parsers import (
+    HELP_EPILOG,
+    attach_harness_control_flags,
+    build_shared_flag_parent,
+    register_evolution_commands,
 )
 from .commands.registry import cmd_info, cmd_inspect, cmd_list, cmd_pack, cmd_publish, cmd_search
 from .commands.remove import cmd_rollback, cmd_uninstall
@@ -36,16 +41,23 @@ __all__ = ["EXIT_ERROR", "EXIT_OK", "EXIT_PROBLEM", "KNOWN_COMMANDS", "build_par
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="skillporter",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
         description=(
-            "ONE SKILL. EVERY AGENT. Package manager, dependency resolver, and "
-            "supply-chain security layer for AI-agent skills across 19 harnesses."
+            "ONE SKILL. EVERY AGENT. Control center for managing, securing, synchronizing, "
+            "and moving AI agent skills across 19 harnesses, projects, and machines."
         ),
+        epilog=HELP_EPILOG,
     )
     p.add_argument("--version", action="version", version=f"skillporter {__version__}")
-    sub = p.add_subparsers(dest="command", required=False)
+    p.add_argument("-q", "--quiet", action="store_true", help="suppress non-essential status output")
+    p.add_argument("-v", "--verbose", action="store_true", help="show detailed paths, unchanged items, and full lists")
+    p.add_argument("--no-color", action="store_true", help="disable ANSI color codes")
+
+    shared = build_shared_flag_parent()
+    sub = p.add_subparsers(dest="command", required=False, metavar="<command>")
 
     # diagnose
-    d = sub.add_parser("diagnose", help="show which harnesses see each skill, plus drift & broken links")
+    d = sub.add_parser("diagnose", parents=[shared], help="check reachability, drift, and broken symlinks")
     d.add_argument("path", nargs="?", default=".", help="repo root (default: .)")
     d.add_argument("--harness", action="append", help="limit to specific harness(es) or 'all' (repeatable)")
     d.add_argument("--scope", choices=["project", "user"], default="project")
@@ -54,9 +66,10 @@ def build_parser() -> argparse.ArgumentParser:
     d.set_defaults(func=cmd_diagnose)
 
     # add
-    a = sub.add_parser("add", help="install skills from GitHub, git URL, archive, registry, or local path")
+    a = sub.add_parser("add", parents=[shared], help="install skills from GitHub, git URL, archive, or path")
     a.add_argument("source", help="owner/repo, GitHub URL, archive, or local path")
-    a.add_argument("--harness", action="append", help="target harness or 'all' (repeatable)")
+    a.add_argument("--harness", action="append", help="target harness or 'all'/'compatible'/'detected' (repeatable)")
+    attach_harness_control_flags(a, include_conflict=True, include_isolated=True)
     a.add_argument("--skill", action="append", help="select specific skill name(s) from a multi-skill repo")
     a.add_argument("--ref", help="git branch, tag, or commit hash")
     a.add_argument("--strategy", choices=["copy", "symlink"], default="copy")
@@ -74,9 +87,10 @@ def build_parser() -> argparse.ArgumentParser:
     a.set_defaults(func=cmd_add)
 
     # install
-    i = sub.add_parser("install", help="install a local skill directory into one or more harnesses")
+    i = sub.add_parser("install", parents=[shared], help="install a local skill directory into one or more harnesses")
     i.add_argument("skill", help="path to the skill directory")
     i.add_argument("--harness", action="append", required=True, help="target harness (repeatable)")
+    attach_harness_control_flags(i, include_conflict=True, include_isolated=True)
     i.add_argument("--strategy", choices=["copy", "symlink"], default="copy")
     i.add_argument("--scope", choices=["project", "user"], default="project")
     i.add_argument("--path", default=".", help="repo root (default: .)")
@@ -90,9 +104,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     # uninstall / remove
     for cmd_name in ("uninstall", "remove"):
-        u = sub.add_parser(cmd_name, help="remove a skill from harnesses safely")
+        u = sub.add_parser(cmd_name, parents=[shared], help="remove a skill from harnesses safely")
         u.add_argument("skill", help="skill name")
         u.add_argument("--harness", action="append", required=(cmd_name == "uninstall"))
+        attach_harness_control_flags(u)
         u.add_argument("--scope", choices=["project", "user"], default="project")
         u.add_argument("--path", default=".")
         u.add_argument("--dry-run", action="store_true", help="preview removal without deleting files")
@@ -101,7 +116,7 @@ def build_parser() -> argparse.ArgumentParser:
         u.set_defaults(func=cmd_uninstall)
 
     # validate
-    v = sub.add_parser("validate", help="validate SKILL.md files against the Agent Skills spec and compute risk score")
+    v = sub.add_parser("validate", parents=[shared], help="validate SKILL.md spec compliance and compute risk score")
     v.add_argument("path", nargs="?", default=".")
     v.add_argument("--format", choices=["text", "json", "sarif"], default="")
     v.add_argument("--max-risk-score", type=int, default=None)
@@ -111,7 +126,7 @@ def build_parser() -> argparse.ArgumentParser:
     v.set_defaults(func=cmd_validate)
 
     # scan
-    sc = sub.add_parser("scan", help="run security and supply-chain checks (0-100 risk score, JSON/SARIF)")
+    sc = sub.add_parser("scan", parents=[shared], help="run static security and supply-chain checks (JSON/SARIF)")
     sc.add_argument("path", nargs="?", default=".")
     sc.add_argument("--format", choices=["text", "json", "sarif"], default="")
     sc.add_argument("--max-risk-score", type=int, default=None)
@@ -121,7 +136,7 @@ def build_parser() -> argparse.ArgumentParser:
     sc.set_defaults(func=cmd_scan)
 
     # audit
-    au = sub.add_parser("audit", help="audit installed skills, provenance, lockfile integrity, and security log")
+    au = sub.add_parser("audit", parents=[shared], help="audit provenance, lockfile integrity, and security log")
     au.add_argument("path", nargs="?", default=".")
     au.add_argument("--scope", choices=["project", "user"], default="project")
     au.add_argument("--limit", type=int, default=50, help="max recent audit events to include")
@@ -130,7 +145,7 @@ def build_parser() -> argparse.ArgumentParser:
     au.set_defaults(func=cmd_audit)
 
     # sandbox
-    sb = sub.add_parser("sandbox", help="[experimental] run opt-in dry-run behavioral sandbox on a skill")
+    sb = sub.add_parser("sandbox", parents=[shared], help="[experimental] run opt-in dry-run behavioral sandbox")
     sb.add_argument("skill", nargs="?", default="run", help="'run <skill>' or direct skill path")
     sb.add_argument("target", nargs="?", default="", help="skill path when invoked as `sandbox run <skill>`")
     sb.add_argument("--runtime", choices=["auto", "wasm", "gvisor", "dry-run"], default="auto")
@@ -139,27 +154,27 @@ def build_parser() -> argparse.ArgumentParser:
     sb.set_defaults(func=cmd_sandbox)
 
     # demo
-    dm = sub.add_parser("demo", help="run a 60-second zero-residue demo resolving broken symlinks & drift")
+    dm = sub.add_parser("demo", parents=[shared], help="run zero-residue demo resolving broken symlinks & drift")
     dm.add_argument("--format", choices=["text", "json"], default="")
     dm.add_argument("--json", action="store_true")
     dm.set_defaults(func=cmd_demo)
 
     # explain
-    ex = sub.add_parser("explain", help="translate any diagnostic, lockfile, or security finding into plain English")
+    ex = sub.add_parser("explain", parents=[shared], help="translate diagnostic or security codes into plain English")
     ex.add_argument("finding", nargs="+", help="finding code (e.g. DRIFT, BROKEN, sec-prompt-override) or message")
     ex.add_argument("--format", choices=["text", "json"], default="")
     ex.add_argument("--json", action="store_true")
     ex.set_defaults(func=cmd_explain)
 
     # graph
-    gr = sub.add_parser("graph", help="visualize and verify the resolved skill dependency graph")
+    gr = sub.add_parser("graph", parents=[shared], help="visualize and verify the resolved skill dependency graph")
     gr.add_argument("path", nargs="?", default=".")
     gr.add_argument("--format", choices=["text", "json"], default="")
     gr.add_argument("--json", action="store_true")
     gr.set_defaults(func=cmd_graph)
 
     # publish
-    pub = sub.add_parser("publish", help="validate, security-gate, pack, and publish a skill to the registry")
+    pub = sub.add_parser("publish", parents=[shared], help="validate, security-gate, pack, and publish to registry")
     pub.add_argument("path", nargs="?", default=".")
     pub.add_argument("--registry", default=None, help="custom registry index path or URL")
     pub.add_argument("--dry-run", action="store_true", help="verify registry client contract without publishing")
@@ -168,7 +183,7 @@ def build_parser() -> argparse.ArgumentParser:
     pub.set_defaults(func=cmd_publish)
 
     # ci-report
-    cir = sub.add_parser("ci-report", help="generate a Markdown/JSON PR diagnostic & security report")
+    cir = sub.add_parser("ci-report", parents=[shared], help="generate a Markdown/JSON PR diagnostic & security report")
     cir.add_argument("path", nargs="?", default=".")
     cir.add_argument("--scope", choices=["project", "user"], default="project")
     cir.add_argument("--output", default=None, help="write Markdown report to file")
@@ -179,14 +194,14 @@ def build_parser() -> argparse.ArgumentParser:
     cir.set_defaults(func=cmd_ci_report)
 
     # matrix
-    m = sub.add_parser("matrix", help="print the 19-harness compatibility and verification matrix")
+    m = sub.add_parser("matrix", parents=[shared], help="print the 19-harness compatibility and verification matrix")
     m.add_argument("--category", choices=["coding", "autonomous"])
     m.add_argument("--format", choices=["text", "json"], default="")
     m.add_argument("--json", action="store_true")
     m.set_defaults(func=cmd_matrix)
 
     # detect
-    dt = sub.add_parser("detect", help="detect installed AI agent harnesses on this machine and workspace")
+    dt = sub.add_parser("detect", parents=[shared], help="detect installed AI agent harnesses on this machine")
     dt.add_argument("path", nargs="?", default=".")
     dt.add_argument("--all", action="store_true", help="include harnesses not currently detected")
     dt.add_argument("--versions", action="store_true", help="probe CLI versions where available")
@@ -195,7 +210,7 @@ def build_parser() -> argparse.ArgumentParser:
     dt.set_defaults(func=cmd_detect)
 
     # init
-    init_p = sub.add_parser("init", help="initialize skillporter.yaml in a project")
+    init_p = sub.add_parser("init", parents=[shared], help="initialize skillporter.yaml in a project")
     init_p.add_argument("path", nargs="?", default=".")
     init_p.add_argument("--force", action="store_true")
     init_p.add_argument("--format", choices=["text", "json"], default="")
@@ -203,7 +218,7 @@ def build_parser() -> argparse.ArgumentParser:
     init_p.set_defaults(func=cmd_init)
 
     # list
-    ls_p = sub.add_parser("list", help="list installed and discovered skills")
+    ls_p = sub.add_parser("list", parents=[shared], help="list installed and discovered skills")
     ls_p.add_argument("path", nargs="?", default=".")
     ls_p.add_argument("--scope", choices=["project", "user"], default="project")
     ls_p.add_argument("--format", choices=["text", "json"], default="")
@@ -211,7 +226,7 @@ def build_parser() -> argparse.ArgumentParser:
     ls_p.set_defaults(func=cmd_list)
 
     # search
-    sr = sub.add_parser("search", help="search the skill registry catalog")
+    sr = sub.add_parser("search", parents=[shared], help="search the skill registry catalog")
     sr.add_argument("query", nargs="?", default="")
     sr.add_argument("--category", default="")
     sr.add_argument("--format", choices=["text", "json"], default="")
@@ -219,7 +234,7 @@ def build_parser() -> argparse.ArgumentParser:
     sr.set_defaults(func=cmd_search)
 
     # inspect
-    ins = sub.add_parser("inspect", help="inspect a local or remote skill package before installing")
+    ins = sub.add_parser("inspect", parents=[shared], help="inspect a local or remote skill package before installing")
     ins.add_argument("source", help="local path, archive, or GitHub owner/repo")
     ins.add_argument("--skill", action="append", help="select specific skill name(s) from a multi-skill repo")
     ins.add_argument(
@@ -231,9 +246,10 @@ def build_parser() -> argparse.ArgumentParser:
     ins.set_defaults(func=cmd_inspect)
 
     # sync
-    sy = sub.add_parser("sync", help="synchronize skills (and transitive dependencies) across harnesses")
+    sy = sub.add_parser("sync", parents=[shared], help="synchronize skills and dependencies across harnesses")
     sy.add_argument("path", nargs="?", default=".")
     sy.add_argument("--harness", action="append")
+    attach_harness_control_flags(sy)
     sy.add_argument("--strategy", choices=["copy", "symlink"], default="copy")
     sy.add_argument("--scope", choices=["project", "user"], default="project")
     sy.add_argument("--prefer", help="authoritative skill path when resolving content drift")
@@ -248,7 +264,7 @@ def build_parser() -> argparse.ArgumentParser:
     sy.set_defaults(func=cmd_sync)
 
     # update
-    up = sub.add_parser("update", help="update managed skills from their tracked sources")
+    up = sub.add_parser("update", parents=[shared], help="update managed skills from their tracked sources")
     up.add_argument("skill", nargs="?", default="")
     up.add_argument("--scope", choices=["project", "user"], default="project")
     up.add_argument("--path", default=".")
@@ -259,7 +275,7 @@ def build_parser() -> argparse.ArgumentParser:
     up.set_defaults(func=cmd_update)
 
     # rollback
-    rb = sub.add_parser("rollback", help="restore a skill (and its dependency graph) to its previous backup snapshot")
+    rb = sub.add_parser("rollback", parents=[shared], help="restore a skill to a verified backup snapshot")
     rb.add_argument("skill", help="skill name to roll back (or 'all')")
     rb.add_argument("--backup-id", default="")
     rb.add_argument("--scope", choices=["project", "user"], default="project")
@@ -270,7 +286,7 @@ def build_parser() -> argparse.ArgumentParser:
     rb.set_defaults(func=cmd_rollback)
 
     # lock
-    lk = sub.add_parser("lock", help="generate, update, or verify (--check) deterministic skillporter.lock")
+    lk = sub.add_parser("lock", parents=[shared], help="generate, update, or verify skillporter.lock")
     lk.add_argument("path", nargs="?", default=".")
     lk.add_argument("--check", action="store_true", help="fail with exit code 1 if lockfile is stale or drifted")
     lk.add_argument("--format", choices=["text", "json"], default="")
@@ -278,7 +294,7 @@ def build_parser() -> argparse.ArgumentParser:
     lk.set_defaults(func=cmd_lock)
 
     # doctor
-    doc = sub.add_parser("doctor", help="run comprehensive health check (and optional --fix repair)")
+    doc = sub.add_parser("doctor", parents=[shared], help="run comprehensive health check (and optional --fix repair)")
     doc.add_argument("path", nargs="?", default=".")
     doc.add_argument("--harness", action="append")
     doc.add_argument("--scope", choices=["project", "user"], default="project")
@@ -289,14 +305,14 @@ def build_parser() -> argparse.ArgumentParser:
     doc.set_defaults(func=cmd_doctor)
 
     # info
-    inf = sub.add_parser("info", help="show detailed metadata for a harness adapter, registry package, or local skill")
+    inf = sub.add_parser("info", parents=[shared], help="show metadata for a harness, registry package, or local skill")
     inf.add_argument("target", nargs="?", default=".", help="harness ID, package slug, or local skill name")
     inf.add_argument("--format", choices=["text", "json"], default="")
     inf.add_argument("--json", action="store_true")
     inf.set_defaults(func=cmd_info)
 
     # pack
-    pk = sub.add_parser("pack", help="build an immutable .tar.gz release bundle and SHA-256 provenance manifest")
+    pk = sub.add_parser("pack", parents=[shared], help="build an immutable .tar.gz skill release bundle")
     pk.add_argument("path", nargs="?", default=".")
     pk.add_argument("--out", default=".skillporter/dist")
     pk.add_argument("--format", choices=["text", "json"], default="")
@@ -304,7 +320,7 @@ def build_parser() -> argparse.ArgumentParser:
     pk.set_defaults(func=cmd_pack)
 
     # mcp
-    mcp_p = sub.add_parser("mcp", help="run the stdio Model Context Protocol (MCP) server for agent harnesses")
+    mcp_p = sub.add_parser("mcp", parents=[shared], help="run the stdio Model Context Protocol (MCP) server")
     mcp_p.add_argument("--root", default=None, help="explicit workspace root boundary (default: cwd)")
     mcp_p.add_argument("--allow-writes", action="store_true", help="enable mutating MCP tools; default is read-only")
     mcp_p.add_argument("--allow-user-scope", action="store_true", help="permit scope='user' reads outside workspace")
@@ -316,14 +332,7 @@ def build_parser() -> argparse.ArgumentParser:
         )
     )
 
-    # status
-    st_p = sub.add_parser("status", help="show unified workspace manifest, lockfile, per-harness, and drift status")
-    st_p.add_argument("path", nargs="?", default=".")
-    st_p.add_argument("--scope", choices=["project", "user"], default="project")
-    st_p.add_argument("--format", choices=["text", "json"], default="")
-    st_p.add_argument("--json", action="store_true")
-    st_p.set_defaults(func=cmd_status)
-
+    register_evolution_commands(sub, shared)
     return p
 
 
@@ -357,6 +366,15 @@ KNOWN_COMMANDS = (
     "pack",
     "mcp",
     "status",
+    "diff",
+    "export",
+    "import",
+    "harness",
+    "profile",
+    "move",
+    "adopt",
+    "outdated",
+    "self-skill",
 )
 
 
@@ -380,9 +398,6 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args_list:
         if _stdin_is_pipe():
-            # Directories and MCP clients that infer the launch command from the
-            # console script invoke `skillporter` with no subcommand and a pipe
-            # on stdin. Printing help there looks like a crash to them.
             print(
                 "skillporter: no subcommand and a piped stdin, starting the MCP server "
                 "(use `skillporter mcp` to start it explicitly)",
@@ -393,14 +408,16 @@ def main(argv: list[str] | None = None) -> int:
             parser.print_help()
             return EXIT_OK
 
-    first = args_list[0]
-    if not first.startswith("-") and first not in KNOWN_COMMANDS:
+    non_flag = [tok for tok in args_list if not tok.startswith("-")]
+    if non_flag and args_list[0] == non_flag[0] and non_flag[0] not in KNOWN_COMMANDS:
+        first = non_flag[0]
         matches = difflib.get_close_matches(first, KNOWN_COMMANDS, n=2, cutoff=0.5)
         hint = f" (did you mean: {', '.join(matches)}?)" if matches else ""
         print(f"error: unknown command {first!r}{hint}", file=sys.stderr)
         return EXIT_ERROR
 
     args = parser.parse_args(args_list)
+    apply_ui_flags(args)
     if not getattr(args, "command", None):
         parser.print_help()
         return EXIT_OK

@@ -29,7 +29,7 @@ from pathlib import Path
 
 from . import harnesses
 from .atomic import atomic_write_text, workspace_lock
-from .diagnose import resolve_path
+from .diagnose import load_custom_harness_paths, resolve_path, select_harness_install_raw_path
 from .formats import render_adapted_skill
 from .frontmatter import discover, parse_skill
 from .security import compute_tree_hash
@@ -299,11 +299,16 @@ def plan_install(
     strategy: str = "copy",
     scope: str = "project",
     force: bool = False,
+    on_conflict: str = "fail",
     allow_managed_update: bool = False,
     home: Path | None = None,
+    custom_paths: dict[str, str] | None = None,
+    isolated: bool = False,
 ) -> InstallPlan:
     """Compute an installation plan without modifying the filesystem."""
     root = root.resolve()
+    eff_conflict = "overwrite" if force else (on_conflict or "fail")
+    eff_custom = load_custom_harness_paths(root, scope=scope, explicit=custom_paths)
     skill_names = [validate_skill_name_segment(d.name) for d in skill_dirs]
     plan = InstallPlan(
         root=root,
@@ -318,11 +323,12 @@ def plan_install(
         seen_dests: dict[Path, PlannedDestination] = {}
         for target in targets:
             h = harnesses.get(target)
-            paths = h.project_paths if scope == "project" else h.user_paths
-            if not paths:
+            raw_primary = select_harness_install_raw_path(
+                h, scope, custom_paths=eff_custom, isolated=isolated
+            )
+            if not raw_primary:
                 continue
-            primary = paths[0]
-            base = resolve_path(primary.path, scope, root, home)
+            base = resolve_path(raw_primary, scope, root, home)
             _verify_harness_base_within_scope(base, scope, root, home)
             raw_dest = _resolve_harness_skill_dest(base, sname, src=skill_dir, recursive=h.recursive)
             dest = raw_dest.resolve() if not raw_dest.is_symlink() else raw_dest
@@ -335,13 +341,13 @@ def plan_install(
             exists = dest.exists() or dest.is_symlink()
             managed = is_managed_destination(root, sname, dest, scope=scope, home=home) if exists else False
             conflict = False
-            if exists and not force and not (allow_managed_update and managed):
+            if exists and eff_conflict == "fail" and not (allow_managed_update and managed):
                 conflict = True
                 plan.conflicts.append(f"{h.name}: {dest} already exists")
 
             pdest = PlannedDestination(
                 harness=h.name,
-                primary_path=primary.path,
+                primary_path=raw_primary,
                 resolved_dest=dest,
                 exists=exists,
                 managed=managed,
@@ -470,6 +476,7 @@ def install(
     strategy: str = "copy",
     scope: str = "project",
     force: bool = False,
+    on_conflict: str = "fail",
     home: Path | None = None,
     source: str = "",
     resolved_commit: str = "",
@@ -477,9 +484,16 @@ def install(
     record_state: bool = False,
     adapt: bool = False,
     skill_name_override: str = "",
+    custom_paths: dict[str, str] | None = None,
+    isolated: bool = False,
 ) -> list[InstallResult]:
     """Install one skill into the given harnesses transactionally."""
     root = root.resolve()
+    eff_conflict = "overwrite" if force else (on_conflict or "fail")
+    if eff_conflict not in ("fail", "skip", "overwrite"):
+        raise InstallError(f"unknown conflict policy {eff_conflict!r}; expected 'fail', 'skip', or 'overwrite'")
+    eff_force = eff_conflict == "overwrite"
+    eff_custom = load_custom_harness_paths(root, scope=scope, explicit=custom_paths)
     if not (skill_dir / "SKILL.md").is_file():
         raise InstallError(f"{skill_dir} is not a skill directory (no SKILL.md)")
     if strategy not in ("copy", "symlink"):
@@ -494,6 +508,7 @@ def install(
 
     results: list[InstallResult] = []
     written: dict[Path, str] = {}
+    installed_harnesses: list[str] = []
     created_in_txn: list[Path] = []
     replaced_in_txn: list[tuple[Path, Path]] = []
     backup_entries: list[BackupEntry] = []
@@ -509,17 +524,19 @@ def install(
         try:
             for target in targets:
                 h = harnesses.get(target)
-                paths = h.project_paths if scope == "project" else h.user_paths
-                if not paths:
+                raw_primary = select_harness_install_raw_path(
+                    h, scope, custom_paths=eff_custom, isolated=isolated
+                )
+                if not raw_primary:
                     raise InstallError(f"harness {target!r} has no {scope}-level skill path")
 
-                primary = paths[0]
-                base = resolve_path(primary.path, scope, root, home)
+                base = resolve_path(raw_primary, scope, root, home)
                 _verify_harness_base_within_scope(base, scope, root, home)
                 dest = _resolve_harness_skill_dest(base, skill_name, src=skill_dir, recursive=h.recursive)
 
                 if dest in written:
-                    via = primary.path if scope == "project" else base
+                    via = raw_primary if scope == "project" else base
+                    installed_harnesses.append(h.name)
                     results.append(
                         InstallResult(
                             skill=skill_name,
@@ -527,6 +544,19 @@ def install(
                             dest=dest,
                             action="unchanged",
                             detail=f"shared path already installed for {written[dest]} ({strategy} via {via})",
+                        )
+                    )
+                    continue
+
+                existed_before = dest.exists() or dest.is_symlink()
+                if existed_before and eff_conflict == "skip":
+                    results.append(
+                        InstallResult(
+                            skill=skill_name,
+                            harness=h.name,
+                            dest=dest,
+                            action="skipped",
+                            detail=f"existing installation preserved (--on-conflict skip: {dest})",
                         )
                     )
                     continue
@@ -544,13 +574,12 @@ def install(
                     if bentry and all(b.tree_hash != bentry.tree_hash for b in backup_entries):
                         backup_entries.append(bentry)
 
-                existed_before = dest.exists() or dest.is_symlink()
                 try:
                     if strategy == "copy":
                         action = _stage_and_copy_skill(
                             skill_dir,
                             dest,
-                            force=force,
+                            force=eff_force,
                             txn_tmp_root=txn_tmp_root,
                             created_in_txn=created_in_txn,
                             replaced_in_txn=replaced_in_txn,
@@ -559,7 +588,7 @@ def install(
                         action = _stage_and_link_skill(
                             skill_dir,
                             dest,
-                            force=force,
+                            force=eff_force,
                             txn_tmp_root=txn_tmp_root,
                             created_in_txn=created_in_txn,
                             replaced_in_txn=replaced_in_txn,
@@ -570,7 +599,7 @@ def install(
                 if not existed_before and action == "created":
                     created_in_txn.append(dest)
 
-                detail_suffix = f"{strategy} via {primary.path if scope == 'project' else base}"
+                detail_suffix = f"{strategy} via {raw_primary if scope == 'project' else base}"
                 if adapt and h.capabilities.adapted_format and scope == "project":
                     rel_adapt, adapt_content = render_adapted_skill(doc, h.capabilities.adapted_format)
                     adapt_path = root / rel_adapt
@@ -578,6 +607,7 @@ def install(
                     detail_suffix += f" + adapted {rel_adapt}"
 
                 written[dest] = h.name
+                installed_harnesses.append(h.name)
                 results.append(
                     InstallResult(
                         skill=skill_name,
@@ -616,7 +646,7 @@ def install(
                 skill_name=skill_name,
                 source=source or str(skill_dir),
                 skill_dir=effective_skill_dir,
-                harnesses=[h_obj.harness for h_obj in results],
+                harnesses=installed_harnesses,
                 destinations=list(written.keys()),
                 strategy=strategy,
                 scope=scope,
@@ -637,18 +667,33 @@ def install_many(
     strategy: str = "copy",
     scope: str = "project",
     force: bool = False,
+    on_conflict: str = "fail",
     home: Path | None = None,
     source: str = "",
     resolved_commit: str = "",
     version: str = "",
     record_state: bool = False,
     adapt: bool = False,
+    custom_paths: dict[str, str] | None = None,
+    isolated: bool = False,
 ) -> list[InstallResult]:
     """Install multiple skills as a single atomic batch transaction."""
     root = root.resolve()
+    eff_conflict = "overwrite" if force else (on_conflict or "fail")
     with workspace_lock(root):
-        plan = plan_install(root, skill_dirs, targets, strategy=strategy, scope=scope, force=force, home=home)
-        if plan.conflicts and not force:
+        plan = plan_install(
+            root,
+            skill_dirs,
+            targets,
+            strategy=strategy,
+            scope=scope,
+            force=force,
+            on_conflict=eff_conflict,
+            home=home,
+            custom_paths=custom_paths,
+            isolated=isolated,
+        )
+        if plan.conflicts and eff_conflict == "fail":
             raise InstallError("; ".join(plan.conflicts))
 
         pre_state = load_state(root, scope=scope, home=home)
@@ -666,12 +711,15 @@ def install_many(
                     strategy=strategy,
                     scope=scope,
                     force=force,
+                    on_conflict=eff_conflict,
                     home=home,
                     source=source,
                     resolved_commit=resolved_commit,
                     version=version,
                     record_state=record_state,
                     adapt=adapt,
+                    custom_paths=custom_paths,
+                    isolated=isolated,
                 )
                 batch_results.extend(res)
                 completed_skills.append((sname, existed_in_state))
@@ -711,10 +759,15 @@ def uninstall(
         records = load_state(root, scope=scope, home=home)
         rec = records.get(skill_name)
         target_set = {harnesses.get(t).name for t in targets}
+        eff_custom = load_custom_harness_paths(root, scope=scope)
 
         for target in targets:
             h = harnesses.get(target)
-            paths = h.project_paths if scope == "project" else h.user_paths
+            paths = list(h.project_paths if scope == "project" else h.user_paths)
+            if h.name in eff_custom:
+                custom_raw = eff_custom[h.name]
+                if all(p.path != custom_raw for p in paths):
+                    paths.insert(0, harnesses.SkillPath(custom_raw, scope, "custom override"))
             if not paths:
                 results.append(InstallResult(skill_name, h.name, root, "skipped", f"no {scope} path"))
                 continue
@@ -900,3 +953,209 @@ def rollback_skill(
                             results.extend(dep_res)
 
         return results
+
+
+def move_skill(
+    root: Path,
+    skill_name: str,
+    *,
+    from_harnesses: list[str],
+    to_harnesses: list[str],
+    scope: str = "project",
+    strategy: str = "copy",
+    force: bool = False,
+    on_conflict: str = "fail",
+    isolated: bool = False,
+    custom_paths: dict[str, str] | None = None,
+    home: Path | None = None,
+) -> list[InstallResult]:
+    """Move an installed skill from *from_harnesses* to *to_harnesses* atomically.
+
+    Installs into *to_harnesses* first so the skill is verified at its new
+    destination before removing from *from_harnesses* (preserving shared
+    ``.agents/skills`` directories if any destination harness still owns them).
+    """
+    root = root.resolve()
+    skill_name = validate_skill_name_segment(skill_name)
+    from_canonical = [harnesses.get(h).name for h in from_harnesses]
+    to_canonical = [harnesses.get(h).name for h in to_harnesses]
+    eff_custom = load_custom_harness_paths(root, scope=scope, explicit=custom_paths)
+
+    with workspace_lock(root):
+        records = load_state(root, scope=scope, home=home)
+        rec = records.get(skill_name)
+        src_dir: Path | None = None
+
+        for fh in from_canonical:
+            h = harnesses.get(fh)
+            cand_raws = []
+            if fh in eff_custom:
+                cand_raws.append(eff_custom[fh])
+            pts = h.project_paths if scope == "project" else h.user_paths
+            cand_raws.extend(sp.path for sp in pts)
+            for raw_p in cand_raws:
+                cand = resolve_path(raw_p, scope, root, home) / skill_name
+                if (cand / "SKILL.md").is_file():
+                    src_dir = cand
+                    break
+            if src_dir is not None:
+                break
+
+        if src_dir is None and rec:
+            for d_str in rec.destinations:
+                dp = Path(d_str)
+                if (dp / "SKILL.md").is_file():
+                    src_dir = dp
+                    break
+
+        if src_dir is None:
+            raise InstallError(
+                f"skill {skill_name!r} is not installed in {', '.join(from_canonical)} (scope: {scope})"
+            )
+
+        with tempfile_staging_copy(src_dir, skill_name, root, scope=scope, home=home) as staged_src:
+            inst_results = install(
+                root,
+                staged_src,
+                to_canonical,
+                strategy=strategy,
+                scope=scope,
+                force=force,
+                on_conflict=on_conflict,
+                home=home,
+                source=rec.source if rec else str(src_dir),
+                resolved_commit=rec.resolved_commit if rec else "",
+                version=rec.version if rec else "",
+                record_state=True,
+                skill_name_override=skill_name,
+                custom_paths=eff_custom,
+                isolated=isolated,
+            )
+            rem_targets = [fh for fh in from_canonical if fh not in to_canonical]
+            rem_results = (
+                uninstall(root, skill_name, rem_targets, scope=scope, home=home, record_state=True)
+                if rem_targets
+                else []
+            )
+        return [*inst_results, *rem_results]
+
+
+@contextlib.contextmanager
+def tempfile_staging_copy(
+    src_dir: Path,
+    skill_name: str,
+    root: Path,
+    *,
+    scope: str = "project",
+    home: Path | None = None,
+):
+    """Hold a temporary copy of *src_dir* while moving across harnesses."""
+    sdir = state_dir(root, scope=scope, home=home) / "tmp" / f"move-{uuid.uuid4().hex[:10]}"
+    stage_skill = sdir / skill_name
+    sdir.mkdir(parents=True, exist_ok=True)
+    try:
+        shutil.copytree(src_dir, stage_skill, symlinks=True)
+        yield stage_skill
+    finally:
+        shutil.rmtree(sdir, ignore_errors=True)
+        with contextlib.suppress(OSError):
+            if sdir.parent.is_dir() and not any(sdir.parent.iterdir()):
+                sdir.parent.rmdir()
+
+
+def adopt_skills(
+    root: Path,
+    skill_names: list[str] | None = None,
+    *,
+    scope: str = "project",
+    home: Path | None = None,
+    allow_risky: bool = False,
+) -> list[dict[str, object]]:
+    """Adopt existing unmanaged on-disk skills into Skillporter state (and manifest if present)."""
+    from .diagnose import diagnose as run_diagnose
+    from .frontmatter import validate
+    from .manifest import ManifestSkillSpec, load_manifest, save_manifest
+    from .security import scan_skill
+
+    root = root.resolve()
+    with workspace_lock(root):
+        diag = run_diagnose(root, scope=scope, home=home)
+        records = load_state(root, scope=scope, home=home)
+        wanted = set(skill_names) if skill_names else None
+
+        adopted: list[dict[str, object]] = []
+        for sname, copies in sorted(diag.skill_copies.items()):
+            if wanted is not None and sname not in wanted:
+                continue
+            if sname in records and wanted is None:
+                continue
+
+            primary_copy = copies[0]
+            doc = parse_skill(primary_copy / "SKILL.md")
+            spec_errs = [i for i in validate(doc) if i.level == "error"]
+            if spec_errs:
+                raise InstallError(f"cannot adopt invalid skill {sname!r}: {spec_errs[0]}")
+
+            srep = scan_skill(primary_copy)
+            if srep.has_structural_escape:
+                raise InstallError(f"cannot adopt {sname!r}: structural symlink/path escape detected")
+            if (not srep.passed or not srep.scan_complete) and not allow_risky:
+                raise InstallError(
+                    f"cannot adopt {sname!r}: blocked by static security policy "
+                    f"(risk {srep.risk_score}/100; pass --allow-risky after reviewing `skillporter scan`)"
+                )
+
+            loaded_harnesses = sorted(h for h, rep in diag.reports.items() if rep.loads(sname))
+            meta = doc.frontmatter.get("metadata")
+            ver = str(meta.get("version", "1.0.0")) if isinstance(meta, dict) else "1.0.0"
+            try:
+                rel_src = "./" + primary_copy.resolve().relative_to(root).as_posix()
+            except ValueError:
+                rel_src = str(primary_copy)
+
+            rec = record_installation(
+                root,
+                skill_name=sname,
+                source=rel_src,
+                skill_dir=primary_copy,
+                harnesses=loaded_harnesses,
+                destinations=copies,
+                strategy="copy",
+                scope=scope,
+                version=ver,
+                home=home,
+            )
+            adopted.append(
+                {
+                    "name": sname,
+                    "version": rec.version,
+                    "tree_hash": rec.tree_hash,
+                    "harnesses": rec.harnesses,
+                    "source": rec.source,
+                }
+            )
+
+        if wanted is not None:
+            found_names = set(diag.skill_copies)
+            missing_wanted = sorted(wanted - found_names)
+            if missing_wanted:
+                raise InstallError(f"skill(s) not found on disk to adopt: {', '.join(missing_wanted)}")
+
+        if scope == "project" and adopted:
+            manifest = load_manifest(root)
+            if manifest is not None:
+                existing_m = {s.name for s in manifest.skills}
+                for item in adopted:
+                    iname = str(item["name"])
+                    if iname not in existing_m:
+                        manifest.skills.append(
+                            ManifestSkillSpec(
+                                name=iname,
+                                source=str(item["source"]),
+                                version=str(item["version"]),
+                                harnesses=list(item["harnesses"]),  # type: ignore[arg-type]
+                            )
+                        )
+                save_manifest(root, manifest)
+
+        return adopted

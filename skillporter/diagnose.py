@@ -139,6 +139,79 @@ class Diagnosis:
         return True
 
 
+def load_custom_harness_paths(
+    root: Path,
+    *,
+    scope: str = "project",
+    explicit: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Resolve safe custom harness directory overrides from manifest, env, and CLI."""
+    merged: dict[str, str] = {}
+    if scope == "project":
+        from .manifest import load_manifest
+
+        manifest = load_manifest(root)
+        if manifest and manifest.harness_paths:
+            for hk, hp in manifest.harness_paths.items():
+                with contextlib.suppress(KeyError):
+                    merged[harnesses.get(hk).name] = hp
+
+    env_raw = os.environ.get("SKILLPORTER_HARNESS_PATHS", "").strip()
+    if env_raw:
+        for pair in env_raw.split(","):
+            if "=" not in pair:
+                continue
+            hk, _, hp = pair.partition("=")
+            hk_s, hp_s = hk.strip(), hp.strip()
+            if hk_s and hp_s:
+                with contextlib.suppress(KeyError):
+                    merged[harnesses.get(hk_s).name] = hp_s
+
+    if explicit:
+        for hk, hp in explicit.items():
+            if hk and hp:
+                with contextlib.suppress(KeyError):
+                    merged[harnesses.get(hk).name] = hp
+
+    validated: dict[str, str] = {}
+    for hname, raw_p in merged.items():
+        norm = raw_p.strip().replace("\\", "/")
+        parts = [seg for seg in norm.split("/") if seg]
+        if not norm or ".." in parts or norm.startswith("/") or (len(norm) > 1 and norm[1] == ":"):
+            raise ValueError(
+                f"unsafe custom harness path {raw_p!r} for {hname!r}: relative path without '..' required"
+            )
+        validated[hname] = raw_p.strip()
+    return validated
+
+
+def select_harness_install_raw_path(
+    h: harnesses.Harness,
+    scope: str,
+    *,
+    custom_paths: dict[str, str] | None = None,
+    isolated: bool = False,
+) -> str | None:
+    """Choose the target raw directory path for *h* in *scope*.
+
+    Honors ``custom_paths`` first. When ``isolated=True`` and *h* offers a
+    dedicated non-shared native directory (such as ``.cursor/skills`` or
+    ``.gemini/skills`` alongside shared ``.agents/skills``), prefers the
+    harness-specific directory so installations do not leak into other
+    ``.agents/skills`` harnesses.
+    """
+    if custom_paths and h.name in custom_paths:
+        return custom_paths[h.name]
+    paths = h.project_paths if scope == "project" else h.user_paths
+    if not paths:
+        return None
+    if isolated:
+        for sp in paths:
+            if not sp.is_compatibility and sp.path != ".agents/skills":
+                return sp.path
+    return paths[0].path
+
+
 def resolve_path(raw: str, scope: str, root: Path, home: Path | None = None) -> Path:
     """Resolve a harness path to an absolute location.
 
@@ -227,6 +300,7 @@ def diagnose(
     home: Path | None = None,
     scope: str = "project",
     check_drift: bool = True,
+    custom_paths: dict[str, str] | None = None,
 ) -> Diagnosis:
     """Diagnose skill reachability, broken links, content drift, and duplicates.
 
@@ -243,31 +317,36 @@ def diagnose(
         recover_interrupted_transactions(root, scope=scope, home=home)
 
     diag = Diagnosis(root=root)
+    eff_custom = load_custom_harness_paths(root, scope=scope, explicit=custom_paths)
 
     all_copies: dict[str, dict[str, str]] = {}  # skill_name -> {rel_dir: tree_hash}
     seen: set[str] = set()
-    for skill_md in discover(root):
-        skill_dir = skill_md.parent
-        name = skill_dir.name
-        try:
-            rel_dir = skill_dir.resolve().relative_to(root).as_posix()
-        except ValueError:
-            rel_dir = str(skill_dir)
-        thash, _ = compute_tree_hash(skill_dir)
-        if thash:
-            all_copies.setdefault(name, {})[rel_dir] = thash
+    if scope == "project":
+        for skill_md in discover(root):
+            skill_dir = skill_md.parent
+            name = skill_dir.name
+            try:
+                rel_dir = skill_dir.resolve().relative_to(root).as_posix()
+            except ValueError:
+                rel_dir = str(skill_dir)
+            thash, _ = compute_tree_hash(skill_dir)
+            if thash:
+                all_copies.setdefault(name, {})[rel_dir] = thash
 
-        # Always validate every discovered copy so a corrupted secondary copy is never missed
-        copy_issues = validate(parse_skill(skill_md))
-        diag.issues[str(skill_dir)] = copy_issues
-        diag.skill_copies.setdefault(name, []).append(skill_dir)
+            # Always validate every discovered copy so a corrupted secondary copy is never missed
+            copy_issues = validate(parse_skill(skill_md))
+            diag.issues[str(skill_dir)] = copy_issues
+            diag.skill_copies.setdefault(name, []).append(skill_dir)
 
-        if name in seen:
-            continue
-        seen.add(name)
-        diag.skills.append(skill_md)
+            if name in seen:
+                continue
+            seen.add(name)
+            diag.skills.append(skill_md)
 
     selected = only or list(harnesses.HARNESSES)
+    loc_cache: dict[tuple[Path, bool], Location] = {}
+    scanned_user_roots: set[Path] = set()
+
     for name in selected:
         h = harnesses.get(name)
         report = HarnessReport(
@@ -277,17 +356,39 @@ def diagnose(
             support_status=h.support_status,
             verification_level=h.verification_level,
         )
-        wanted = h.project_paths if scope == "project" else h.user_paths
+        wanted = list(h.project_paths if scope == "project" else h.user_paths)
+        if h.name in eff_custom:
+            custom_raw = eff_custom[h.name]
+            if all(p.path != custom_raw for p in wanted):
+                wanted.insert(0, harnesses.SkillPath(custom_raw, scope, "custom override"))
         seen_in_harness: dict[str, list[str]] = {}
         for p in wanted:
-            loc = scan_location(
-                h.name,
-                p.path,
-                p.scope,
-                root,
-                recursive=h.recursive,
-                home=home,
+            resolved_p = resolve_path(p.path, p.scope, root, home)
+            cache_key = (resolved_p, h.recursive)
+            cached = loc_cache.get(cache_key)
+            if cached is None:
+                cached = scan_location(
+                    h.name,
+                    p.path,
+                    p.scope,
+                    root,
+                    recursive=h.recursive,
+                    home=home,
+                )
+                loc_cache[cache_key] = cached
+            loc = Location(
+                harness=h.name,
+                raw_path=p.path if p.scope == "project" else str(resolved_p),
+                resolved=cached.resolved,
+                exists=cached.exists,
+                skill_dirs=list(cached.skill_dirs),
+                broken_links=list(cached.broken_links),
+                is_bridge=cached.is_bridge,
+                skill_hashes=dict(cached.skill_hashes),
+                duplicate_paths=dict(cached.duplicate_paths),
             )
+            if scope == "user" and loc.exists:
+                scanned_user_roots.add(loc.resolved)
             report.locations.append(loc)
             report.reachable_skills.update(loc.skill_dirs)
             for sname in loc.skill_dirs:
@@ -303,6 +404,27 @@ def diagnose(
                 diag.duplicates.setdefault(h.name, {})[sname] = raw_paths
 
         diag.reports[h.name] = report
+
+    if scope == "user":
+        effective_home = (home or Path(os.path.expanduser("~"))).resolve()
+        for uroot in sorted(scanned_user_roots):
+            for skill_md in discover(uroot):
+                skill_dir = skill_md.parent
+                sname = skill_dir.name
+                try:
+                    rel_dir = "~/" + skill_dir.resolve().relative_to(effective_home).as_posix()
+                except ValueError:
+                    rel_dir = str(skill_dir)
+                thash, _ = compute_tree_hash(skill_dir)
+                if thash:
+                    all_copies.setdefault(sname, {})[rel_dir] = thash
+                copy_issues = validate(parse_skill(skill_md))
+                diag.issues[str(skill_dir)] = copy_issues
+                if skill_dir not in diag.skill_copies.setdefault(sname, []):
+                    diag.skill_copies[sname].append(skill_dir)
+                if sname not in seen:
+                    seen.add(sname)
+                    diag.skills.append(skill_md)
 
     # Content-drift check across copies of the same skill
     if check_drift:
@@ -329,29 +451,49 @@ def diagnose(
             f"skill {sname!r} has content drift across copies: {locs_summary}"
         )
 
-    if only is not None:
-        required_set = {harnesses.get(h).name for h in only}
-    elif scope == "user":
-        required_set = set(harnesses.CORE_HARNESS_NAMES)
-    else:
-        required_set = {"claude-code", "codex", "cursor"}
+    from .manifest import load_manifest
+    from .state import load_state
+
+    manifest = load_manifest(root) if scope == "project" else None
+    manifest_skill_map = {s.name: s for s in manifest.skills} if (manifest and manifest.skills) else {}
+    state_records = load_state(root, scope=scope, home=home)
+
+    explicit_only_set = {harnesses.get(h).name for h in only} if only is not None else None
+    default_project_set = {"claude-code", "codex", "cursor"}
+    if scope == "project":
         for hname, rep in diag.reports.items():
             if any(loc.exists for loc in rep.locations):
-                required_set.add(hname)
-        from .manifest import load_manifest
-
-        manifest = load_manifest(root)
+                default_project_set.add(hname)
         if manifest and manifest.harnesses:
             for mh in manifest.harnesses:
                 with contextlib.suppress(KeyError):
-                    required_set.add(harnesses.get(mh).name)
+                    default_project_set.add(harnesses.get(mh).name)
 
     for skill_md in diag.skills:
         skill = skill_md.parent.name
-        missing = sorted(h for h in required_set if h in diag.reports and not diag.reports[h].loads(skill))
+        if explicit_only_set is not None:
+            skill_required = explicit_only_set
+        elif skill in manifest_skill_map and manifest_skill_map[skill].harnesses:
+            skill_required = set()
+            for mh in manifest_skill_map[skill].harnesses:
+                with contextlib.suppress(KeyError):
+                    skill_required.add(harnesses.get(mh).name)
+        elif skill in state_records and state_records[skill].harnesses:
+            skill_required = set()
+            for sh in state_records[skill].harnesses:
+                with contextlib.suppress(KeyError):
+                    skill_required.add(harnesses.get(sh).name)
+        elif scope == "user":
+            skill_required = set()
+        else:
+            skill_required = default_project_set
+
+        if not skill_required:
+            continue
+        missing = sorted(h for h in skill_required if h in diag.reports and not diag.reports[h].loads(skill))
         if not missing:
             continue
-        loaded = sorted(h for h in required_set if h in diag.reports and diag.reports[h].loads(skill))
+        loaded = sorted(h for h in skill_required if h in diag.reports and diag.reports[h].loads(skill))
         diag.findings.append(
             f"skill {skill!r} is not visible to: {', '.join(missing)}"
             + (f" (visible to: {', '.join(loaded)})" if loaded else " (visible to no harness)")

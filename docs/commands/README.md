@@ -4,7 +4,7 @@
 skillporter <command> [options]
 ```
 
-Every command accepts `--help`. Most commands accept `--json` (or `--format json`) for machine-readable output.
+Every command accepts `--help`, `-q` / `--quiet`, `-v` / `--verbose`, and `--no-color`. Most commands accept `--json` (or `--format json`) for machine-readable output.
 
 ## Exit codes
 
@@ -28,7 +28,11 @@ skillporter add anthropics/skills --skill pdf --harness all
 
 | Option | Description |
 |---|---|
-| `--harness <id>` | Target harness, or `all`. Repeat the flag for several harnesses. |
+| `--harness <id>` | Target harness, or `all`, `compatible`, or `detected`. Repeat the flag for several harnesses. |
+| `--exclude-harness <id>` | Exclude specific harnesses from target selection. Repeatable or comma-separated. |
+| `--on-conflict fail\|skip\|overwrite` | Conflict policy when a destination already exists (`fail` by default). |
+| `--isolated` | Prefer dedicated harness folders (such as `.cursor/skills`) over shared `.agents/skills`. |
+| `--custom-path <harness=rel/dir>` | Override a harness install directory within the active scope. |
 | `--skill <name>` | Select a skill from a repository that contains several. Repeatable. |
 | `--ref <ref>` | Git branch, tag or commit to resolve. |
 | `--strategy copy\|symlink` | `copy` is the default and is safe in Docker and CI. `symlink` creates relative links. |
@@ -60,7 +64,37 @@ Remove a skill from one or more harnesses. `uninstall` is an alias. A shared `.a
 skillporter remove pdf --harness cursor
 ```
 
-Options: `--harness`, `--scope`, `--path`, `--dry-run`.
+Options: `--harness`, `--exclude-harness`, `--scope`, `--path`, `--dry-run`.
+
+### `skillporter move <skill>`
+
+Move an installed skill from one set of harnesses to another atomically (`--from` and `--to` are required). Pass `--isolated` when moving to a harness with a dedicated folder (such as `.cursor/skills` or `.gemini/skills`) without sharing `.agents/skills`.
+
+```bash
+skillporter move pdf --from claude-code --to cursor --isolated
+```
+
+Options: `--from`, `--to`, `--exclude-harness`, `--scope`, `--strategy`, `--path`, `--on-conflict`, `--force`, `--isolated`, `--custom-path`, `--dry-run`.
+
+### `skillporter adopt [skills...]`
+
+Bring existing unmanaged on-disk skills under Skillporter tracking (`state.json` and `skillporter.yaml`) after running specification validation and static security scanning.
+
+```bash
+skillporter adopt --all
+```
+
+Options: `--all`, `--path`, `--scope`, `--allow-risky`.
+
+### `skillporter outdated [skill]`
+
+Compare managed skills against their upstream sources (version, commit, and SHA-256 tree hash) without modifying any files.
+
+```bash
+skillporter outdated
+```
+
+Options: `--path`, `--scope`.
 
 ### `skillporter update [skill]`
 
@@ -191,6 +225,68 @@ Validate `SKILL.md` files against the Agent Skills specification and compute the
 Experimental. Produces a non-mutating dry-run trace of what a skill's instructions and scripts reference. It does not execute the skill and is not a runtime sandbox. Treat its output as a hint.
 
 See [Security scanning](../security-scanning/README.md) for finding codes and scoring.
+
+## Portable environments and profiles
+
+### `skillporter export [output.skillpack]`
+
+Package your managed skill environment into a self-contained, SHA-256 verified `.skillpack` archive (`skillpack.json` + deduplicated `skills/<name>/` contents + lockfile metadata + saved profiles). Automatically strips `.env*`, private keys, and `.git/`, and refuses to export skills containing embedded credentials.
+
+```bash
+skillporter export my-environment.skillpack
+skillporter export personal.skillpack --scope user
+```
+
+Options: `--path`, `--scope`, `--skill` (repeatable), `--managed-only`, `--manifest-only`.
+
+### `skillporter import <file.skillpack>`
+
+Validate archive structure and per-file SHA-256 hashes, run static security checks on every skill without executing scripts, detect missing harnesses on the destination machine, and restore the environment offline.
+
+```bash
+skillporter import my-environment.skillpack --dry-run
+skillporter import my-environment.skillpack --only-detected --on-conflict skip
+```
+
+Options: `--path`, `--scope`, `--harness`, `--exclude-harness`, `--only-detected`, `--on-conflict fail|skip|overwrite`, `--force`, `--dry-run`, `--preview`, `--allow-risky`, `--max-risk-score`, `--no-manifest`.
+
+### `skillporter diff <target>`
+
+Compare the current workspace (or `--base`) against a `.skillpack` archive, another workspace directory, or `profile:<name>`. Exits `0` when identical and `1` when differences exist.
+
+```bash
+skillporter diff my-environment.skillpack
+```
+
+Options: `--base`, `--scope`.
+
+### `skillporter profile <list|save|show|use|delete>`
+
+Manage named skill environments stored as standard `ProjectManifest` YAML files under `.skillporter/profiles/<name>.yaml`.
+
+```bash
+skillporter profile save security-review
+skillporter profile list
+skillporter profile use security-review --prune
+```
+
+### `skillporter harness <list|inspect|status>`
+
+Inspect supported, compatible, detected, selected, and configured harnesses, including shared `.agents/skills` peers and isolated path options.
+
+```bash
+skillporter harness list --detected
+skillporter harness inspect cursor
+skillporter harness status
+```
+
+### `skillporter self-skill [install|show|path]`
+
+Install or view the official bundled `skillporter` AI agent skill so coding agents can operate Skillporter directly.
+
+```bash
+skillporter self-skill install --harness detected
+```
 
 ## Packaging and catalog
 

@@ -222,9 +222,11 @@ function checkCommand(line, where) {
     }
     return;
   }
-  const spec = cliData.commands[name];
+  let spec = cliData.commands[name];
   assert.ok(spec, `${where}: "${line}" uses a command that does not exist: ${name}`);
-  for (const token of tokens.slice(1)) {
+  const subName = tokens[1];
+  const argStart = subName && spec.subcommands?.[subName] ? ((spec = spec.subcommands[subName]), 2) : 1;
+  for (const token of tokens.slice(argStart)) {
     if (!token.startsWith('--')) continue;
     const flag = token.split('=')[0].replace(/[),.;`]+$/, '');
     assert.ok(spec.flags.includes(flag) || flag === '--help', `${where}: "${line}" uses an unknown flag for ${name}: ${flag}`);

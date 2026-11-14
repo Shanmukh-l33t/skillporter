@@ -1,33 +1,12 @@
 # exit: 0
 $ skillporter status
-skillporter 3.0.1 — workspace status for ~/acme-api
+skillporter 3.0.1 · environment status (project)  [HEALTHY]
+  Location:           ~/acme-api
+  Config:             skillporter.yaml (present) · skillporter.lock (present (1 pinned))
+  Detected harnesses: aider, antigravity, claude-code, cline, codex, continue, cursor, gemini-cli, github-copilot, goose, hermes, junie, openclaw, opencode, openhands, replit, roo-code, windsurf, zed
+  Active targets:     aider, antigravity, claude-code, cline, codex, continue, cursor, gemini-cli, github-copilot, goose, hermes, junie, openclaw, opencode, openhands, replit, roo-code, windsurf, zed
+  Skills summary:     1 total (1 synced, 0 unmanaged, 0 needing attention)
 
-Manifest (skillporter.yaml): present
-Lockfile (skillporter.lock): present
-Detected harnesses: aider, antigravity, claude-code, cline, codex, continue, cursor, gemini-cli, github-copilot, goose, hermes, junie, openclaw, opencode, openhands, replit, roo-code, windsurf, zed
-Skills discovered:  1 (1 managed, 1 locked)
-Copy drift:         0 skill(s)
-Lockfile drift:     0 entry(ies)
-
-Per-Harness Installed vs. Locked State:
-  aider            pdf=INSTALLED_LOCKED
-  antigravity      pdf=INSTALLED_LOCKED
-  claude-code      pdf=INSTALLED_LOCKED
-  cline            pdf=INSTALLED_LOCKED
-  codex            pdf=INSTALLED_LOCKED
-  continue         pdf=INSTALLED_LOCKED
-  cursor           pdf=INSTALLED_LOCKED
-  gemini-cli       pdf=INSTALLED_LOCKED
-  github-copilot   pdf=INSTALLED_LOCKED
-  goose            pdf=INSTALLED_LOCKED
-  hermes           pdf=INSTALLED_LOCKED
-  junie            pdf=INSTALLED_LOCKED
-  openclaw         pdf=INSTALLED_LOCKED
-  opencode         pdf=INSTALLED_LOCKED
-  openhands        pdf=INSTALLED_LOCKED
-  replit           pdf=INSTALLED_LOCKED
-  roo-code         pdf=INSTALLED_LOCKED
-  windsurf         pdf=INSTALLED_LOCKED
-  zed              pdf=INSTALLED_LOCKED
-
-Status: HEALTHY
+  SKILL  VERSION  STATE   MANAGED  HARNESSES
+  -----  -------  ------  -------  --------------------------------------------
+  pdf    1.0.0    SYNCED  yes      aider, antigravity, claude-code, cline (+15)

@@ -85,6 +85,7 @@ class Recorder:
 
     def normalize(self, text: str) -> str:
         text = text.replace(str(self.workspace), DISPLAY_ROOT)
+        text = text.replace(str(self.workspace.parent / "laptop-b"), "~/laptop-b")
         text = re.sub(r"\S*/skillporter-demo-[A-Za-z0-9_]+", "/tmp/skillporter-demo-XXXXXXXX", text)
         return "\n".join(line.rstrip() for line in text.splitlines()).strip("\n") + "\n"
 
@@ -151,6 +152,15 @@ def main() -> int:
         rec.record("matrix", ("matrix",))
         rec.record("explain-drift", ("explain", "DRIFT"))
         rec.record("demo", ("demo",))
+
+        laptop_b = tmp / "laptop-b"
+        laptop_b.mkdir()
+        rec.record(
+            "portability",
+            ("export", "acme-api.skillpack"),
+            ("import", "acme-api.skillpack", "--path", "../laptop-b", "--only-detected", "--dry-run"),
+        )
+        (workspace / "acme-api.skillpack").unlink(missing_ok=True)
 
         unsafe = tmp / "unsafe-fixture"
         skill = unsafe / "skills" / "quick-setup"

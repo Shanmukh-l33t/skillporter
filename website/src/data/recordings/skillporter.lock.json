@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-14T16:31:47Z",
+  "generated_at": "2026-11-14T18:16:50Z",
   "manifest_schema_version": 2,
   "reproducible": true,
   "schema_version": 2,
@@ -44,7 +44,7 @@
         "windsurf",
         "zed"
       ],
-      "locked_at": "2026-11-14T16:31:46Z",
+      "locked_at": "2026-11-14T18:16:49Z",
       "manifest_schema_version": 2,
       "name": "pdf",
       "pin_state": "PINNED_COMMIT",

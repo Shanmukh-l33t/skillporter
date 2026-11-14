@@ -13,7 +13,8 @@ from ..diagnose import resolve_path
 from ..install import InstallError, rollback_skill, validate_skill_name_segment
 from ..install import uninstall as run_uninstall
 from ..state import load_state
-from .common import EXIT_ERROR, EXIT_OK, fmt_mode, resolve_target_harnesses
+from ..ui import action_symbol
+from .common import EXIT_ERROR, EXIT_OK, fmt_mode, is_quiet, resolve_target_harnesses
 
 
 def cmd_uninstall(args: argparse.Namespace) -> int:
@@ -24,7 +25,11 @@ def cmd_uninstall(args: argparse.Namespace) -> int:
     try:
         skill_name = validate_skill_name_segment(args.skill)
         targets = resolve_target_harnesses(
-            args.harness or ["all"], root, scope=args.scope, default_detected=True
+            args.harness or ["all"],
+            root,
+            scope=args.scope,
+            default_detected=True,
+            exclude_harnesses=getattr(args, "exclude_harness", None),
         )
         if dry_run:
             planned = []
@@ -73,8 +78,15 @@ def cmd_uninstall(args: argparse.Namespace) -> int:
         )
         return EXIT_OK
 
-    for r in results:
-        print(f"{r.action:16} {r.harness:12} {r.dest}")
+    if not is_quiet(args):
+        rem_cnt = sum(1 for r in results if r.action == "removed")
+        pres_cnt = sum(1 for r in results if r.action == "preserved-shared")
+        print(f"{action_symbol('removed')} Removed {skill_name!r} from {rem_cnt} destination(s) (source preserved)")
+        for r in results:
+            if r.action != "skipped":
+                print(f"  {action_symbol(r.action)} {r.harness:14} {r.action:16} {r.dest}")
+        if pres_cnt:
+            print("  Note: shared .agents/skills directory retained for active sibling harness(es)")
     return EXIT_OK
 
 

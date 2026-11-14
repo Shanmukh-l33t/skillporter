@@ -92,6 +92,8 @@ class ProjectManifest:
     max_risk_score: int | None = None
     security: SecurityConfig = field(default_factory=SecurityConfig)
     telemetry: TelemetryConfig = field(default_factory=TelemetryConfig)
+    harness_paths: dict[str, str] = field(default_factory=dict)
+    profile: str = ""
     skills: list[ManifestSkillSpec] = field(default_factory=list)
 
     def __post_init__(self) -> None:
@@ -121,8 +123,14 @@ class ProjectManifest:
                     f"  max_risk_score: {eff_score}",
                 ]
             )
+        if self.profile:
+            lines.append(f"profile: {self.profile}")
         if self.telemetry.enabled:
             lines.extend(["telemetry:", "  enabled: true"])
+        if self.harness_paths:
+            lines.append("harness_paths:")
+            for hk, hp in sorted(self.harness_paths.items()):
+                lines.append(f"  {hk}: {hp}")
         lines.append("harnesses:")
         for h in self.harnesses:
             lines.append(f"  - {h}")
@@ -316,6 +324,7 @@ def parse_manifest(text: str) -> ProjectManifest:
             for s in raw.get("skills", [])
             if isinstance(s, dict) and "name" in s and "source" in s
         ]
+        raw_hpaths = raw.get("harness_paths", {}) if isinstance(raw.get("harness_paths"), dict) else {}
         return ProjectManifest(
             schema_version=int(raw.get("schema_version", MANIFEST_SCHEMA_VERSION)),
             project=str(raw.get("project", "my-project")),
@@ -331,6 +340,8 @@ def parse_manifest(text: str) -> ProjectManifest:
                 sandbox=bool(sec_raw.get("sandbox", False)),
             ),
             telemetry=TelemetryConfig(enabled=bool(tel_raw.get("enabled", False))),
+            harness_paths={str(k): str(v) for k, v in raw_hpaths.items()},
+            profile=str(raw.get("profile", "")),
             skills=skills,
         )
 
@@ -380,6 +391,9 @@ def parse_manifest(text: str) -> ProjectManifest:
             elif k == "strategy":
                 manifest.strategy = _strip_quotes(v)
                 section = None
+            elif k == "profile":
+                manifest.profile = _strip_quotes(v)
+                section = None
             elif k == "security_policy":
                 manifest.security_policy = _strip_quotes(v)
                 manifest.security.policy = manifest.security_policy
@@ -392,6 +406,8 @@ def parse_manifest(text: str) -> ProjectManifest:
                 section = "security"
             elif k == "telemetry":
                 section = "telemetry"
+            elif k == "harness_paths":
+                section = "harness_paths"
             elif k == "harnesses":
                 if v.startswith("["):
                     manifest.harnesses = _parse_inline_list(v)
@@ -422,6 +438,14 @@ def parse_manifest(text: str) -> ProjectManifest:
             tk, _, tv = sline.partition(":")
             if tk.strip() == "enabled":
                 manifest.telemetry.enabled = _strip_quotes(tv.strip()).lower() in ("true", "1", "yes")
+            continue
+
+        if section == "harness_paths" and ":" in sline:
+            hk, _, hv = sline.partition(":")
+            hkey = _strip_quotes(hk.strip()).lower()
+            hval = _strip_quotes(hv.strip())
+            if hkey and hval:
+                manifest.harness_paths[hkey] = hval
             continue
 
         if section == "harnesses" and sline.startswith("- "):

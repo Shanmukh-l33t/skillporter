@@ -48,6 +48,8 @@ skills:
 | `scope` | `project` | `project` or `user`. |
 | `strategy` | `copy` | `copy` or `symlink`. |
 | `harnesses` | `claude-code`, `codex`, `cursor` | Default harnesses for every skill. |
+| `harness_paths` | none | Map of `harness: relative/path` overrides within the active scope. |
+| `profile` | none | Active named environment profile. |
 | `security.policy` | `HIGH` | Severity at or above which an install is blocked. |
 | `security.max_risk_score` | none | Block skills whose risk score is above this value. |
 | `security.engine` | `auto` | `auto`, `static` or `skillspector`. |

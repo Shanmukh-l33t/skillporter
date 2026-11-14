@@ -33,9 +33,12 @@ Skillporter is a local-first Python 3.9+ program with no runtime dependencies. O
 | `install.py`, `atomic.py`, `state.py` | Transactional planner and installer, shared-directory ownership, backups, crash recovery, rollback. |
 | `manifest.py`, `resolver.py` | `skillporter.yaml` parsing, `skillporter.lock` validation, reproducibility checks, dependency resolution. |
 | `harnesses.py` | The adapter registry and the declarative adapter loader. |
-| `diagnose.py` | Reachability, drift and duplicate detection. |
+| `diagnose.py` | Reachability, drift, duplicate detection and custom harness path selection. |
+| `environment.py` | Unified environment snapshot reconciling manifest, lockfile, state and disk, plus `diff_environments`. |
+| `portability.py` | Hybrid `.skillpack` archive export, SHA-256 integrity verification, secret filtering and offline restoration. |
+| `profiles.py` | Named environment profiles under `.skillporter/profiles/` and local store caching. |
 | `formats.py`, `frontmatter.py` | Specification validation and adapted rule file export. |
-| `mcp_server.py` | The JSON-RPC stdio server with read and write separation. |
+| `mcp_server.py`, `bundled_skill/` | The JSON-RPC stdio server and the official `skillporter` AI agent skill. |
 | `audit.py` | The scrubbed `.skillporter/audit.jsonl` event log. |
 
 ## An install, step by step

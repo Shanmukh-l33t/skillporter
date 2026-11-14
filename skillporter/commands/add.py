@@ -16,15 +16,34 @@ from ..manifest import ManifestSkillSpec, load_manifest, save_manifest
 from ..security import scan_skill
 from ..sources import SourceError, resolve_source
 from ..state import load_state
-from ..ui import BOLD, CYAN, badge, style
-from .common import EXIT_ERROR, EXIT_OK, EXIT_PROBLEM, fmt_mode, resolve_target_harnesses
+from ..ui import BOLD, CYAN, action_symbol, badge, render_next_steps, style
+from .common import (
+    EXIT_ERROR,
+    EXIT_OK,
+    EXIT_PROBLEM,
+    fmt_mode,
+    is_quiet,
+    is_verbose,
+    parse_custom_path_args,
+    resolve_target_harnesses,
+    shared_path_exclusion_notes,
+)
 
 
 def cmd_add(args: argparse.Namespace) -> int:
     root = Path(args.path).expanduser().resolve()
+    on_conflict = getattr(args, "on_conflict", "fail") or "fail"
+    isolated = bool(getattr(args, "isolated", False))
     try:
-        targets = resolve_target_harnesses(args.harness, root, scope=args.scope, default_detected=True)
-    except KeyError as exc:
+        custom_paths = parse_custom_path_args(getattr(args, "custom_path", None))
+        targets = resolve_target_harnesses(
+            args.harness,
+            root,
+            scope=args.scope,
+            default_detected=True,
+            exclude_harnesses=getattr(args, "exclude_harness", None),
+        )
+    except (KeyError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_ERROR
 
@@ -61,6 +80,9 @@ def cmd_add(args: argparse.Namespace) -> int:
             strategy=args.strategy,
             scope=args.scope,
             force=args.force,
+            on_conflict=on_conflict,
+            custom_paths=custom_paths,
+            isolated=isolated,
         )
 
         spec_errors: list[str] = []
@@ -109,7 +131,11 @@ def cmd_add(args: argparse.Namespace) -> int:
             )
             return EXIT_PROBLEM if (spec_errors or sec_critical or sec_high or risk_threshold_exceeded) else EXIT_OK
 
-        if not is_json:
+        if (
+            not is_json
+            and not is_quiet(args)
+            and (is_verbose(args) or args.dry_run or sec_critical or sec_high or spec_errors)
+        ):
             print(style("SKILLPORTER", BOLD, CYAN))
             print(f"\nSource: {resolved.kind}:{args.source}")
             if resolved.resolved_commit:
@@ -226,12 +252,9 @@ def cmd_add(args: argparse.Namespace) -> int:
             )
 
         if args.dry_run:
-            if not is_json:
+            if not is_json and not is_quiet(args):
                 print("\nDry run complete (no files modified).")
             return EXIT_OK
-
-        if not is_json:
-            print("\nInstalling...\n")
 
         try:
             all_results = install_many(
@@ -241,13 +264,16 @@ def cmd_add(args: argparse.Namespace) -> int:
                 strategy=args.strategy,
                 scope=args.scope,
                 force=args.force,
+                on_conflict=on_conflict,
                 source=resolved.canonical_source,
                 resolved_commit=resolved.resolved_commit,
                 record_state=True,
                 adapt=args.adapt,
+                custom_paths=custom_paths,
+                isolated=isolated,
             )
         except InstallError as exc:
-            print(f"error: {exc}", file=sys.stderr)
+            print(f"error: {exc} (pass --force or --on-conflict skip)", file=sys.stderr)
             return EXIT_ERROR
 
         record_audit_event(
@@ -303,12 +329,38 @@ def cmd_add(args: argparse.Namespace) -> int:
             )
             return EXIT_OK
 
-        for r in all_results:
-            label = harnesses.get(r.harness).label
-            status_str = "SUCCESS" if r.action in ("created", "updated", "unchanged") else r.action.upper()
-            print(f"{label:22} {badge(status_str)}  ({r.detail})")
-
-        print("\nInstallation verified.")
+        if not is_quiet(args):
+            created_cnt = sum(1 for r in all_results if r.action == "created")
+            updated_cnt = sum(1 for r in all_results if r.action == "updated")
+            shared_cnt = sum(1 for r in all_results if r.action == "unchanged")
+            skipped_cnt = sum(1 for r in all_results if r.action == "skipped")
+            s_names = ", ".join(d.name for d in skill_dirs)
+            print(
+                f"{action_symbol('installed')} Installed {style(s_names, BOLD)} across {len(targets)} harness(es) "
+                f"(+{created_cnt} created, ~{updated_cnt} updated, ={shared_cnt} deduplicated/unchanged"
+                + (f", !{skipped_cnt} skipped)" if skipped_cnt else ")")
+            )
+            for r in all_results:
+                if r.action != "unchanged" or is_verbose(args):
+                    label = harnesses.get(r.harness).label
+                    print(f"  {action_symbol(r.action)} {label:20} {r.action:10} ({r.detail})")
+            for note in shared_path_exclusion_notes(
+                targets,
+                getattr(args, "exclude_harness", None),
+                root,
+                scope=args.scope,
+                isolated=isolated,
+                custom_paths=custom_paths,
+            ):
+                print(f"  Note: {note}")
+            print("\nInstallation verified.")
+            print(
+                render_next_steps(
+                    [
+                        "skillporter status                # inspect installed state across harnesses",
+                    ]
+                )
+            )
         return EXIT_OK
     finally:
         resolved.cleanup()
@@ -322,12 +374,21 @@ def cmd_install(args: argparse.Namespace) -> int:
     allow_risky = bool(getattr(args, "allow_risky", False))
     dry_run = bool(getattr(args, "dry_run", False))
     is_json = fmt_mode(args) == "json"
+    on_conflict = getattr(args, "on_conflict", "fail") or "fail"
+    isolated = bool(getattr(args, "isolated", False))
     manifest = load_manifest(root)
     max_risk_score = manifest.max_risk_score if manifest is not None else None
 
     try:
-        targets = resolve_target_harnesses(args.harness, root, scope=args.scope, default_detected=False)
-    except KeyError as exc:
+        custom_paths = parse_custom_path_args(getattr(args, "custom_path", None))
+        targets = resolve_target_harnesses(
+            args.harness,
+            root,
+            scope=args.scope,
+            default_detected=False,
+            exclude_harnesses=getattr(args, "exclude_harness", None),
+        )
+    except (KeyError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_ERROR
 
@@ -394,7 +455,17 @@ def cmd_install(args: argparse.Namespace) -> int:
         scan_audit = {}
 
     if dry_run:
-        plan = plan_install(root, [skill_dir], targets, strategy=args.strategy, scope=args.scope, force=args.force)
+        plan = plan_install(
+            root,
+            [skill_dir],
+            targets,
+            strategy=args.strategy,
+            scope=args.scope,
+            force=args.force,
+            on_conflict=on_conflict,
+            custom_paths=custom_paths,
+            isolated=isolated,
+        )
         payload = {
             "dry_run": True,
             "skill": skill_dir.name,
@@ -404,7 +475,7 @@ def cmd_install(args: argparse.Namespace) -> int:
         }
         if is_json:
             print(json.dumps(payload, indent=2))
-        else:
+        elif not is_quiet(args):
             print(f"dry-run: would install {skill_dir.name} to {len(plan.destinations)} destination(s)")
         return EXIT_PROBLEM if plan.conflicts else EXIT_OK
 
@@ -416,11 +487,14 @@ def cmd_install(args: argparse.Namespace) -> int:
             strategy=args.strategy,
             scope=args.scope,
             force=args.force,
+            on_conflict=on_conflict,
             record_state=True,
             adapt=getattr(args, "adapt", False),
+            custom_paths=custom_paths,
+            isolated=isolated,
         )
     except (InstallError, KeyError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        print(f"error: {exc} (pass --force or --on-conflict skip)", file=sys.stderr)
         return EXIT_ERROR
 
     record_audit_event(
@@ -452,8 +526,18 @@ def cmd_install(args: argparse.Namespace) -> int:
         )
         return EXIT_OK
 
-    for r in results:
-        print(f"{r.action:9} {r.harness:12} {r.dest}  ({r.detail})")
+    if not is_quiet(args):
+        for r in results:
+            print(f"  {action_symbol(r.action)} {r.action:9} {r.harness:14} {r.dest}  ({r.detail})")
+        for note in shared_path_exclusion_notes(
+            targets,
+            getattr(args, "exclude_harness", None),
+            root,
+            scope=args.scope,
+            isolated=isolated,
+            custom_paths=custom_paths,
+        ):
+            print(f"  Note: {note}")
     return EXIT_OK
 
 

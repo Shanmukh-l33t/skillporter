@@ -176,7 +176,7 @@ def test_bare_invocation_on_a_terminal_still_prints_help(monkeypatch, capsys):
 
     from skillporter import cli
 
-    with open(os.devnull, "r") as devnull:
+    with open(os.devnull) as devnull:
         monkeypatch.setattr(sys, "stdin", devnull)
         rc = cli.main([])
 

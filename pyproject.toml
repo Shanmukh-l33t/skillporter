@@ -55,10 +55,16 @@ Issues = "https://github.com/Shanmukh-l33t/skillporter/issues"
 Changelog = "https://github.com/Shanmukh-l33t/skillporter/blob/main/CHANGELOG.md"
 
 [tool.setuptools]
-packages = ["skillporter", "skillporter.commands"]
+packages = [
+  "skillporter",
+  "skillporter.commands",
+  "skillporter.bundled_skill",
+  "skillporter.bundled_skill.skillporter",
+]
 
 [tool.setuptools.package-data]
 skillporter = ["py.typed"]
+"skillporter.bundled_skill.skillporter" = ["SKILL.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

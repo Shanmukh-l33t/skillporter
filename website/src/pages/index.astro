@@ -52,19 +52,29 @@ const workflow: WorkflowCommand[] = [
     docs: '/docs/skill-management',
   },
   {
+    command: 'skillporter status',
+    does: 'Shows manifest, lockfile, active profile, managed vs. unmanaged skills and drift in one view.',
+    docs: '/docs/cli#skillporter-status-path',
+  },
+  {
+    command: 'skillporter export team.skillpack',
+    does: 'Packages skills, provenance, lockfile hashes and profiles into a SHA-256 verified offline archive.',
+    docs: '/docs/portability',
+  },
+  {
+    command: 'skillporter import team.skillpack --dry-run',
+    does: 'Verifies archive hashes, scans bundled skills and previews destination and harness compatibility.',
+    docs: '/docs/portability#importing-and-restoring-an-environment',
+  },
+  {
+    command: 'skillporter diff team.skillpack',
+    does: 'Compares your current setup against a .skillpack archive, another project or a named profile.',
+    docs: '/docs/portability#comparing-environments',
+  },
+  {
     command: 'skillporter scan .',
     does: 'Runs the static security assessment on every skill in the workspace.',
     docs: '/docs/security-scanning',
-  },
-  {
-    command: 'skillporter scan . --format sarif',
-    does: 'The same assessment as SARIF 2.1.0, for code scanning tools.',
-    docs: '/docs/ci',
-  },
-  {
-    command: 'skillporter init',
-    does: 'Writes skillporter.yaml from the skills and harnesses found in the workspace.',
-    docs: '/docs/configuration',
   },
   {
     command: 'skillporter sync',
@@ -77,14 +87,9 @@ const workflow: WorkflowCommand[] = [
     docs: '/docs/lockfiles',
   },
   {
-    command: 'skillporter diagnose .',
-    does: 'Shows which harnesses see each skill, and reports drift, duplicates and broken symlinks.',
-    docs: '/docs/troubleshooting',
-  },
-  {
-    command: 'skillporter audit .',
-    does: 'Reports each skill’s origin and posture, lockfile integrity and recorded risk overrides.',
-    docs: '/docs/security',
+    command: 'skillporter self-skill install --harness detected',
+    does: 'Installs the official Skillporter skill into your detected AI coding agents.',
+    docs: '/docs/mcp',
   },
   {
     command: 'skillporter rollback pdf',
@@ -93,24 +98,30 @@ const workflow: WorkflowCommand[] = [
   },
 ];
 
-const commands = cliData.commands as Record<string, { flags: string[] }>;
+interface CliSpec {
+  flags: string[];
+  subcommands?: Record<string, CliSpec>;
+}
+const commands = cliData.commands as Record<string, CliSpec>;
 for (const { command } of workflow) {
   const [, name, ...rest] = command.split(' ');
-  const spec = name ? commands[name] : undefined;
+  let spec = name ? commands[name] : undefined;
   if (!spec) throw new Error(`Home page shows an unknown command: ${command}`);
-  for (const flag of rest.filter((part) => part.startsWith('--'))) {
+  const subName = rest[0];
+  const flagTokens = subName && spec.subcommands?.[subName] ? ((spec = spec.subcommands[subName]), rest.slice(1)) : rest;
+  for (const flag of flagTokens.filter((part) => part.startsWith('--'))) {
     if (!spec.flags.includes(flag)) throw new Error(`Home page shows an unknown flag: ${command}`);
   }
 }
 
-const addExamples = `# A skill from a GitHub repository, for every harness
-skillporter add anthropics/skills --skill pdf --harness all
+const addExamples = `# A skill from a GitHub repository, for every compatible harness except Windsurf
+skillporter add anthropics/skills --skill pdf --harness compatible --exclude-harness windsurf
 
-# A subdirectory pinned to a tag, for two harnesses
-skillporter add owner/repo/skills/pdf@v1.2.0 --harness claude-code --harness codex
+# A subdirectory pinned to a tag, skipping any pre-existing unmanaged destination
+skillporter add owner/repo/skills/pdf@v1.2.0 --harness claude-code --harness codex --on-conflict skip
 
-# A local directory, previewed without writing anything
-skillporter add ./skills/release-notes --harness all --dry-run`;
+# A local directory, installed into Cursor's dedicated folder without sharing .agents/skills
+skillporter install ./skills/release-notes --harness cursor --isolated --dry-run`;
 
 const actionExample = `- uses: actions/checkout@v4
 - uses: Shanmukh-l33t/skillporter@${release.tag}
@@ -119,11 +130,11 @@ const actionExample = `- uses: actions/checkout@v4
     lock-check: "true"
     max-risk-score: "30"`;
 
-const mcpExample = `# Read-only: detect, diagnose, scan, inspect, matrix
-claude mcp add skillporter -- uvx skillporter mcp
+const mcpExample = `# Install the official Skillporter skill into your detected coding agents
+skillporter self-skill install --harness detected
 
-# Opt in to add, install, sync and remove
-claude mcp add skillporter -- uvx skillporter mcp --allow-writes`;
+# Or register the workspace-bounded MCP server (read-only by default; 13 tools)
+claude mcp add skillporter -- uvx skillporter mcp`;
 
 const problems = [
   {
@@ -327,8 +338,8 @@ const structuredData = [
             </span>
           </h1>
           <p class="hero__lead">
-            Install, synchronize, pin, inspect and manage AI agent skills across the tools you use. Skill Porter
-            keeps one consistent workflow for your entire agent ecosystem.
+            Install, synchronize, pin, inspect and move AI agent skills across harnesses, projects and machines. Skill
+            Porter keeps one reproducible, local-first workflow for your entire agent environment.
           </p>
           <div class="hero__actions">
             <a class="btn btn--primary" href="/docs/getting-started">Get Started</a>
@@ -427,21 +438,35 @@ const structuredData = [
             </p>
             <ul class="ticks">
               <li>Copy by default, relative symlinks on request</li>
-              <li>Project scope or user scope</li>
-              <li>Adapted rule files for harnesses that use them</li>
-              <li>Removal that keeps a shared copy while another harness owns it</li>
+              <li>Include, exclude or isolate specific harnesses</li>
+              <li>Project scope, user scope and named profiles</li>
+              <li>Removal and cross-harness move that keep shared copies intact</li>
             </ul>
             <a class="arrow-link" href="/docs/skill-management">Skill management</a>
           </div>
           <CodeFrame
             code={addExamples}
             lang="bash"
-            title="skillporter add"
-            copy="skillporter add anthropics/skills --skill pdf --harness all"
+            title="selective harness control"
+            copy="skillporter add anthropics/skills --skill pdf --harness compatible"
           />
         </article>
 
         <article class="feature feature--flip">
+          <div class="feature__text">
+            <h3>Portable environments and profiles</h3>
+            <p>
+              <code class="ic">export</code> packages your managed skills, provenance, lockfile hashes and named
+              profiles into a single <code class="ic">.skillpack</code> archive, stripping <code class="ic">.env</code>
+              files and blocking embedded secrets. <code class="ic">diff</code> compares setups, and
+              <code class="ic">import</code> verifies every file hash and scans statically before restoring offline.
+            </p>
+            <a class="arrow-link" href="/docs/portability">Portability and profiles</a>
+          </div>
+          <Transcript recording="portability" title="offline .skillpack export and restoration preview" wrap />
+        </article>
+
+        <article class="feature">
           <div class="feature__text">
             <h3>Synchronization and drift detection</h3>
             <p>

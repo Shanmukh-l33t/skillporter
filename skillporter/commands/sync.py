@@ -33,7 +33,17 @@ from ..resolver import DependencyConflictError, DependencyCycleError, Dependency
 from ..security import compute_tree_hash, scan_skill
 from ..sources import resolve_source
 from ..state import load_state
-from .common import EXIT_ERROR, EXIT_OK, EXIT_PROBLEM, fmt_mode, latest_tree_mtime_ns, resolve_target_harnesses
+from ..ui import action_symbol
+from .common import (
+    EXIT_ERROR,
+    EXIT_OK,
+    EXIT_PROBLEM,
+    fmt_mode,
+    is_quiet,
+    is_verbose,
+    latest_tree_mtime_ns,
+    resolve_target_harnesses,
+)
 
 
 def cmd_init(args: argparse.Namespace) -> int:
@@ -242,7 +252,17 @@ def cmd_sync(args: argparse.Namespace) -> int:
             print(f"error: {exc}", file=sys.stderr)
             return EXIT_PROBLEM
         has_existing_lock = (root / LOCKFILE_FILENAME).is_file()
-        targets = resolve_target_harnesses(args.harness, root, scope=args.scope, default_detected=True)
+        try:
+            targets = resolve_target_harnesses(
+                args.harness,
+                root,
+                scope=args.scope,
+                default_detected=True,
+                exclude_harnesses=getattr(args, "exclude_harness", None),
+            )
+        except KeyError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return EXIT_ERROR
         force_flag = getattr(args, "force", False)
         prefer_path = getattr(args, "prefer", None)
         allow_risky = getattr(args, "allow_risky", False)
@@ -545,8 +565,17 @@ def cmd_sync(args: argparse.Namespace) -> int:
         )
         return EXIT_OK
 
-    for r in synced_results:
-        print(f"{r.action:9} {r.harness:16} {r.dest}")
+    if not is_quiet(args):
+        created_c = sum(1 for r in synced_results if r.action == "created")
+        updated_c = sum(1 for r in synced_results if r.action == "updated")
+        unchanged_c = sum(1 for r in synced_results if r.action == "unchanged")
+        print(
+            f"{action_symbol('synced')} Synchronized {len({r.skill for r in synced_results})} skill(s) "
+            f"across {len(targets)} harness(es) (+{created_c} created, ~{updated_c} updated, ={unchanged_c} unchanged)"
+        )
+        for r in synced_results:
+            if r.action != "unchanged" or is_verbose(args):
+                print(f"  {action_symbol(r.action)} {r.action:9} {r.harness:16} {r.dest}")
     return EXIT_OK
 
 

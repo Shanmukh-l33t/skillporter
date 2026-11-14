@@ -18,8 +18,22 @@ const tabs: Tab[] = [
     id: 'install',
     label: 'Install',
     recording: 'add',
-    caption: 'One skill from GitHub, installed for all 19 harnesses. Twelve directories are written, not nineteen.',
+    caption: 'One skill from GitHub, installed for all 19 harnesses. Twelve directories are written, seven shared paths deduplicated.',
     docs: { href: '/docs/skill-management', text: 'Skill management' },
+  },
+  {
+    id: 'status',
+    label: 'Status',
+    recording: 'status',
+    caption: 'Unified environment view reconciling the manifest, the lockfile, managed ownership and on-disk harness reachability.',
+    docs: { href: '/docs/cli#skillporter-status-path', text: 'CLI reference' },
+  },
+  {
+    id: 'portability',
+    label: 'Export & restore',
+    recording: 'portability',
+    caption: 'Package the workspace into an offline .skillpack archive and preview restoring it onto another machine.',
+    docs: { href: '/docs/portability', text: 'Portability and profiles' },
   },
   {
     id: 'diagnose',

@@ -43,6 +43,8 @@ MCP_READ_TOOLS = frozenset(
         "skillporter_scan",
         "skillporter_inspect",
         "skillporter_matrix",
+        "skillporter_status",
+        "skillporter_diff",
     }
 )
 
@@ -52,6 +54,8 @@ MCP_WRITE_TOOLS = frozenset(
         "skillporter_install",
         "skillporter_sync",
         "skillporter_remove",
+        "skillporter_export",
+        "skillporter_import",
     }
 )
 
@@ -471,6 +475,73 @@ MCP_TOOLS = [
                 "path": {"type": "string", "default": "."},
             },
             "required": ["skill", "harnesses"],
+        },
+    },
+    {
+        "name": "skillporter_status",
+        "description": (
+            "[READ] Return the unified workspace environment snapshot (managed, unmanaged, orphaned, "
+            "drifted, and per-harness skill states)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "default": "."},
+                "scope": {"type": "string", "enum": ["project", "user"], "default": "project"},
+            },
+        },
+    },
+    {
+        "name": "skillporter_diff",
+        "description": (
+            "[READ] Compare the workspace environment against a workspace-relative .skillpack archive "
+            "or directory."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "target": {
+                    "type": "string",
+                    "description": "Workspace-relative .skillpack file, dir, or profile:<name>",
+                },
+                "path": {"type": "string", "default": "."},
+            },
+            "required": ["target"],
+        },
+    },
+    {
+        "name": "skillporter_export",
+        "description": (
+            "[WRITE] Package the workspace skill environment into a portable .skillpack archive inside the workspace "
+            "(requires SKILLPORTER_MCP_ALLOW_WRITES=1)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "output": {"type": "string", "description": "Workspace-relative output .skillpack path"},
+                "path": {"type": "string", "default": "."},
+                "managed_only": {"type": "boolean", "default": False},
+            },
+            "required": ["output"],
+        },
+    },
+    {
+        "name": "skillporter_import",
+        "description": (
+            "[WRITE] Validate and restore a workspace-relative .skillpack archive into selected harnesses "
+            "(requires SKILLPORTER_MCP_ALLOW_WRITES=1)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "pack": {"type": "string", "description": "Workspace-relative path to .skillpack archive"},
+                "path": {"type": "string", "default": "."},
+                "harnesses": {"type": "array", "items": {"type": "string"}},
+                "dry_run": {"type": "boolean", "default": False},
+                "force": {"type": "boolean", "default": False},
+                "accept_risk": {"type": "boolean", "default": False},
+            },
+            "required": ["pack"],
         },
     },
 ]
@@ -969,6 +1040,96 @@ def _call_tool(
                 for r in removed
             ],
         }
+
+    if name == "skillporter_status":
+        from .environment import capture_environment
+
+        raw_p = _require_str(args, "path", default=".")
+        scope = _require_enum(args, "scope", ("project", "user"), default="project")
+        if scope == "user" and not _is_mcp_user_scope_allowed(allow_user_scope):
+            raise MCPPermissionError(
+                "MCP scope='user' is disabled by default; launch with --allow-user-scope to inspect user paths"
+            )
+        root = resolve_mcp_path(raw_p, workspace_root=ws_root)
+        snap = capture_environment(root, scope=scope)
+        return snap.to_dict()
+
+    if name == "skillporter_diff":
+        from .environment import capture_environment, diff_environments, load_snapshot_from_target
+
+        raw_p = _require_str(args, "path", default=".")
+        raw_target = _require_str(args, "target")
+        root = resolve_mcp_path(raw_p, workspace_root=ws_root)
+        left = capture_environment(root, scope="project")
+        if raw_target.startswith("profile:"):
+            right = load_snapshot_from_target(raw_target, base_dir=root, scope="project")
+        else:
+            resolved_target = resolve_mcp_path(raw_target, workspace_root=ws_root)
+            right = load_snapshot_from_target(resolved_target, base_dir=root, scope="project")
+        return diff_environments(left, right).to_dict()
+
+    if name == "skillporter_export":
+        from .portability import export_skillpack
+
+        raw_p = _require_str(args, "path", default=".")
+        raw_out = _require_str(args, "output")
+        managed_only = _require_bool(args, "managed_only", default=False)
+        root = resolve_mcp_path(raw_p, workspace_root=ws_root)
+        out_path = resolve_mcp_path(raw_out, workspace_root=ws_root)
+        _enforce_write_permission(root, name, allow_writes=allow_writes, source=str(root))
+        rep = export_skillpack(root, out_path, scope="project", include_unmanaged=not managed_only)
+        record_audit_event(
+            root,
+            interface="mcp",
+            operation=name,
+            status="succeeded",
+            source=str(root),
+            destinations=[str(rep.output_path)],
+            harnesses=rep.harnesses,
+        )
+        return rep.to_dict()
+
+    if name == "skillporter_import":
+        from .portability import import_skillpack
+
+        raw_p = _require_str(args, "path", default=".")
+        raw_pack = _require_str(args, "pack")
+        dry_run = _require_bool(args, "dry_run", default=False)
+        force = _require_bool(args, "force", default=False)
+        accept_risk = _require_bool(args, "accept_risk", default=False)
+        root = resolve_mcp_path(raw_p, workspace_root=ws_root)
+        pack_path = resolve_mcp_path(raw_pack, workspace_root=ws_root)
+        explicit_h = _require_harnesses(args, "harnesses", required=False, root=root) if "harnesses" in args else None
+        if not dry_run:
+            _enforce_write_permission(
+                root, name, allow_writes=allow_writes, source=str(pack_path), harnesses_list=explicit_h
+            )
+        manifest = load_manifest(root)
+        max_risk_score = manifest.max_risk_score if manifest is not None else None
+        res = import_skillpack(
+            root,
+            pack_path,
+            scope="project",
+            explicit_harnesses=explicit_h,
+            force=force,
+            allow_risky=accept_risk,
+            max_risk_score=max_risk_score,
+            dry_run=dry_run,
+        )
+        if not dry_run:
+            record_audit_event(
+                root,
+                interface="mcp",
+                operation=name,
+                status="succeeded",
+                source=str(pack_path),
+                destinations=[r["dest"] for r in res["installed"]],  # type: ignore[index]
+                harnesses=explicit_h,
+                overwrite=force,
+                force=force,
+                risk_accepted=accept_risk,
+            )
+        return res
 
     raise ValueError(f"unknown tool: {name}")
 

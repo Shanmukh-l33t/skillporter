@@ -1,0 +1,17 @@
+# exit: 0,0
+$ skillporter export acme-api.skillpack
++ Exported acme-api.skillpack (21.8 KB, self-contained offline hybrid)
+  Path:      ~/acme-api/acme-api.skillpack
+  SHA-256:   85659a17236ec99e...
+  Skills:    1 (pdf)
+  Harnesses: aider, antigravity, claude-code, cline, codex, continue, cursor, gemini-cli, github-copilot, goose, hermes, junie, openclaw, opencode, openhands, replit, roo-code, windsurf, zed
+
+Next steps:
+  skillporter diff acme-api.skillpack             # compare any workspace with this package
+  skillporter import acme-api.skillpack --dry-run # preview restore on another machine
+
+$ skillporter import acme-api.skillpack --path ../laptop-b --only-detected --dry-run
+Import preview for acme-api.skillpack -> ~/laptop-b (project)  [READY]
+  ! pdf@1.0.0 (bfdca08385b6) -> claude-code, cline, codex, hermes, opencode, openhands
+
+Note: 13 harness(es) in package are not detected on this machine: aider, antigravity, continue, cursor, gemini-cli, github-copilot, goose, junie, openclaw, replit, roo-code, windsurf, zed (pass --only-detected to skip them)

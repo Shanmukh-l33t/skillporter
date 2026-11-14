@@ -2,52 +2,95 @@
   "source": "skillporter/cli.py",
   "version": "3.0.1",
   "global_flags": [
-    "--version"
+    "--no-color",
+    "--quiet",
+    "--verbose",
+    "--version",
+    "-q",
+    "-v"
   ],
   "commands": {
     "add": {
       "flags": [
         "--adapt",
         "--allow-risky",
+        "--custom-path",
         "--dry-run",
         "--engine",
+        "--exclude-harness",
         "--force",
         "--format",
         "--harness",
+        "--isolated",
         "--json",
         "--max-risk-score",
+        "--no-color",
         "--offline",
+        "--on-conflict",
         "--path",
+        "--quiet",
         "--ref",
         "--scope",
         "--skill",
-        "--strategy"
+        "--strategy",
+        "--verbose",
+        "-q",
+        "-v"
       ],
       "positionals": [
         "source"
       ],
-      "help": "install skills from GitHub, git URL, archive, registry, or local path"
+      "help": "install skills from GitHub, git URL, archive, or path"
+    },
+    "adopt": {
+      "flags": [
+        "--all",
+        "--allow-risky",
+        "--format",
+        "--json",
+        "--no-color",
+        "--path",
+        "--quiet",
+        "--scope",
+        "--verbose",
+        "-q",
+        "-v"
+      ],
+      "positionals": [
+        "skills"
+      ],
+      "help": "adopt existing unmanaged on-disk skills into Skillporter tracking"
     },
     "audit": {
       "flags": [
         "--format",
         "--json",
         "--limit",
-        "--scope"
+        "--no-color",
+        "--quiet",
+        "--scope",
+        "--verbose",
+        "-q",
+        "-v"
       ],
       "positionals": [
         "path"
       ],
-      "help": "audit installed skills, provenance, lockfile integrity, and security log"
+      "help": "audit provenance, lockfile integrity, and security log"
     },
     "ci-report": {
       "flags": [
         "--format",
         "--github-repo",
         "--json",
+        "--no-color",
         "--output",
         "--pr",
-        "--scope"
+        "--quiet",
+        "--scope",
+        "--verbose",
+        "-q",
+        "-v"
       ],
       "positionals": [
         "path"
@@ -57,34 +100,66 @@
     "demo": {
       "flags": [
         "--format",
-        "--json"
+        "--json",
+        "--no-color",
+        "--quiet",
+        "--verbose",
+        "-q",
+        "-v"
       ],
       "positionals": [],
-      "help": "run a 60-second zero-residue demo resolving broken symlinks & drift"
+      "help": "run zero-residue demo resolving broken symlinks & drift"
     },
     "detect": {
       "flags": [
         "--all",
         "--format",
         "--json",
-        "--versions"
+        "--no-color",
+        "--quiet",
+        "--verbose",
+        "--versions",
+        "-q",
+        "-v"
       ],
       "positionals": [
         "path"
       ],
-      "help": "detect installed AI agent harnesses on this machine and workspace"
+      "help": "detect installed AI agent harnesses on this machine"
     },
     "diagnose": {
       "flags": [
         "--format",
         "--harness",
         "--json",
-        "--scope"
+        "--no-color",
+        "--quiet",
+        "--scope",
+        "--verbose",
+        "-q",
+        "-v"
       ],
       "positionals": [
         "path"
       ],
-      "help": "show which harnesses see each skill, plus drift & broken links"
+      "help": "check reachability, drift, and broken symlinks"
+    },
+    "diff": {
+      "flags": [
+        "--base",
+        "--format",
+        "--json",
+        "--no-color",
+        "--quiet",
+        "--scope",
+        "--verbose",
+        "-q",
+        "-v"
+      ],
+      "positionals": [
+        "target"
+      ],
+      "help": "compare workspace environment against a .skillpack, directory, or profile"
     },
     "doctor": {
       "flags": [
@@ -93,7 +168,12 @@
         "--format",
         "--harness",
         "--json",
-        "--scope"
+        "--no-color",
+        "--quiet",
+        "--scope",
+        "--verbose",
+        "-q",
+        "-v"
       ],
       "positionals": [
         "path"
@@ -103,38 +183,171 @@
     "explain": {
       "flags": [
         "--format",
-        "--json"
+        "--json",
+        "--no-color",
+        "--quiet",
+        "--verbose",
+        "-q",
+        "-v"
       ],
       "positionals": [
         "finding"
       ],
-      "help": "translate any diagnostic, lockfile, or security finding into plain English"
+      "help": "translate diagnostic or security codes into plain English"
+    },
+    "export": {
+      "flags": [
+        "--format",
+        "--json",
+        "--managed-only",
+        "--manifest-only",
+        "--no-color",
+        "--path",
+        "--quiet",
+        "--scope",
+        "--skill",
+        "--verbose",
+        "-q",
+        "-v"
+      ],
+      "positionals": [
+        "output"
+      ],
+      "help": "package managed skill environment into a portable .skillpack archive"
     },
     "graph": {
       "flags": [
         "--format",
-        "--json"
+        "--json",
+        "--no-color",
+        "--quiet",
+        "--verbose",
+        "-q",
+        "-v"
       ],
       "positionals": [
         "path"
       ],
       "help": "visualize and verify the resolved skill dependency graph"
     },
+    "harness": {
+      "flags": [
+        "--format",
+        "--json",
+        "--no-color",
+        "--path",
+        "--quiet",
+        "--scope",
+        "--verbose",
+        "-q",
+        "-v"
+      ],
+      "positionals": [],
+      "subcommands": {
+        "inspect": {
+          "flags": [
+            "--format",
+            "--json",
+            "--no-color",
+            "--path",
+            "--quiet",
+            "--scope",
+            "--verbose",
+            "-q",
+            "-v"
+          ],
+          "positionals": [
+            "target"
+          ]
+        },
+        "list": {
+          "flags": [
+            "--category",
+            "--compatible",
+            "--detected",
+            "--format",
+            "--json",
+            "--no-color",
+            "--quiet",
+            "--scope",
+            "--verbose",
+            "-q",
+            "-v"
+          ],
+          "positionals": [
+            "path"
+          ]
+        },
+        "status": {
+          "flags": [
+            "--format",
+            "--json",
+            "--no-color",
+            "--quiet",
+            "--scope",
+            "--verbose",
+            "-q",
+            "-v"
+          ],
+          "positionals": [
+            "path"
+          ]
+        }
+      },
+      "help": "discover, inspect, and check status across 19 AI agent harnesses"
+    },
+    "import": {
+      "flags": [
+        "--allow-risky",
+        "--dry-run",
+        "--exclude-harness",
+        "--force",
+        "--format",
+        "--harness",
+        "--json",
+        "--max-risk-score",
+        "--no-color",
+        "--no-manifest",
+        "--on-conflict",
+        "--only-detected",
+        "--path",
+        "--preview",
+        "--quiet",
+        "--scope",
+        "--verbose",
+        "-q",
+        "-v"
+      ],
+      "positionals": [
+        "pack"
+      ],
+      "help": "validate and restore an environment from a .skillpack archive"
+    },
     "info": {
       "flags": [
         "--format",
-        "--json"
+        "--json",
+        "--no-color",
+        "--quiet",
+        "--verbose",
+        "-q",
+        "-v"
       ],
       "positionals": [
         "target"
       ],
-      "help": "show detailed metadata for a harness adapter, registry package, or local skill"
+      "help": "show metadata for a harness, registry package, or local skill"
     },
     "init": {
       "flags": [
         "--force",
         "--format",
-        "--json"
+        "--json",
+        "--no-color",
+        "--quiet",
+        "--verbose",
+        "-q",
+        "-v"
       ],
       "positionals": [
         "path"
@@ -145,8 +358,13 @@
       "flags": [
         "--format",
         "--json",
+        "--no-color",
         "--preview-adapt",
-        "--skill"
+        "--quiet",
+        "--skill",
+        "--verbose",
+        "-q",
+        "-v"
       ],
       "positionals": [
         "source"
@@ -157,14 +375,23 @@
       "flags": [
         "--adapt",
         "--allow-risky",
+        "--custom-path",
         "--dry-run",
+        "--exclude-harness",
         "--force",
         "--format",
         "--harness",
+        "--isolated",
         "--json",
+        "--no-color",
+        "--on-conflict",
         "--path",
+        "--quiet",
         "--scope",
-        "--strategy"
+        "--strategy",
+        "--verbose",
+        "-q",
+        "-v"
       ],
       "positionals": [
         "skill"
@@ -175,7 +402,12 @@
       "flags": [
         "--format",
         "--json",
-        "--scope"
+        "--no-color",
+        "--quiet",
+        "--scope",
+        "--verbose",
+        "-q",
+        "-v"
       ],
       "positionals": [
         "path"
@@ -186,18 +418,28 @@
       "flags": [
         "--check",
         "--format",
-        "--json"
+        "--json",
+        "--no-color",
+        "--quiet",
+        "--verbose",
+        "-q",
+        "-v"
       ],
       "positionals": [
         "path"
       ],
-      "help": "generate, update, or verify (--check) deterministic skillporter.lock"
+      "help": "generate, update, or verify skillporter.lock"
     },
     "matrix": {
       "flags": [
         "--category",
         "--format",
-        "--json"
+        "--json",
+        "--no-color",
+        "--quiet",
+        "--verbose",
+        "-q",
+        "-v"
       ],
       "positionals": [],
       "help": "print the 19-harness compatibility and verification matrix"
@@ -206,42 +448,223 @@
       "flags": [
         "--allow-user-scope",
         "--allow-writes",
-        "--root"
+        "--no-color",
+        "--quiet",
+        "--root",
+        "--verbose",
+        "-q",
+        "-v"
       ],
       "positionals": [],
-      "help": "run the stdio Model Context Protocol (MCP) server for agent harnesses"
+      "help": "run the stdio Model Context Protocol (MCP) server"
+    },
+    "move": {
+      "flags": [
+        "--custom-path",
+        "--dry-run",
+        "--exclude-harness",
+        "--force",
+        "--format",
+        "--from",
+        "--isolated",
+        "--json",
+        "--no-color",
+        "--on-conflict",
+        "--path",
+        "--quiet",
+        "--scope",
+        "--strategy",
+        "--to",
+        "--verbose",
+        "-q",
+        "-v"
+      ],
+      "positionals": [
+        "skill"
+      ],
+      "help": "move an installed skill between harnesses safely"
+    },
+    "outdated": {
+      "flags": [
+        "--format",
+        "--json",
+        "--no-color",
+        "--path",
+        "--quiet",
+        "--scope",
+        "--verbose",
+        "-q",
+        "-v"
+      ],
+      "positionals": [
+        "skill"
+      ],
+      "help": "check managed skills for upstream version or content changes"
     },
     "pack": {
       "flags": [
         "--format",
         "--json",
-        "--out"
+        "--no-color",
+        "--out",
+        "--quiet",
+        "--verbose",
+        "-q",
+        "-v"
       ],
       "positionals": [
         "path"
       ],
-      "help": "build an immutable .tar.gz release bundle and SHA-256 provenance manifest"
+      "help": "build an immutable .tar.gz skill release bundle"
+    },
+    "profile": {
+      "flags": [
+        "--format",
+        "--json",
+        "--no-color",
+        "--path",
+        "--quiet",
+        "--scope",
+        "--verbose",
+        "-q",
+        "-v"
+      ],
+      "positionals": [],
+      "subcommands": {
+        "create": {
+          "flags": [
+            "--format",
+            "--harness",
+            "--json",
+            "--no-color",
+            "--path",
+            "--quiet",
+            "--scope",
+            "--skill",
+            "--verbose",
+            "-q",
+            "-v"
+          ],
+          "positionals": [
+            "name"
+          ]
+        },
+        "delete": {
+          "flags": [
+            "--format",
+            "--json",
+            "--no-color",
+            "--path",
+            "--quiet",
+            "--scope",
+            "--verbose",
+            "-q",
+            "-v"
+          ],
+          "positionals": [
+            "name"
+          ]
+        },
+        "list": {
+          "flags": [
+            "--format",
+            "--json",
+            "--no-color",
+            "--path",
+            "--quiet",
+            "--scope",
+            "--verbose",
+            "-q",
+            "-v"
+          ],
+          "positionals": []
+        },
+        "save": {
+          "flags": [
+            "--format",
+            "--harness",
+            "--json",
+            "--no-color",
+            "--path",
+            "--quiet",
+            "--scope",
+            "--skill",
+            "--verbose",
+            "-q",
+            "-v"
+          ],
+          "positionals": [
+            "name"
+          ]
+        },
+        "show": {
+          "flags": [
+            "--format",
+            "--json",
+            "--no-color",
+            "--path",
+            "--quiet",
+            "--scope",
+            "--verbose",
+            "-q",
+            "-v"
+          ],
+          "positionals": [
+            "name"
+          ]
+        },
+        "use": {
+          "flags": [
+            "--dry-run",
+            "--format",
+            "--json",
+            "--no-color",
+            "--path",
+            "--prune",
+            "--quiet",
+            "--scope",
+            "--verbose",
+            "-q",
+            "-v"
+          ],
+          "positionals": [
+            "name"
+          ]
+        }
+      },
+      "help": "manage named skill environment profiles (frontend, backend, security-review, etc.)"
     },
     "publish": {
       "flags": [
         "--dry-run",
         "--format",
         "--json",
-        "--registry"
+        "--no-color",
+        "--quiet",
+        "--registry",
+        "--verbose",
+        "-q",
+        "-v"
       ],
       "positionals": [
         "path"
       ],
-      "help": "validate, security-gate, pack, and publish a skill to the registry"
+      "help": "validate, security-gate, pack, and publish to registry"
     },
     "remove": {
       "flags": [
         "--dry-run",
+        "--exclude-harness",
         "--format",
         "--harness",
         "--json",
+        "--no-color",
         "--path",
-        "--scope"
+        "--quiet",
+        "--scope",
+        "--verbose",
+        "-q",
+        "-v"
       ],
       "positionals": [
         "skill"
@@ -254,25 +677,35 @@
         "--dry-run",
         "--format",
         "--json",
+        "--no-color",
         "--path",
-        "--scope"
+        "--quiet",
+        "--scope",
+        "--verbose",
+        "-q",
+        "-v"
       ],
       "positionals": [
         "skill"
       ],
-      "help": "restore a skill (and its dependency graph) to its previous backup snapshot"
+      "help": "restore a skill to a verified backup snapshot"
     },
     "sandbox": {
       "flags": [
         "--format",
         "--json",
-        "--runtime"
+        "--no-color",
+        "--quiet",
+        "--runtime",
+        "--verbose",
+        "-q",
+        "-v"
       ],
       "positionals": [
         "skill",
         "target"
       ],
-      "help": "[experimental] run opt-in dry-run behavioral sandbox on a skill"
+      "help": "[experimental] run opt-in dry-run behavioral sandbox"
     },
     "scan": {
       "flags": [
@@ -280,61 +713,109 @@
         "--format",
         "--json",
         "--max-risk-score",
-        "--offline"
+        "--no-color",
+        "--offline",
+        "--quiet",
+        "--verbose",
+        "-q",
+        "-v"
       ],
       "positionals": [
         "path"
       ],
-      "help": "run security and supply-chain checks (0-100 risk score, JSON/SARIF)"
+      "help": "run static security and supply-chain checks (JSON/SARIF)"
     },
     "search": {
       "flags": [
         "--category",
         "--format",
-        "--json"
+        "--json",
+        "--no-color",
+        "--quiet",
+        "--verbose",
+        "-q",
+        "-v"
       ],
       "positionals": [
         "query"
       ],
       "help": "search the skill registry catalog"
     },
+    "self-skill": {
+      "flags": [
+        "--dry-run",
+        "--exclude-harness",
+        "--force",
+        "--format",
+        "--harness",
+        "--json",
+        "--no-color",
+        "--path",
+        "--quiet",
+        "--scope",
+        "--verbose",
+        "-q",
+        "-v"
+      ],
+      "positionals": [
+        "self_skill_action"
+      ],
+      "help": "install or view the official Skillporter AI agent skill"
+    },
     "status": {
       "flags": [
         "--format",
         "--json",
-        "--scope"
+        "--no-color",
+        "--quiet",
+        "--scope",
+        "--verbose",
+        "-q",
+        "-v"
       ],
       "positionals": [
         "path"
       ],
-      "help": "show unified workspace manifest, lockfile, per-harness, and drift status"
+      "help": "show unified environment, manifest, lockfile, harness, and drift status"
     },
     "sync": {
       "flags": [
         "--allow-risky",
         "--dry-run",
+        "--exclude-harness",
         "--force",
         "--format",
         "--harness",
         "--json",
         "--max-risk-score",
+        "--no-color",
         "--prefer",
+        "--quiet",
         "--scope",
-        "--strategy"
+        "--strategy",
+        "--verbose",
+        "-q",
+        "-v"
       ],
       "positionals": [
         "path"
       ],
-      "help": "synchronize skills (and transitive dependencies) across harnesses"
+      "help": "synchronize skills and dependencies across harnesses"
     },
     "uninstall": {
       "flags": [
         "--dry-run",
+        "--exclude-harness",
         "--format",
         "--harness",
         "--json",
+        "--no-color",
         "--path",
-        "--scope"
+        "--quiet",
+        "--scope",
+        "--verbose",
+        "-q",
+        "-v"
       ],
       "positionals": [
         "skill"
@@ -347,8 +828,13 @@
         "--dry-run",
         "--format",
         "--json",
+        "--no-color",
         "--path",
-        "--scope"
+        "--quiet",
+        "--scope",
+        "--verbose",
+        "-q",
+        "-v"
       ],
       "positionals": [
         "skill"
@@ -361,12 +847,17 @@
         "--format",
         "--json",
         "--max-risk-score",
-        "--offline"
+        "--no-color",
+        "--offline",
+        "--quiet",
+        "--verbose",
+        "-q",
+        "-v"
       ],
       "positionals": [
         "path"
       ],
-      "help": "validate SKILL.md files against the Agent Skills spec and compute risk score"
+      "help": "validate SKILL.md spec compliance and compute risk score"
     }
   }
 }

@@ -39,6 +39,8 @@ The commands above assume `uvx`; the [install page](https://www.skillporter.dev/
 |---|---|---|
 | `skillporter_diagnose` | Read | Reachability, drift, duplicates and broken symlinks for the workspace. |
 | `skillporter_detect` | Read | Which harnesses are installed or active. |
+| `skillporter_status` | Read | Unified workspace environment snapshot (managed, unmanaged, orphaned and drifted skills). |
+| `skillporter_diff` | Read | Compare the workspace against a `.skillpack` archive, directory or profile. |
 | `skillporter_scan` | Read | Static security assessment of a skill directory. |
 | `skillporter_inspect` | Read | Structure, metadata and security posture of a skill package. |
 | `skillporter_matrix` | Read | The harness compatibility matrix. |
@@ -46,8 +48,10 @@ The commands above assume `uvx`; the [install page](https://www.skillporter.dev/
 | `skillporter_install` | Write | Install a local skill directory. |
 | `skillporter_sync` | Write | Synchronize the workspace. |
 | `skillporter_remove` | Write | Remove a skill. |
+| `skillporter_export` | Write | Package the workspace skill environment into a `.skillpack` archive inside the workspace. |
+| `skillporter_import` | Write | Validate and restore a workspace `.skillpack` archive. |
 
-All nine tools are listed to the client. In the default mode, calling a write tool returns an error and changes nothing:
+All 13 tools are listed to the client. If your agent harness supports `SKILL.md` directly rather than MCP, you can also install the official bundled Skillporter skill with `skillporter self-skill install --harness detected`. In the default MCP mode, calling a write tool returns an error and changes nothing:
 
 ```text
 error: MCP write operation 'skillporter_add' is disabled by default; launch with

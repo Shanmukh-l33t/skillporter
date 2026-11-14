@@ -15,8 +15,8 @@ from ..registry import pack_skill, publish_skill, resolve_registry_spec, search_
 from ..security import compute_tree_hash, scan_skill, to_sarif
 from ..sources import SourceError, resolve_source
 from ..state import load_state
-from ..ui import BOLD, badge, style
-from .common import EXIT_ERROR, EXIT_OK, EXIT_PROBLEM, fmt_mode
+from ..ui import BOLD, badge, render_table, style
+from .common import EXIT_ERROR, EXIT_OK, EXIT_PROBLEM, fmt_mode, is_quiet, is_verbose
 
 
 def cmd_list(args: argparse.Namespace) -> int:
@@ -66,17 +66,34 @@ def cmd_list(args: argparse.Namespace) -> int:
         print(json.dumps(rows, indent=2))
         return EXIT_OK
 
-    if not rows:
-        print(f"no skills installed or discovered under {root}")
+    if is_quiet(args):
+        for r in rows:
+            print(r["name"])
         return EXIT_OK
 
-    w_name = max(max(len(str(r["name"])) for r in rows), 5)
-    print(f"{'SKILL'.ljust(w_name)}  {'MANAGED':8}  {'HASH':12}  HARNESSES")
-    print(f"{'-' * w_name}  {'-' * 8}  {'-' * 12}  {'-' * 35}")
-    for r in rows:
-        m_str = "yes" if r["managed"] else "no"
-        h_str = ", ".join(r["harnesses"]) if r["harnesses"] else "(none)"
-        print(f"{str(r['name']).ljust(w_name)}  {m_str:8}  {str(r['tree_hash']):12}  {h_str}")
+    if not rows:
+        print(f"no skills installed or discovered under {root} (scope: {args.scope})")
+        return EXIT_OK
+
+    trows = [
+        [
+            str(r["name"]),
+            str(r["version"]),
+            "yes" if r["managed"] else "no",
+            str(r["tree_hash"]),
+            ", ".join(r["harnesses"]) if r["harnesses"] else "(none)",
+        ]
+        for r in rows
+    ]
+    max_r = None if is_verbose(args) else 30
+    print(
+        render_table(
+            ["SKILL", "VERSION", "MANAGED", "HASH", "HARNESSES"],
+            trows,
+            max_rows=max_r,
+            more_hint="run `skillporter list --verbose` to list all skills",
+        )
+    )
     return EXIT_OK
 
 

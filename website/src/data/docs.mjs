@@ -79,6 +79,12 @@ export const DOC_SECTIONS = [
         title: 'Configuration',
         description: 'The skillporter.yaml manifest, environment variables and local state.',
       },
+      {
+        slug: 'portability',
+        dir: 'portability',
+        title: 'Portability and profiles',
+        description: 'Export and import .skillpack environments offline, compare setups and switch named profiles.',
+      },
     ],
   },
   {

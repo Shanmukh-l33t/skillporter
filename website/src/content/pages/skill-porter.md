@@ -19,8 +19,9 @@ Skill Porter runs the lifecycle of a package manager over skill directories. Eac
 4. **Install.** One destination is planned per adapter. Harnesses sharing `.agents/skills` share a single write, and all destinations land in one journaled transaction, so an interrupted run leaves nothing half-written.
 5. **Pin.** `skillporter.lock` records the resolved commit and a SHA-256 for every file.
 6. **Sync.** `sync` reconciles the manifest, the lockfile and the directories. It will not overwrite a copy that changed on disk until you pass `--force`, which takes the most recently modified copy unless you name one with `--prefer`.
-7. **Diagnose.** `diagnose` reports which harnesses see each skill, plus drift between copies, duplicates and broken symlinks.
-8. **Roll back.** `rollback` restores a skill from the snapshot taken before the last overwrite, stored under `.skillporter/backups/`.
+7. **Diagnose and status.** `status` and `diagnose` report unified manifest, lockfile, managed vs. unmanaged ownership, drift between copies, duplicates and broken symlinks.
+8. **Export and restore.** `export` packages the environment into a SHA-256 verified `.skillpack` archive that `diff` and `import` can compare and restore offline on another machine.
+9. **Roll back.** `rollback` restores a skill from the snapshot taken before the last overwrite, stored under `.skillporter/backups/`.
 
 ```bash
 skillporter add anthropics/skills --skill pdf --harness all

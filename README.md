@@ -71,8 +71,10 @@ Skillporter treats skills the way a package manager treats dependencies: one man
 | **Shared-path deduplication** | Writes `.agents/skills/<skill>` once across 8 primary harnesses and preserves it during single-harness `remove`. |
 | **Static supply-chain assessment** | Inspects Python ASTs, JS/TS, Markdown instructions, and bounded Base64/Hex/PowerShell payloads before any file is written. |
 | **Deterministic lockfiles** | Pins `resolved_commit`, `tree_hash`, per-file SHA-256 `file_hashes`, and `pin_state` in `skillporter.lock`. |
+| **Portable `.skillpack` environments** | Packages managed skills, provenance, lockfiles, and profiles into a SHA-256 verified offline archive (`export` / `import` / `diff`). |
+| **Granular harness & profile control** | Supports `--exclude-harness`, `--isolated`, `--on-conflict`, `move`, `adopt`, `harness` inspection, and named `profile` switching. |
 | **Crash-safe transactions** | Stages multi-harness installs behind a write-ahead `journal.json` and snapshots replaced copies into `.skillporter/backups/`. |
-| **Hardened MCP server** | Exposes read-only workspace inspection over JSON-RPC 2.0 stdio (`--allow-writes` required for mutations). |
+| **Agent skill & hardened MCP server** | Ships an official `skillporter` skill (`self-skill install`) plus a workspace-bounded JSON-RPC 2.0 MCP server (`--allow-writes` opt-in). |
 
 ## Installation
 
@@ -114,9 +116,17 @@ skillporter sync
 skillporter lock --check
 
 # 5. Diagnose reachability, audit provenance and override logs, or roll back to a verified snapshot
-skillporter diagnose .
+skillporter status
 skillporter audit .
 skillporter rollback pdf
+
+# 6. Export, compare, and restore your entire skill environment across machines (works offline)
+skillporter export my-environment.skillpack
+skillporter diff my-environment.skillpack
+skillporter import my-environment.skillpack --dry-run
+
+# 7. Give your AI coding agents native control over Skillporter
+skillporter self-skill install --harness detected
 ```
 
 ## Supply chain security
@@ -173,7 +183,7 @@ Each harness record ships its detection rules, path precedence, and vendor docum
 
 ## MCP server
 
-`skillporter mcp` runs a hardened JSON-RPC 2.0 Model Context Protocol server so an agent can query a workspace instead of shelling out. It exposes nine tools (`diagnose`, `detect`, `scan`, `inspect`, `matrix`, `add`, `install`, `sync`, `remove`), is read-only by default, refuses paths outside the workspace root, and requires an explicit opt-in before any write tool becomes available:
+`skillporter mcp` runs a hardened JSON-RPC 2.0 Model Context Protocol server so an agent can query a workspace instead of shelling out. It exposes 13 tools (`diagnose`, `detect`, `scan`, `inspect`, `matrix`, `status`, `diff`, `add`, `install`, `sync`, `remove`, `export`, `import`), is read-only by default, refuses paths outside the workspace root, and requires an explicit opt-in before any write tool becomes available:
 
 ```bash
 skillporter mcp                                   # read-only
@@ -187,21 +197,30 @@ Client setup for Claude Code and other MCP clients is covered in the [MCP guide]
 
 | Command | Description |
 |---|---|
-| `skillporter add <source>` | Resolve, validate, security scan, and install skills (`--dry-run`, `--allow-risky`, `--force`, `--json`) |
-| `skillporter install <dir>` | Security scan and install a local skill directory (`--dry-run`, `--allow-risky`, `--force`, `--json`) |
+| `skillporter status [path]` | Unified environment control center: manifest, lockfile, profiles, managed vs. unmanaged skills, and drift |
+| `skillporter export [file.skillpack]` | Package managed skills, provenance, lockfile, and profiles into a SHA-256 verified portable `.skillpack` archive |
+| `skillporter import <file.skillpack>` | Validate integrity, run static security checks, preview conflicts (`--dry-run`), and restore an environment offline |
+| `skillporter diff <target>` | Compare current workspace against a `.skillpack` archive, project directory, or `profile:<name>` |
+| `skillporter profile <action>` | Create (`save`), inspect (`list`, `show`), switch (`use --prune`), or remove (`delete`) named skill profiles |
+| `skillporter harness <action>` | List, inspect capabilities and shared peers, or check status across all 19 supported harnesses |
+| `skillporter add <source>` | Resolve, validate, security scan, and install skills (`--exclude-harness`, `--on-conflict`, `--isolated`, `--dry-run`) |
+| `skillporter install <dir>` | Security scan and install a local skill directory (`--exclude-harness`, `--on-conflict`, `--isolated`, `--dry-run`) |
+| `skillporter move <skill>` | Relocate an installed skill across harnesses safely (`--from`, `--to`, `--isolated`, `--dry-run`) |
+| `skillporter adopt [skills]` | Bring existing unmanaged on-disk skills under Skillporter tracking, backup, and export (`--all`) |
 | `skillporter remove <skill>` | Safely remove a skill while preserving shared `.agents/skills/` still owned by other harnesses (`--dry-run`, `--json`) |
 | `skillporter sync [path]` | Resolve pinned and transitive dependencies, verify lockfile hashes, and synchronize harnesses (`--dry-run`, `--json`) |
+| `skillporter outdated [skill]` | Check managed skills against upstream versions and SHA-256 tree hashes without modifying files |
+| `skillporter update [skill]` | Fetch, security gate, back up, and update tracked skills (`--dry-run`, `--allow-risky`, `--json`) |
+| `skillporter rollback <skill>` | Atomically restore a skill and its dependency graph from SHA-256 verified `.skillporter/backups/` (`--dry-run`, `--json`) |
 | `skillporter lock [path] [--check]` | Write or CI verify (`--check`) the deterministic `skillporter.lock` |
 | `skillporter scan [path]` | Run static security and supply chain assessment (`--format text\|json\|sarif`, `--max-risk-score`) |
 | `skillporter audit [path]` | Inspect installed skill origins, security posture, lockfile drift, and `.skillporter/audit.jsonl` events |
 | `skillporter diagnose [path]` | Check reachability, broken symlinks, SHA-256 content drift, duplicates, and spec compliance |
 | `skillporter doctor [path] [--fix]` | Comprehensive workspace health check and tamper safe repair (`--dry-run`, `--json`) |
-| `skillporter status [path]` | Unified workspace manifest, lockfile, per harness installed and locked state, and drift summary |
-| `skillporter update [skill]` | Fetch, security gate, back up, and update tracked skills (`--dry-run`, `--allow-risky`, `--json`) |
-| `skillporter rollback <skill>` | Atomically restore a skill and its dependency graph from SHA-256 verified `.skillporter/backups/` (`--dry-run`, `--json`) |
 | `skillporter validate [path]` | Validate `SKILL.md` against the Agent Skills specification (`--format text\|json\|sarif`) |
 | `skillporter inspect <source>` | Inspect local or remote package structure, security posture, and adapted rule previews |
 | `skillporter graph [path]` | Render or export (`--json`) the topological skill dependency graph |
+| `skillporter self-skill [install]` | Bootstrap the official `skillporter` AI agent skill into detected or selected harnesses |
 | `skillporter sandbox run <skill>` | **[Experimental]** Opt in, non-mutating dry run behavioral trace |
 | `skillporter explain <finding>` | Explain any diagnostic, lockfile, validation, or `sec-*` finding code with remediation commands |
 | `skillporter search / info / pack / publish` | Search the catalog, inspect metadata, build a deterministic `.tar.gz` with `provenance.json`, or publish |

@@ -38,10 +38,23 @@ Source resolution never executes anything inside the fetched repository or archi
 
 ```bash
 skillporter add ./skills/release-notes --harness claude-code --harness codex
+skillporter add ./skills/release-notes --harness compatible --exclude-harness windsurf
 skillporter add ./skills/release-notes --harness all
 ```
 
-Without `--harness`, Skillporter uses the harnesses declared in `skillporter.yaml`, or the ones it detects as active in the workspace.
+`--harness` accepts specific adapter IDs, `detected` (installed on this machine), `compatible` (`NATIVE` and `COMPATIBLE` adapters), or `all`. `--exclude-harness` subtracts adapters from that selection. Pass `--isolated` when targeting a harness such as Cursor or Gemini CLI that offers its own directory (`.cursor/skills`, `.gemini/skills`) alongside shared `.agents/skills`.
+
+Without `--harness`, Skillporter uses the harnesses declared in `skillporter.yaml`, or the ones it detects as active in the workspace. Use `skillporter harness list`, `skillporter harness inspect <id>` and `skillporter harness status` to inspect adapter paths and shared peers before installing.
+
+## Moving and adopting skills
+
+Move an installed skill between harnesses without deleting its source, or bring pre-existing unmanaged skills under Skillporter tracking:
+
+```bash
+skillporter move pdf --from claude-code --to cursor --isolated
+skillporter adopt --all
+skillporter outdated
+```
 
 ## Copy or symlink
 
