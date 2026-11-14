@@ -31,6 +31,8 @@ Any client that reads an `mcpServers` configuration:
 }
 ```
 
+The commands above assume `uvx`; the [install page](https://www.skillporter.dev/install) covers setup for `uv`, `pipx` and `npx`.
+
 ## Tools
 
 | Tool | Access | Purpose |
@@ -98,3 +100,20 @@ skillporter audit .
 ## Protocol details
 
 The server speaks JSON-RPC 2.0 over stdio and reports MCP protocol version `2024-11-05`.
+
+## Registry listing
+
+`server.json` at the repository root is the official MCP registry manifest (schema `2025-12-11`). It registers `io.github.Shanmukh-l33t/skillporter` as the npm package `@shanmukhdheekonda/skillporter`, launched as `npx -y @shanmukhdheekonda/skillporter mcp` over stdio, read-only.
+
+Keep the case of the GitHub account in the name (`Shanmukh-l33t`). Registry namespace grants are case-sensitive prefix matches, and GitHub authentication issues `io.github.Shanmukh-l33t/*`.
+
+Publishing, as the owner:
+
+```bash
+curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+mcp-publisher login github          # device flow; from CI use login github-oidc
+mcp-publisher validate server.json
+mcp-publisher publish server.json
+```
+
+Ownership is proven by the `mcpName` field in the npm package that is actually published. npm `3.0.0` shipped without it, so that version cannot be registered. Publish a new npm version with the current `package.json`, set `version` and `packages[].version` in `server.json` to that version, then publish the manifest.
