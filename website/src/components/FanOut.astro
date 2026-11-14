@@ -1,0 +1,224 @@
+---
+import lock from '../data/recordings/skillporter.lock.json';
+import { harnessData } from '../data/site';
+
+// The source card shows the entry recorded in the real lockfile.
+const locked = lock.skills.pdf;
+const sourceLabel = locked.source.replace(/^https:\/\/github\.com\//, '').replace(/\.git$/, '');
+
+// One row per distinct project directory, with the harnesses that read it as
+// their primary path. Built from the adapter registry export, so the numbers
+// in this diagram cannot drift from the CLI.
+const groups = new Map<string, string[]>();
+for (const h of harnessData.harnesses) {
+  const dir = h.project_primary ?? '';
+  if (!groups.has(dir)) groups.set(dir, []);
+  groups.get(dir)!.push(h.name);
+}
+const rows = [...groups.entries()]
+  .map(([dir, names]) => ({ dir, names }))
+  .sort((a, b) => b.names.length - a.names.length);
+
+const directoryCount = rows.length;
+const harnessCount = harnessData.counts.total;
+---
+
+<figure class="fanout" aria-labelledby="fanout-caption">
+  <div class="fanout__source">
+    <span class="overline">Source</span>
+    <p class="fanout__repo">{sourceLabel}</p>
+    <dl>
+      <div><dt>skill</dt><dd>{locked.name}</dd></div>
+      <div><dt>commit</dt><dd>{locked.resolved_commit.slice(0, 12)}</dd></div>
+      <div><dt>risk</dt><dd>{locked.risk_score}/100</dd></div>
+    </dl>
+  </div>
+
+  <div class="fanout__bridge" aria-hidden="true">
+    <span></span>
+  </div>
+
+  <ol class="fanout__targets">
+    {
+      rows.map((row) => (
+        <li class:list={{ 'is-shared': row.names.length > 1 }}>
+          <code>{row.dir}/{locked.name}</code>
+          <span class="fanout__names">
+            {row.names.length > 1 && <b>{row.names.length} harnesses share this copy. </b>}
+            {row.names.join(', ')}
+          </span>
+        </li>
+      ))
+    }
+  </ol>
+
+  <figcaption id="fanout-caption">
+    <span class="ivory">1 skill, {directoryCount} directories, {harnessCount} harnesses.</span> The directories each harness
+    reads as its primary project path, from the adapter registry.
+  </figcaption>
+</figure>
+
+<style>
+  .fanout {
+    display: grid;
+    grid-template-columns: minmax(0, 15rem) 4.5rem minmax(0, 1fr);
+    align-items: start;
+    margin: 0;
+  }
+  .fanout__source {
+    position: sticky;
+    top: calc(var(--header-h) + 2rem);
+    padding: 1.1rem 1.15rem 1.2rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-m);
+    background: var(--deep-navy);
+  }
+  .fanout__repo {
+    margin-top: 0.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.9375rem;
+    color: var(--ivory);
+  }
+  .fanout__source dl {
+    display: grid;
+    gap: 0.3rem;
+    margin: 0.9rem 0 0;
+    padding-top: 0.85rem;
+    border-top: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+  }
+  .fanout__source dl div {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+  .fanout__source dt {
+    color: var(--text-3);
+  }
+  .fanout__source dd {
+    margin: 0;
+    color: var(--text-2);
+  }
+
+  /* The deck between source and targets: one line, two endpoints. */
+  .fanout__bridge {
+    position: sticky;
+    top: calc(var(--header-h) + 2rem);
+    height: 5.2rem;
+    display: flex;
+    align-items: center;
+  }
+  .fanout__bridge span {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: 1px;
+    background: var(--amber);
+  }
+  .fanout__bridge span::before,
+  .fanout__bridge span::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    width: 7px;
+    height: 7px;
+    background: var(--ivory);
+    transform: translateY(-50%) rotate(45deg);
+  }
+  .fanout__bridge span::before {
+    left: -3px;
+  }
+  .fanout__bridge span::after {
+    right: -3px;
+  }
+
+  .fanout__targets {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border-left: 1px solid var(--border);
+  }
+  .fanout__targets li {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 15rem) minmax(0, 1fr);
+    gap: 0.15rem 1.25rem;
+    align-items: baseline;
+    padding: 0.55rem 0 0.55rem 1.5rem;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .fanout__targets li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 1.25rem;
+    width: 0.85rem;
+    height: 1px;
+    background: var(--border);
+  }
+  .fanout__targets code {
+    font-size: 0.8125rem;
+    color: var(--ivory);
+    overflow-wrap: anywhere;
+  }
+  .fanout__names {
+    font-size: 0.8125rem;
+    color: var(--text-3);
+  }
+  .fanout__names b {
+    font-weight: 500;
+    color: var(--amber);
+  }
+  .fanout__targets li.is-shared::before {
+    background: var(--amber);
+  }
+  .fanout__targets li.is-shared {
+    padding-block: 0.9rem;
+  }
+
+  figcaption {
+    grid-column: 1 / -1;
+    margin-top: 1.5rem;
+    font-size: 0.8125rem;
+    color: var(--text-3);
+  }
+
+  @media (max-width: 900px) {
+    .fanout {
+      grid-template-columns: 1fr;
+    }
+    .fanout__source,
+    .fanout__bridge {
+      position: static;
+    }
+    .fanout__bridge {
+      height: 2.5rem;
+      width: 1px;
+      margin-left: 1.5rem;
+      align-items: stretch;
+    }
+    .fanout__bridge span {
+      width: 1px;
+      height: 100%;
+    }
+    .fanout__bridge span::before {
+      left: 50%;
+      top: 0;
+      transform: translate(-50%, -50%) rotate(45deg);
+    }
+    .fanout__bridge span::after {
+      left: 50%;
+      right: auto;
+      top: 100%;
+      transform: translate(-50%, -50%) rotate(45deg);
+    }
+    .fanout__targets {
+      margin-left: 1.5rem;
+    }
+    .fanout__targets li {
+      grid-template-columns: 1fr;
+      padding-left: 1.25rem;
+    }
+  }
+</style>

@@ -1,0 +1,278 @@
+---
+import { PRIMARY_NAV } from '../data/site';
+import Logo from './Logo.astro';
+
+interface Props {
+  currentPath: string;
+}
+
+const { currentPath } = Astro.props;
+const inDocs = currentPath === '/docs' || currentPath.startsWith('/docs/');
+---
+
+<header class="site-header" data-header>
+  <div class="wrap site-header__inner">
+    <a class="site-header__brand" href="/" aria-label="Skillporter home">
+      <Logo height={28} />
+    </a>
+
+    <nav class="site-nav" aria-label="Primary">
+      <ul>
+        {
+          PRIMARY_NAV.map((item) => (
+            <li>
+              <a
+                href={item.href}
+                data-nav-section={item.section}
+                aria-current={item.href === '/docs' && inDocs ? 'page' : undefined}
+                rel={item.external ? 'noopener' : undefined}
+              >
+                {item.label}
+              </a>
+            </li>
+          ))
+        }
+      </ul>
+    </nav>
+
+    <div class="site-header__actions">
+      <button class="search-trigger" type="button" data-search-open aria-label="Search documentation">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <circle cx="7" cy="7" r="4.75" stroke="currentColor" stroke-width="1.5"></circle>
+          <path d="M10.5 10.5 14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path>
+        </svg>
+        <span class="search-trigger__label">Search docs</span>
+        <kbd class="search-trigger__kbd" data-search-kbd>Ctrl K</kbd>
+      </button>
+      <a class="btn btn--primary btn--small site-header__cta" href="/docs/getting-started">Get Started</a>
+      <button
+        class="menu-toggle"
+        type="button"
+        data-menu-toggle
+        aria-expanded="false"
+        aria-controls="mobile-menu"
+        aria-label="Open menu"
+      >
+        <span class="menu-toggle__bars" aria-hidden="true"></span>
+      </button>
+    </div>
+  </div>
+
+  <div class="mobile-menu" id="mobile-menu" data-mobile-menu hidden>
+    <nav class="wrap" aria-label="Mobile">
+      <ul>
+        {
+          PRIMARY_NAV.map((item) => (
+            <li>
+              <a
+                href={item.href}
+                aria-current={item.href === '/docs' && inDocs ? 'page' : undefined}
+                rel={item.external ? 'noopener' : undefined}
+              >
+                <span>{item.label}</span>
+                <span class="mobile-menu__arrow" aria-hidden="true">
+                  {item.external ? '↗' : '→'}
+                </span>
+              </a>
+            </li>
+          ))
+        }
+      </ul>
+      <a class="btn btn--primary mobile-menu__cta" href="/docs/getting-started">Get Started</a>
+    </nav>
+  </div>
+</header>
+
+<style>
+  .site-header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--midnight);
+    border-bottom: 1px solid transparent;
+    transition: border-color var(--dur) var(--ease);
+  }
+  .site-header[data-scrolled='true'],
+  .site-header[data-menu-open='true'] {
+    border-bottom-color: var(--border);
+  }
+  .site-header__inner {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    height: var(--header-h);
+  }
+  .site-header__brand {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    margin-right: auto;
+  }
+
+  .site-nav ul {
+    display: flex;
+    gap: 0.25rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .site-nav a {
+    position: relative;
+    display: flex;
+    align-items: center;
+    height: var(--header-h);
+    padding-inline: 0.7rem;
+    font-size: var(--text-small);
+    color: var(--text-2);
+    transition: color var(--dur) var(--ease);
+  }
+  .site-nav a:hover {
+    color: var(--ivory);
+  }
+  .site-nav a[aria-current] {
+    color: var(--ivory);
+  }
+  .site-nav a[aria-current]::after {
+    content: '';
+    position: absolute;
+    left: 0.7rem;
+    right: 0.7rem;
+    bottom: -1px;
+    height: 2px;
+    background: var(--amber);
+  }
+
+  .site-header__actions {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  .search-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    min-height: 36px;
+    padding: 0 0.6rem 0 0.7rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-m);
+    color: var(--text-3);
+    font-size: var(--text-small);
+    transition:
+      color var(--dur) var(--ease),
+      border-color var(--dur) var(--ease);
+  }
+  .search-trigger:hover {
+    color: var(--ivory);
+    border-color: var(--text-3);
+  }
+  .search-trigger__kbd {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    padding: 0.1rem 0.35rem;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--text-3);
+  }
+
+  .menu-toggle {
+    display: none;
+    width: 44px;
+    height: 44px;
+    align-items: center;
+    justify-content: center;
+    margin-right: -0.6rem;
+  }
+  .menu-toggle__bars,
+  .menu-toggle__bars::before {
+    display: block;
+    width: 20px;
+    height: 1.5px;
+    background: var(--ivory);
+    transition: transform var(--dur) var(--ease);
+  }
+  .menu-toggle__bars {
+    position: relative;
+    transform: translateY(-3.5px);
+  }
+  .menu-toggle__bars::before {
+    content: '';
+    position: absolute;
+    top: 7px;
+    left: 0;
+  }
+  .menu-toggle[aria-expanded='true'] .menu-toggle__bars {
+    transform: translateY(0) rotate(45deg);
+  }
+  .menu-toggle[aria-expanded='true'] .menu-toggle__bars::before {
+    transform: translateY(-7px) rotate(-90deg);
+  }
+
+  .mobile-menu {
+    position: fixed;
+    inset: var(--header-h) 0 0 0;
+    overflow-y: auto;
+    background: var(--midnight);
+    padding-block: 0.5rem 2.5rem;
+  }
+  .mobile-menu ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .mobile-menu li a {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 60px;
+    border-bottom: 1px solid var(--border-soft);
+    color: var(--ivory);
+    font-size: 1.25rem;
+    letter-spacing: -0.01em;
+  }
+  .mobile-menu li a[aria-current] span:first-child {
+    color: var(--amber);
+  }
+  .mobile-menu__arrow {
+    font-family: var(--font-mono);
+    font-size: 1rem;
+    color: var(--text-3);
+  }
+  .mobile-menu__cta {
+    width: 100%;
+    margin-top: 1.75rem;
+    min-height: 52px;
+  }
+
+  @media (max-width: 1080px) {
+    .search-trigger__label {
+      display: none;
+    }
+  }
+  @media (max-width: 940px) {
+    .site-nav,
+    .site-header__cta,
+    .search-trigger__kbd {
+      display: none;
+    }
+    .menu-toggle {
+      display: inline-flex;
+    }
+    .search-trigger {
+      width: 44px;
+      min-height: 44px;
+      padding: 0;
+      justify-content: center;
+      border-color: transparent;
+      color: var(--ivory);
+    }
+    .site-header__actions {
+      gap: 0;
+    }
+  }
+  @media (min-width: 941px) {
+    .mobile-menu {
+      display: none !important;
+    }
+  }
+</style>

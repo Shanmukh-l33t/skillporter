@@ -1,0 +1,3 @@
+# exit: 0
+$ skillporter lock
+wrote ~/acme-api/skillporter.lock (1 locked skill(s))

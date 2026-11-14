@@ -1,0 +1,128 @@
+---
+import { release } from '../data/site';
+import CopyButton from './CopyButton.astro';
+
+interface Channel {
+  id: string;
+  label: string;
+  lines: string[];
+  note: string;
+  link?: { href: string; text: string };
+}
+
+const channels: Channel[] = [
+  {
+    id: 'uvx',
+    label: 'uvx',
+    lines: ['uvx skillporter diagnose .'],
+    note: 'Runs the current release from PyPI without installing anything. Needs uv.',
+  },
+  {
+    id: 'uv',
+    label: 'uv',
+    lines: ['uv tool install skillporter'],
+    note: 'Installs the CLI into its own isolated environment.',
+  },
+  {
+    id: 'pipx',
+    label: 'pipx',
+    lines: ['pipx install skillporter'],
+    note: 'Installs the CLI into its own isolated environment.',
+  },
+  {
+    id: 'npx',
+    label: 'npx',
+    lines: [`npx ${release.npm_package} diagnose .`],
+    note: 'A launcher for the same Python core. Needs Node 16+ and Python 3.9+.',
+  },
+  {
+    id: 'installer',
+    label: 'Installer',
+    lines: [`curl -fsSL ${release.installer_url} -o install.sh`, `SKILLPORTER_VERSION=${release.tag} sh install.sh`],
+    note: 'Linux and macOS. The installer checks the SHA-256, then requires proof of origin: a GitHub attestation (needs gh, signed in) or a digest you pin. It stops if neither is available.',
+    link: { href: '/docs/installation#standalone-release-installer', text: 'How verification works' },
+  },
+];
+---
+
+<div class="frame install" data-tabs>
+  <div class="frame__bar">
+    <div class="tabs" role="tablist" aria-label="Install channel">
+      {
+        channels.map((channel, i) => (
+          <button
+            class="tab"
+            type="button"
+            role="tab"
+            id={`install-tab-${channel.id}`}
+            aria-selected={i === 0 ? 'true' : 'false'}
+            aria-controls={`install-panel-${channel.id}`}
+            tabindex={i === 0 ? 0 : -1}
+          >
+            {channel.label}
+          </button>
+        ))
+      }
+    </div>
+  </div>
+  {
+    channels.map((channel, i) => (
+      <div
+        class="install__panel"
+        role="tabpanel"
+        id={`install-panel-${channel.id}`}
+        aria-labelledby={`install-tab-${channel.id}`}
+        hidden={i !== 0}
+      >
+        <div class="install__cmd">
+          <pre class="term" tabindex="0"><code>{channel.lines.map((line, n) => (
+            <Fragment><span class="t-prompt">$</span> <span class="t-cmd">{line}</span>{n < channel.lines.length - 1 ? '\n' : ''}</Fragment>
+          ))}</code></pre>
+          <CopyButton text={channel.lines.join('\n')} label={`Copy ${channel.label} command`} />
+        </div>
+        <p class="install__note">
+          {channel.note}
+          {channel.link && (
+            <Fragment>
+              {' '}
+              <a class="text-link" href={channel.link.href}>
+                {channel.link.text}
+              </a>
+            </Fragment>
+          )}
+        </p>
+      </div>
+    ))
+  }
+</div>
+
+<style>
+  .install__cmd {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding-right: 0.75rem;
+  }
+  .install__cmd .term {
+    flex: 1;
+    min-width: 0;
+    padding-block: 1.15rem;
+  }
+  .install__cmd :global(.copy) {
+    margin-top: 0.8rem;
+  }
+  .install__note {
+    min-height: 4.6rem;
+    padding: 0.85rem 1.15rem 1rem;
+    border-top: 1px solid var(--border);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    color: var(--text-2);
+    background: var(--midnight);
+  }
+  @media (max-width: 520px) {
+    .install__note {
+      min-height: 6.6rem;
+    }
+  }
+</style>

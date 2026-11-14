@@ -1,0 +1,154 @@
+---
+import { LINKS, SITE, release } from '../data/site';
+import Logo from './Logo.astro';
+
+const docLinks = [
+  { label: 'Getting started', href: '/docs/getting-started' },
+  { label: 'Installation', href: '/docs/installation' },
+  { label: 'CLI reference', href: '/docs/cli' },
+  { label: 'Harness compatibility', href: '/docs/harnesses' },
+  { label: 'Security model', href: '/docs/security' },
+  { label: 'All documentation', href: '/docs' },
+];
+
+const productLinks = [
+  { label: 'Product', href: '/#product' },
+  { label: 'Features', href: '/#features' },
+  { label: 'How it works', href: '/#how-it-works' },
+  { label: 'Harnesses', href: '/#harnesses' },
+  { label: 'Security', href: '/#security' },
+  { label: 'Reproducibility', href: '/#reproducibility' },
+];
+
+const projectLinks = [
+  { label: 'GitHub', href: LINKS.repo },
+  { label: `Release ${release.tag}`, href: LINKS.release },
+  { label: 'Changelog', href: LINKS.changelog },
+  { label: 'Security policy', href: LINKS.security },
+  { label: 'Contributing', href: LINKS.contributing },
+  { label: 'License', href: LINKS.license },
+];
+
+---
+
+<footer class="site-footer">
+  <div class="wrap">
+    <hr class="span-rule" />
+    <div class="site-footer__grid">
+      <div class="site-footer__brand">
+        <a href="/" aria-label="Skillporter home"><Logo height={26} loading="lazy" /></a>
+        <p>{SITE.positioning}</p>
+        <p class="site-footer__meta">
+          <span>{release.tag}</span>
+          <span>{release.license} License</span>
+          <span>Python 3.9+</span>
+        </p>
+      </div>
+      <nav aria-label="Product">
+        <h2>Product</h2>
+        <ul>
+          {productLinks.map((link) => <li><a href={link.href}>{link.label}</a></li>)}
+        </ul>
+      </nav>
+      <nav aria-label="Documentation">
+        <h2>Documentation</h2>
+        <ul>
+          {docLinks.map((link) => <li><a href={link.href}>{link.label}</a></li>)}
+        </ul>
+      </nav>
+      <nav aria-label="Project">
+        <h2>Project</h2>
+        <ul>
+          {
+            projectLinks.map((link) => (
+              <li>
+                <a href={link.href} rel="noopener">
+                  {link.label}
+                </a>
+              </li>
+            ))
+          }
+        </ul>
+      </nav>
+    </div>
+    <div class="site-footer__legal">
+      <p>Skillporter is open source software released under the {release.license} License.</p>
+      <p>Harness and product names belong to their respective owners. Skillporter is not affiliated with them.</p>
+    </div>
+  </div>
+</footer>
+
+<style>
+  .site-footer {
+    padding-block: 4rem 3rem;
+  }
+  .site-footer__grid {
+    display: grid;
+    grid-template-columns: minmax(0, 4fr) repeat(3, minmax(0, 2fr));
+    gap: 2.5rem var(--gutter);
+    padding-block: 3.5rem 3rem;
+  }
+  .site-footer__brand p {
+    margin-top: 1.1rem;
+    max-width: 22rem;
+    font-size: var(--text-small);
+  }
+  .site-footer__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem 1.1rem;
+    font-family: var(--font-mono);
+    font-size: var(--text-micro) !important;
+    color: var(--text-3);
+  }
+  h2 {
+    font-family: var(--font-mono);
+    font-size: var(--text-micro);
+    font-weight: 400;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    margin-bottom: 0.9rem;
+  }
+  ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  li a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 36px;
+    font-size: var(--text-small);
+    color: var(--text-2);
+    transition: color var(--dur) var(--ease);
+  }
+  li a:hover {
+    color: var(--ivory);
+  }
+  .site-footer__legal {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.5rem 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border-soft);
+    font-size: var(--text-micro);
+    color: var(--text-3);
+  }
+
+  @media (max-width: 860px) {
+    .site-footer__grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .site-footer__brand {
+      grid-column: 1 / -1;
+    }
+  }
+  @media (max-width: 420px) {
+    .site-footer__grid {
+      grid-template-columns: 1fr 1fr;
+      gap: 2rem 1rem;
+    }
+  }
+</style>

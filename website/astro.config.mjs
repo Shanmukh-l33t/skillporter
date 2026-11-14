@@ -1,0 +1,31 @@
+// @ts-check
+import { defineConfig } from 'astro/config';
+import { skillporterTheme } from './src/lib/shiki-theme.mjs';
+
+// Static, host-agnostic build. Pages are emitted as `/docs/cli.html` (and
+// `/docs/index.html`) and served at `/docs/cli`, matching the canonical URLs.
+export default defineConfig({
+  site: 'https://skillporter.dev',
+  output: 'static',
+  trailingSlash: 'never',
+  build: {
+    format: 'preserve',
+    inlineStylesheets: 'auto',
+  },
+  compressHTML: true,
+  markdown: {
+    syntaxHighlight: 'shiki',
+    shikiConfig: {
+      theme: skillporterTheme,
+      wrap: false,
+    },
+  },
+  vite: {
+    server: {
+      fs: {
+        // The documentation source lives in the repository's top-level docs/.
+        allow: ['..'],
+      },
+    },
+  },
+});

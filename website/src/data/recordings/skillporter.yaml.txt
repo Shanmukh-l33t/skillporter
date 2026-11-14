@@ -1,0 +1,28 @@
+schema_version: 2
+project: acme-api
+scope: project
+strategy: copy
+security_policy: HIGH
+harnesses:
+  - aider
+  - antigravity
+  - claude-code
+  - cline
+  - codex
+  - continue
+  - cursor
+  - gemini-cli
+  - github-copilot
+  - goose
+  - hermes
+  - junie
+  - openclaw
+  - opencode
+  - openhands
+  - replit
+  - roo-code
+  - windsurf
+  - zed
+skills:
+  - name: pdf
+    source: ./.agents/skills/pdf

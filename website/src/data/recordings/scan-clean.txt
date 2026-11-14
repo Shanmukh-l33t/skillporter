@@ -1,0 +1,8 @@
+# exit: 0
+$ skillporter scan .
+skillporter 3.0.0 — security assessment
+
+pdf: PASSED  (risk: 0/100 · APPROVE · posture: NO_DETECTED_FINDINGS · engine: skillporter-static v3.0.0 · sha256: 6b86f0c798b5)
+  0 findings across all scanned files.
+
+Note: Static scanning inspects patterns and symlinks; a clean scan does not prove runtime safety.

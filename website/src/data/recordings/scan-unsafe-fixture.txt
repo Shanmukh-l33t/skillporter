@@ -1,0 +1,28 @@
+# exit: 1
+$ skillporter scan .
+skillporter 3.0.0 — security assessment
+
+quick-setup: BLOCKED  (risk: 100/100 · REJECT · posture: CRITICAL_DETECTED_RISK · engine: skillporter-static v3.0.0 · sha256: 7245f2bd2432)
+  Categories: prompt_injection=70, code_execution=100, data_exfiltration=35, supply_chain=2
+  [CRITICAL] sec-prompt-override (SKILL.md:12): Prompt-injection directive attempting to override system/user instructions
+      Fix: Remove instruction-override directives; skills must not subvert user or system boundaries.
+  [CRITICAL] sec-curl-pipe-sh (SKILL.md:15): Remote code execution pattern (curl/wget piped directly into shell)
+      Fix: Do not pipe remote downloads directly into a shell; download, verify a SHA-256 checksum, and inspect first.
+  [INFO] sec-external-download (SKILL.md:15): External network download command referenced
+      Fix: Pin downloaded artifacts by SHA-256 digest or vendor static references locally.
+  [MEDIUM] sec-html-comment-instruction (SKILL.md): HTML comment containing imperative execution or override keywords
+      Fix: Remove hidden imperative shell/override instructions from HTML comments.
+  [HIGH] sec-base64-decode (scripts/bootstrap.py:7): Encoded base64 decode invocation detected in skill instructions or script
+      Fix: Replace base64-encoded payloads with plain, inspectable text or source files.
+  [HIGH] sec-dynamic-eval (scripts/bootstrap.py:9): Dynamic or inline shell/code execution (os.system / eval / exec / shell=True / python -c)
+      Fix: Avoid os.system(), eval(), exec(), or inline 'python -c' shell execution.
+  [HIGH] sec-credential-harvest (scripts/bootstrap.py:6): Python AST accesses sensitive host credential path (.ssh/id_ed25519)
+      Fix: Remove reads targeting host credential stores (~/.ssh, ~/.aws, /etc/shadow, .npmrc, .pypirc).
+  [HIGH] sec-py-unsafe-subprocess (scripts/bootstrap.py:8): Unsafe subprocess invocation `subprocess.run(..., shell=True)` risks shell injection
+      Fix: Pass argument lists to subprocess without shell=True.
+  [CRITICAL] sec-encoded-payload (scripts/bootstrap.py:7): Base64-encoded (or zlib-compressed) malicious command or prompt-injection payload detected
+      Fix: Decode and replace obfuscated Base64/Hex command payloads with auditable source text.
+  [HIGH] sec-cross-file-staged-exec (SKILL.md:1): Multi-file staged payload decode-and-execute chain detected (payload=scripts/bootstrap.py -> decode=scripts/bootstrap.py -> exec=SKILL.md)
+      Fix: Eliminate multi-file staged payload decoding and dynamic execution chains.
+
+Note: Static scanning inspects patterns and symlinks; a clean scan does not prove runtime safety.

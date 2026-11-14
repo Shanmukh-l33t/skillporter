@@ -1,0 +1,28 @@
+{
+  "name": "skillporter-website",
+  "private": true,
+  "version": "3.0.0",
+  "type": "module",
+  "description": "Official website and documentation for Skillporter (https://skillporter.dev).",
+  "engines": {
+    "node": ">=22.23.4"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "data": "python3 scripts/generate_site_data.py",
+    "data:check": "python3 scripts/generate_site_data.py --check",
+    "typecheck": "astro check",
+    "build": "astro build && pagefind --site dist",
+    "preview": "node scripts/serve.mjs",
+    "test": "node --test tests/site.test.mjs",
+    "verify": "npm run data:check && npm run typecheck && npm run build && npm test"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.12",
+    "@fontsource-variable/geist": "5.3.0",
+    "@fontsource-variable/geist-mono": "5.3.0",
+    "astro": "7.4.12",
+    "pagefind": "1.6.0",
+    "typescript": "6.0.3"
+  }
+}

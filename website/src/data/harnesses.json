@@ -1,0 +1,872 @@
+{
+  "source": "skillporter/harnesses.py",
+  "version": "3.0.0",
+  "counts": {
+    "total": 19,
+    "verification": {
+      "RUNTIME_VERIFIED": 1,
+      "INTEGRATION_TESTED": 3,
+      "FIXTURE_TESTED": 15
+    },
+    "support": {
+      "NATIVE": 17,
+      "COMPATIBLE": 1,
+      "ADAPTED": 1
+    },
+    "category": {
+      "coding": 15,
+      "autonomous": 4
+    },
+    "shared_primary": 8,
+    "shared_compat": 6
+  },
+  "harnesses": [
+    {
+      "id": "hermes",
+      "name": "Hermes Agent",
+      "category": "autonomous",
+      "support": "NATIVE",
+      "verification": "RUNTIME_VERIFIED",
+      "verified_date": "2026-11-11",
+      "docs": "https://hermes-agent.nousresearch.com/docs",
+      "aliases": [
+        "hermes-agent"
+      ],
+      "project_primary": ".hermes/skills",
+      "user_primary": "$HERMES_HOME/skills",
+      "project_paths": [
+        {
+          "path": ".hermes/skills",
+          "compat": false,
+          "note": "workspace-scoped Hermes skills"
+        }
+      ],
+      "user_paths": [
+        {
+          "path": "$HERMES_HOME/skills",
+          "compat": false,
+          "note": "$HERMES_HOME/skills/<category>/<name>"
+        }
+      ],
+      "shared_agents_dir": null,
+      "recursive_discovery": true,
+      "adapted_format": null,
+      "notes": [
+        "Profile-scoped: resolves against $HERMES_HOME, never a hardcoded path.",
+        "Walks nested category directories ($HERMES_HOME/skills/<category>/<name>/SKILL.md)."
+      ],
+      "limitations": []
+    },
+    {
+      "id": "claude-code",
+      "name": "Claude Code",
+      "category": "coding",
+      "support": "NATIVE",
+      "verification": "INTEGRATION_TESTED",
+      "verified_date": "2026-11-11",
+      "docs": "https://code.claude.com/docs/en/skills",
+      "aliases": [
+        "claude"
+      ],
+      "project_primary": ".claude/skills",
+      "user_primary": "~/.claude/skills",
+      "project_paths": [
+        {
+          "path": ".claude/skills",
+          "compat": false,
+          "note": ""
+        }
+      ],
+      "user_paths": [
+        {
+          "path": "~/.claude/skills",
+          "compat": false,
+          "note": ""
+        }
+      ],
+      "shared_agents_dir": null,
+      "recursive_discovery": false,
+      "adapted_format": null,
+      "notes": [
+        "Reads only .claude/skills. A skill authored in .agents/skills is invisible here unless bridged -- the most common silent failure."
+      ],
+      "limitations": [
+        "Does not read .agents/skills natively without a copy or symlink bridge."
+      ]
+    },
+    {
+      "id": "codex",
+      "name": "OpenAI Codex",
+      "category": "coding",
+      "support": "NATIVE",
+      "verification": "INTEGRATION_TESTED",
+      "verified_date": "2026-11-11",
+      "docs": "https://developers.openai.com/codex/skills",
+      "aliases": [
+        "openai-codex"
+      ],
+      "project_primary": ".agents/skills",
+      "user_primary": "~/.agents/skills",
+      "project_paths": [
+        {
+          "path": ".agents/skills",
+          "compat": false,
+          "note": ""
+        }
+      ],
+      "user_paths": [
+        {
+          "path": "~/.agents/skills",
+          "compat": false,
+          "note": ""
+        }
+      ],
+      "shared_agents_dir": "primary",
+      "recursive_discovery": false,
+      "adapted_format": null,
+      "notes": [
+        "Reads .agents/skills only. A skill authored in .claude/skills is invisible here unless bridged."
+      ],
+      "limitations": [
+        "Ignores .claude/skills; expects direct child skill folders under .agents/skills."
+      ]
+    },
+    {
+      "id": "cursor",
+      "name": "Cursor",
+      "category": "coding",
+      "support": "NATIVE",
+      "verification": "INTEGRATION_TESTED",
+      "verified_date": "2026-11-11",
+      "docs": "https://cursor.com/docs/context/skills",
+      "aliases": [],
+      "project_primary": ".agents/skills",
+      "user_primary": "~/.agents/skills",
+      "project_paths": [
+        {
+          "path": ".agents/skills",
+          "compat": false,
+          "note": ""
+        },
+        {
+          "path": ".cursor/skills",
+          "compat": false,
+          "note": ""
+        },
+        {
+          "path": ".claude/skills",
+          "compat": true,
+          "note": "compatibility read"
+        },
+        {
+          "path": ".codex/skills",
+          "compat": true,
+          "note": "compatibility read"
+        }
+      ],
+      "user_paths": [
+        {
+          "path": "~/.agents/skills",
+          "compat": false,
+          "note": ""
+        },
+        {
+          "path": "~/.cursor/skills",
+          "compat": false,
+          "note": ""
+        },
+        {
+          "path": "~/.claude/skills",
+          "compat": true,
+          "note": "compatibility read"
+        },
+        {
+          "path": "~/.codex/skills",
+          "compat": true,
+          "note": "compatibility read"
+        }
+      ],
+      "shared_agents_dir": "primary",
+      "recursive_discovery": true,
+      "adapted_format": "cursor-mdc",
+      "notes": [
+        "Walks skill roots recursively, so nested category folders resolve.",
+        "Local user skills are not copied to Cloud Agents or remote workers."
+      ],
+      "limitations": [
+        "Installing into both .agents/skills and .cursor/skills causes Cursor to list the skill twice."
+      ]
+    },
+    {
+      "id": "github-copilot",
+      "name": "GitHub Copilot",
+      "category": "coding",
+      "support": "NATIVE",
+      "verification": "FIXTURE_TESTED",
+      "verified_date": "2026-11-11",
+      "docs": "https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-skills",
+      "aliases": [
+        "copilot"
+      ],
+      "project_primary": ".github/skills",
+      "user_primary": "~/.copilot/skills",
+      "project_paths": [
+        {
+          "path": ".github/skills",
+          "compat": false,
+          "note": ""
+        },
+        {
+          "path": ".agents/skills",
+          "compat": true,
+          "note": "compatibility read"
+        },
+        {
+          "path": ".claude/skills",
+          "compat": true,
+          "note": "compatibility read"
+        }
+      ],
+      "user_paths": [
+        {
+          "path": "~/.copilot/skills",
+          "compat": false,
+          "note": ""
+        },
+        {
+          "path": "~/.agents/skills",
+          "compat": true,
+          "note": "compatibility read"
+        }
+      ],
+      "shared_agents_dir": "compat",
+      "recursive_discovery": false,
+      "adapted_format": "copilot-instructions",
+      "notes": [
+        "Reads .github/skills, .agents/skills, and .claude/skills in projects; ~/.copilot/skills and ~/.agents/skills for personal scope."
+      ],
+      "limitations": [
+        "Only immediate subdirectories containing SKILL.md are discovered."
+      ]
+    },
+    {
+      "id": "gemini-cli",
+      "name": "Gemini CLI",
+      "category": "coding",
+      "support": "NATIVE",
+      "verification": "FIXTURE_TESTED",
+      "verified_date": "2026-11-11",
+      "docs": "https://geminicli.com/docs/cli/skills/",
+      "aliases": [
+        "gemini"
+      ],
+      "project_primary": ".agents/skills",
+      "user_primary": "~/.agents/skills",
+      "project_paths": [
+        {
+          "path": ".agents/skills",
+          "compat": false,
+          "note": ".agents/skills takes precedence over .gemini/skills"
+        },
+        {
+          "path": ".gemini/skills",
+          "compat": false,
+          "note": ""
+        }
+      ],
+      "user_paths": [
+        {
+          "path": "~/.agents/skills",
+          "compat": false,
+          "note": "~/.agents/skills takes precedence over ~/.gemini/skills"
+        },
+        {
+          "path": "~/.gemini/skills",
+          "compat": false,
+          "note": ""
+        }
+      ],
+      "shared_agents_dir": "primary",
+      "recursive_discovery": false,
+      "adapted_format": null,
+      "notes": [
+        "Discovers skills in .agents/skills (higher precedence) and .gemini/skills.",
+        "Workspace skills require the project folder to be trusted in Gemini CLI."
+      ],
+      "limitations": [
+        "Case-sensitive on Linux: filename must be exact uppercase SKILL.md."
+      ]
+    },
+    {
+      "id": "antigravity",
+      "name": "Google Antigravity",
+      "category": "coding",
+      "support": "NATIVE",
+      "verification": "FIXTURE_TESTED",
+      "verified_date": "2026-11-11",
+      "docs": "https://antigravity.google/docs/skills",
+      "aliases": [
+        "google-antigravity",
+        "antigravity-cli"
+      ],
+      "project_primary": ".agents/skills",
+      "user_primary": "~/.gemini/config/skills",
+      "project_paths": [
+        {
+          "path": ".agents/skills",
+          "compat": false,
+          "note": ""
+        },
+        {
+          "path": ".agent/skills",
+          "compat": true,
+          "note": "legacy compatibility"
+        }
+      ],
+      "user_paths": [
+        {
+          "path": "~/.gemini/config/skills",
+          "compat": false,
+          "note": "shared across Antigravity App and CLI"
+        },
+        {
+          "path": "~/.gemini/antigravity/skills",
+          "compat": true,
+          "note": "legacy IDE user path"
+        },
+        {
+          "path": "~/.gemini/antigravity-cli/skills",
+          "compat": true,
+          "note": "CLI-only user path"
+        }
+      ],
+      "shared_agents_dir": "primary",
+      "recursive_discovery": false,
+      "adapted_format": null,
+      "notes": [
+        "Project scope uses .agents/skills; global scope shared between App and CLI is ~/.gemini/config/skills."
+      ],
+      "limitations": []
+    },
+    {
+      "id": "windsurf",
+      "name": "Windsurf",
+      "category": "coding",
+      "support": "NATIVE",
+      "verification": "FIXTURE_TESTED",
+      "verified_date": "2026-11-11",
+      "docs": "https://docs.windsurf.com/windsurf/cascade/skills",
+      "aliases": [],
+      "project_primary": ".windsurf/skills",
+      "user_primary": "~/.codeium/windsurf/skills",
+      "project_paths": [
+        {
+          "path": ".windsurf/skills",
+          "compat": false,
+          "note": ""
+        }
+      ],
+      "user_paths": [
+        {
+          "path": "~/.codeium/windsurf/skills",
+          "compat": false,
+          "note": ""
+        }
+      ],
+      "shared_agents_dir": null,
+      "recursive_discovery": false,
+      "adapted_format": "windsurf-rules",
+      "notes": [
+        "Cascade reads project skills from .windsurf/skills and global skills from ~/.codeium/windsurf/skills."
+      ],
+      "limitations": [
+        "Explicit @skill-name mention in Cascade chat is more reliable than automatic invocation."
+      ]
+    },
+    {
+      "id": "cline",
+      "name": "Cline",
+      "category": "coding",
+      "support": "NATIVE",
+      "verification": "FIXTURE_TESTED",
+      "verified_date": "2026-11-11",
+      "docs": "https://docs.cline.bot/customization/skills",
+      "aliases": [],
+      "project_primary": ".cline/skills",
+      "user_primary": "~/.cline/skills",
+      "project_paths": [
+        {
+          "path": ".cline/skills",
+          "compat": false,
+          "note": ""
+        },
+        {
+          "path": ".clinerules/skills",
+          "compat": true,
+          "note": "legacy rules-folder skill path"
+        },
+        {
+          "path": ".claude/skills",
+          "compat": true,
+          "note": "compatibility read"
+        },
+        {
+          "path": ".agents/skills",
+          "compat": true,
+          "note": "compatibility read"
+        }
+      ],
+      "user_paths": [
+        {
+          "path": "~/.cline/skills",
+          "compat": false,
+          "note": ""
+        }
+      ],
+      "shared_agents_dir": "compat",
+      "recursive_discovery": false,
+      "adapted_format": null,
+      "notes": [
+        "Scans .cline/skills (recommended), .clinerules/skills, .claude/skills, and .agents/skills."
+      ],
+      "limitations": [
+        "Mandates SKILL.md body under 5,000 tokens; oversized skills should move detail into references/."
+      ]
+    },
+    {
+      "id": "roo-code",
+      "name": "Roo Code",
+      "category": "coding",
+      "support": "NATIVE",
+      "verification": "FIXTURE_TESTED",
+      "verified_date": "2026-11-11",
+      "docs": "https://roocodeinc.github.io/Roo-Code/features/skills/",
+      "aliases": [
+        "roo",
+        "roocode"
+      ],
+      "project_primary": ".roo/skills",
+      "user_primary": "~/.roo/skills",
+      "project_paths": [
+        {
+          "path": ".roo/skills",
+          "compat": false,
+          "note": ""
+        },
+        {
+          "path": ".agents/skills",
+          "compat": true,
+          "note": "cross-agent compatibility"
+        }
+      ],
+      "user_paths": [
+        {
+          "path": "~/.roo/skills",
+          "compat": false,
+          "note": ""
+        },
+        {
+          "path": "~/.agents/skills",
+          "compat": true,
+          "note": "cross-agent compatibility"
+        }
+      ],
+      "shared_agents_dir": "compat",
+      "recursive_discovery": false,
+      "adapted_format": null,
+      "notes": [
+        "Reads .roo/skills (highest priority) and .agents/skills in project and user scopes.",
+        "Also supports mode-specific folders such as .roo/skills-code/ and .roo/skills-architect/."
+      ],
+      "limitations": []
+    },
+    {
+      "id": "opencode",
+      "name": "OpenCode",
+      "category": "coding",
+      "support": "NATIVE",
+      "verification": "FIXTURE_TESTED",
+      "verified_date": "2026-11-11",
+      "docs": "https://opencode.ai/docs/skills",
+      "aliases": [],
+      "project_primary": ".opencode/skills",
+      "user_primary": "~/.config/opencode/skills",
+      "project_paths": [
+        {
+          "path": ".opencode/skills",
+          "compat": false,
+          "note": ""
+        },
+        {
+          "path": ".agents/skills",
+          "compat": true,
+          "note": "compatibility read"
+        },
+        {
+          "path": ".claude/skills",
+          "compat": true,
+          "note": "compatibility read"
+        }
+      ],
+      "user_paths": [
+        {
+          "path": "~/.config/opencode/skills",
+          "compat": false,
+          "note": ""
+        },
+        {
+          "path": "~/.agents/skills",
+          "compat": true,
+          "note": "compatibility read"
+        },
+        {
+          "path": "~/.claude/skills",
+          "compat": true,
+          "note": "compatibility read"
+        }
+      ],
+      "shared_agents_dir": "compat",
+      "recursive_discovery": true,
+      "adapted_format": null,
+      "notes": [
+        "Searches .opencode/skills, .agents/skills, and .claude/skills across project and global scopes.",
+        "Supports nested grouping directories containing SKILL.md."
+      ],
+      "limitations": []
+    },
+    {
+      "id": "zed",
+      "name": "Zed",
+      "category": "coding",
+      "support": "NATIVE",
+      "verification": "FIXTURE_TESTED",
+      "verified_date": "2026-11-11",
+      "docs": "https://zed.dev/docs/ai/skills",
+      "aliases": [],
+      "project_primary": ".agents/skills",
+      "user_primary": "~/.agents/skills",
+      "project_paths": [
+        {
+          "path": ".agents/skills",
+          "compat": false,
+          "note": ""
+        }
+      ],
+      "user_paths": [
+        {
+          "path": "~/.agents/skills",
+          "compat": false,
+          "note": ""
+        }
+      ],
+      "shared_agents_dir": "primary",
+      "recursive_discovery": false,
+      "adapted_format": null,
+      "notes": [
+        "Zed Agent loads skills exclusively from <worktree>/.agents/skills and ~/.agents/skills with live reload."
+      ],
+      "limitations": [
+        "Does not load skills from ~/.config/zed/skills; must use ~/.agents/skills."
+      ]
+    },
+    {
+      "id": "replit",
+      "name": "Replit Agent",
+      "category": "coding",
+      "support": "NATIVE",
+      "verification": "FIXTURE_TESTED",
+      "verified_date": "2026-11-11",
+      "docs": "https://docs.replit.com/features/agent/skills",
+      "aliases": [
+        "replit-agent"
+      ],
+      "project_primary": ".agents/skills",
+      "user_primary": "~/.config/agents/skills",
+      "project_paths": [
+        {
+          "path": ".agents/skills",
+          "compat": false,
+          "note": ""
+        },
+        {
+          "path": ".claude/skills",
+          "compat": true,
+          "note": "compatibility read"
+        }
+      ],
+      "user_paths": [
+        {
+          "path": "~/.config/agents/skills",
+          "compat": false,
+          "note": ""
+        }
+      ],
+      "shared_agents_dir": "primary",
+      "recursive_discovery": true,
+      "adapted_format": null,
+      "notes": [
+        "Discovers enabled skills under .agents/skills and .claude/skills, including nested directories."
+      ],
+      "limitations": []
+    },
+    {
+      "id": "junie",
+      "name": "JetBrains Junie / AI Assistant",
+      "category": "coding",
+      "support": "NATIVE",
+      "verification": "FIXTURE_TESTED",
+      "verified_date": "2026-11-11",
+      "docs": "https://junie.jetbrains.com/docs/agent-skills.html",
+      "aliases": [
+        "jetbrains",
+        "jetbrains-ai"
+      ],
+      "project_primary": ".junie/skills",
+      "user_primary": "~/.junie/skills",
+      "project_paths": [
+        {
+          "path": ".junie/skills",
+          "compat": false,
+          "note": ""
+        },
+        {
+          "path": ".agents/skills",
+          "compat": true,
+          "note": "shared skills compatibility"
+        }
+      ],
+      "user_paths": [
+        {
+          "path": "~/.junie/skills",
+          "compat": false,
+          "note": ""
+        },
+        {
+          "path": "~/.agents/skills",
+          "compat": true,
+          "note": "shared skills compatibility"
+        }
+      ],
+      "shared_agents_dir": "compat",
+      "recursive_discovery": false,
+      "adapted_format": null,
+      "notes": [
+        "Works across Junie CLI and JetBrains IDEs (IntelliJ IDEA, PyCharm, WebStorm, GoLand, etc.)."
+      ],
+      "limitations": []
+    },
+    {
+      "id": "openclaw",
+      "name": "OpenClaw",
+      "category": "autonomous",
+      "support": "NATIVE",
+      "verification": "FIXTURE_TESTED",
+      "verified_date": "2026-11-11",
+      "docs": "https://docs.openclaw.ai/tools/skills",
+      "aliases": [],
+      "project_primary": ".openclaw/skills",
+      "user_primary": "~/.openclaw/skills",
+      "project_paths": [
+        {
+          "path": ".openclaw/skills",
+          "compat": false,
+          "note": ""
+        },
+        {
+          "path": "skills",
+          "compat": true,
+          "note": "workspace skills directory"
+        },
+        {
+          "path": ".agents/skills",
+          "compat": true,
+          "note": "project agent skills"
+        }
+      ],
+      "user_paths": [
+        {
+          "path": "~/.openclaw/skills",
+          "compat": false,
+          "note": ""
+        },
+        {
+          "path": "~/.agents/skills",
+          "compat": true,
+          "note": "personal agent skills"
+        }
+      ],
+      "shared_agents_dir": "compat",
+      "recursive_discovery": true,
+      "adapted_format": null,
+      "notes": [
+        "Loads <workspace>/skills, <workspace>/.agents/skills, ~/.agents/skills, and ~/.openclaw/skills up to 6 levels deep."
+      ],
+      "limitations": []
+    },
+    {
+      "id": "openhands",
+      "name": "OpenHands",
+      "category": "autonomous",
+      "support": "NATIVE",
+      "verification": "FIXTURE_TESTED",
+      "verified_date": "2026-11-11",
+      "docs": "https://docs.openhands.dev/overview/skills",
+      "aliases": [],
+      "project_primary": ".agents/skills",
+      "user_primary": "~/.agents/skills",
+      "project_paths": [
+        {
+          "path": ".agents/skills",
+          "compat": false,
+          "note": ""
+        },
+        {
+          "path": ".openhands/skills",
+          "compat": true,
+          "note": "legacy OpenHands path"
+        },
+        {
+          "path": ".openhands/microagents",
+          "compat": true,
+          "note": "legacy microagents path"
+        }
+      ],
+      "user_paths": [
+        {
+          "path": "~/.agents/skills",
+          "compat": false,
+          "note": ""
+        },
+        {
+          "path": "~/.openhands/skills",
+          "compat": true,
+          "note": "legacy OpenHands path"
+        }
+      ],
+      "shared_agents_dir": "primary",
+      "recursive_discovery": false,
+      "adapted_format": null,
+      "notes": [
+        ".agents/skills takes precedence over legacy .openhands/skills and .openhands/microagents."
+      ],
+      "limitations": []
+    },
+    {
+      "id": "goose",
+      "name": "Goose",
+      "category": "autonomous",
+      "support": "NATIVE",
+      "verification": "FIXTURE_TESTED",
+      "verified_date": "2026-11-11",
+      "docs": "https://block.github.io/goose/docs/guides/context-engineering/using-skills/",
+      "aliases": [],
+      "project_primary": ".agents/skills",
+      "user_primary": "~/.agents/skills",
+      "project_paths": [
+        {
+          "path": ".agents/skills",
+          "compat": false,
+          "note": ""
+        },
+        {
+          "path": ".goose/skills",
+          "compat": true,
+          "note": "backward compatibility"
+        }
+      ],
+      "user_paths": [
+        {
+          "path": "~/.agents/skills",
+          "compat": false,
+          "note": ""
+        },
+        {
+          "path": "~/.config/goose/skills",
+          "compat": true,
+          "note": "backward compatibility"
+        }
+      ],
+      "shared_agents_dir": "primary",
+      "recursive_discovery": false,
+      "adapted_format": null,
+      "notes": [
+        "Reads ~/.agents/skills and .agents/skills, plus legacy .goose/skills and ~/.config/goose/skills."
+      ],
+      "limitations": []
+    },
+    {
+      "id": "continue",
+      "name": "Continue",
+      "category": "coding",
+      "support": "COMPATIBLE",
+      "verification": "FIXTURE_TESTED",
+      "verified_date": "2026-11-11",
+      "docs": "https://docs.continue.dev/customize/deep-dives/rules",
+      "aliases": [
+        "continue-dev"
+      ],
+      "project_primary": ".continue/skills",
+      "user_primary": "~/.continue/skills",
+      "project_paths": [
+        {
+          "path": ".continue/skills",
+          "compat": false,
+          "note": ""
+        }
+      ],
+      "user_paths": [
+        {
+          "path": "~/.continue/skills",
+          "compat": false,
+          "note": ""
+        }
+      ],
+      "shared_agents_dir": null,
+      "recursive_discovery": false,
+      "adapted_format": "continue-rules",
+      "notes": [
+        "Continue loadMarkdownSkills loader reads .continue/skills/<name>/SKILL.md; older versions require adapted rules in .continue/rules/<name>.md."
+      ],
+      "limitations": [
+        "Upstream Continue repository entered maintenance-only mode in June 2026."
+      ]
+    },
+    {
+      "id": "aider",
+      "name": "Aider / AiderDesk",
+      "category": "coding",
+      "support": "ADAPTED",
+      "verification": "FIXTURE_TESTED",
+      "verified_date": "2026-11-11",
+      "docs": "https://aider.chat/docs/usage/conventions.html",
+      "aliases": [
+        "aider-desk"
+      ],
+      "project_primary": ".aider-desk/skills",
+      "user_primary": "~/.aider-desk/skills",
+      "project_paths": [
+        {
+          "path": ".aider-desk/skills",
+          "compat": false,
+          "note": "AiderDesk native skill folder"
+        }
+      ],
+      "user_paths": [
+        {
+          "path": "~/.aider-desk/skills",
+          "compat": false,
+          "note": "AiderDesk global skill folder"
+        }
+      ],
+      "shared_agents_dir": null,
+      "recursive_discovery": false,
+      "adapted_format": "aider-conventions",
+      "notes": [
+        "AiderDesk reads .aider-desk/skills/<name>/SKILL.md. Core Aider CLI requires `aider --read <skill>/SKILL.md` or adapted export to CONVENTIONS.md."
+      ],
+      "limitations": [
+        "Core Aider CLI does not auto-discover SKILL.md folders without --read or CONVENTIONS.md adaptation."
+      ]
+    }
+  ]
+}

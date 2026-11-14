@@ -1,0 +1,39 @@
+---
+interface Props {
+  /** Rendered height in CSS pixels. Width follows the artwork's ratio. */
+  height?: number;
+  class?: string;
+  loading?: 'eager' | 'lazy';
+}
+
+// Intrinsic size of public/brand/skillporter-lockup.webp, cropped from the
+// approved logo by scripts/make_brand_assets.py.
+const SOURCE_WIDTH = 966;
+const SOURCE_HEIGHT = 144;
+
+const { height = 28, class: className, loading = 'eager' } = Astro.props;
+const width = Math.round((SOURCE_WIDTH / SOURCE_HEIGHT) * height);
+---
+
+<picture class:list={['logo', className]}>
+  <source srcset="/brand/skillporter-lockup.webp" type="image/webp" />
+  <img
+    src="/brand/skillporter-lockup.png"
+    alt="Skillporter"
+    width={width}
+    height={height}
+    loading={loading}
+    decoding="async"
+  />
+</picture>
+
+<style>
+  .logo {
+    display: block;
+    flex: none;
+  }
+  .logo img {
+    display: block;
+    height: auto;
+  }
+</style>

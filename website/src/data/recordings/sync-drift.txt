@@ -1,0 +1,26 @@
+# exit: 1,0
+$ skillporter sync
+error: on-disk skill content differs from skillporter.lock; refusing to re-lock without --force:
+  - pdf (~/acme-api/.claude/skills/pdf): locked 6b86f0c7 != disk e08dcf6f
+
+$ skillporter sync --force --prefer .agents/skills/pdf
+wrote ~/acme-api/skillporter.lock (1 locked skill(s))
+created   aider            ~/acme-api/.aider-desk/skills/pdf
+unchanged antigravity      ~/acme-api/.agents/skills/pdf
+created   claude-code      ~/acme-api/.claude/skills/pdf
+created   cline            ~/acme-api/.cline/skills/pdf
+unchanged codex            ~/acme-api/.agents/skills/pdf
+created   continue         ~/acme-api/.continue/skills/pdf
+unchanged cursor           ~/acme-api/.agents/skills/pdf
+unchanged gemini-cli       ~/acme-api/.agents/skills/pdf
+created   github-copilot   ~/acme-api/.github/skills/pdf
+unchanged goose            ~/acme-api/.agents/skills/pdf
+created   hermes           ~/acme-api/.hermes/skills/pdf
+created   junie            ~/acme-api/.junie/skills/pdf
+created   openclaw         ~/acme-api/.openclaw/skills/pdf
+created   opencode         ~/acme-api/.opencode/skills/pdf
+unchanged openhands        ~/acme-api/.agents/skills/pdf
+unchanged replit           ~/acme-api/.agents/skills/pdf
+created   roo-code         ~/acme-api/.roo/skills/pdf
+created   windsurf         ~/acme-api/.windsurf/skills/pdf
+unchanged zed              ~/acme-api/.agents/skills/pdf

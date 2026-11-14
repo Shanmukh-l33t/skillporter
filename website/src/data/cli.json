@@ -1,0 +1,372 @@
+{
+  "source": "skillporter/cli.py",
+  "version": "3.0.0",
+  "global_flags": [
+    "--version"
+  ],
+  "commands": {
+    "add": {
+      "flags": [
+        "--adapt",
+        "--allow-risky",
+        "--dry-run",
+        "--engine",
+        "--force",
+        "--format",
+        "--harness",
+        "--json",
+        "--max-risk-score",
+        "--offline",
+        "--path",
+        "--ref",
+        "--scope",
+        "--skill",
+        "--strategy"
+      ],
+      "positionals": [
+        "source"
+      ],
+      "help": "install skills from GitHub, git URL, archive, registry, or local path"
+    },
+    "audit": {
+      "flags": [
+        "--format",
+        "--json",
+        "--limit",
+        "--scope"
+      ],
+      "positionals": [
+        "path"
+      ],
+      "help": "audit installed skills, provenance, lockfile integrity, and security log"
+    },
+    "ci-report": {
+      "flags": [
+        "--format",
+        "--github-repo",
+        "--json",
+        "--output",
+        "--pr",
+        "--scope"
+      ],
+      "positionals": [
+        "path"
+      ],
+      "help": "generate a Markdown/JSON PR diagnostic & security report"
+    },
+    "demo": {
+      "flags": [
+        "--format",
+        "--json"
+      ],
+      "positionals": [],
+      "help": "run a 60-second zero-residue demo resolving broken symlinks & drift"
+    },
+    "detect": {
+      "flags": [
+        "--all",
+        "--format",
+        "--json",
+        "--versions"
+      ],
+      "positionals": [
+        "path"
+      ],
+      "help": "detect installed AI agent harnesses on this machine and workspace"
+    },
+    "diagnose": {
+      "flags": [
+        "--format",
+        "--harness",
+        "--json",
+        "--scope"
+      ],
+      "positionals": [
+        "path"
+      ],
+      "help": "show which harnesses see each skill, plus drift & broken links"
+    },
+    "doctor": {
+      "flags": [
+        "--dry-run",
+        "--fix",
+        "--format",
+        "--harness",
+        "--json",
+        "--scope"
+      ],
+      "positionals": [
+        "path"
+      ],
+      "help": "run comprehensive health check (and optional --fix repair)"
+    },
+    "explain": {
+      "flags": [
+        "--format",
+        "--json"
+      ],
+      "positionals": [
+        "finding"
+      ],
+      "help": "translate any diagnostic, lockfile, or security finding into plain English"
+    },
+    "graph": {
+      "flags": [
+        "--format",
+        "--json"
+      ],
+      "positionals": [
+        "path"
+      ],
+      "help": "visualize and verify the resolved skill dependency graph"
+    },
+    "info": {
+      "flags": [
+        "--format",
+        "--json"
+      ],
+      "positionals": [
+        "target"
+      ],
+      "help": "show detailed metadata for a harness adapter, registry package, or local skill"
+    },
+    "init": {
+      "flags": [
+        "--force",
+        "--format",
+        "--json"
+      ],
+      "positionals": [
+        "path"
+      ],
+      "help": "initialize skillporter.yaml in a project"
+    },
+    "inspect": {
+      "flags": [
+        "--format",
+        "--json",
+        "--preview-adapt",
+        "--skill"
+      ],
+      "positionals": [
+        "source"
+      ],
+      "help": "inspect a local or remote skill package before installing"
+    },
+    "install": {
+      "flags": [
+        "--adapt",
+        "--allow-risky",
+        "--dry-run",
+        "--force",
+        "--format",
+        "--harness",
+        "--json",
+        "--path",
+        "--scope",
+        "--strategy"
+      ],
+      "positionals": [
+        "skill"
+      ],
+      "help": "install a local skill directory into one or more harnesses"
+    },
+    "list": {
+      "flags": [
+        "--format",
+        "--json",
+        "--scope"
+      ],
+      "positionals": [
+        "path"
+      ],
+      "help": "list installed and discovered skills"
+    },
+    "lock": {
+      "flags": [
+        "--check",
+        "--format",
+        "--json"
+      ],
+      "positionals": [
+        "path"
+      ],
+      "help": "generate, update, or verify (--check) deterministic skillporter.lock"
+    },
+    "matrix": {
+      "flags": [
+        "--category",
+        "--format",
+        "--json"
+      ],
+      "positionals": [],
+      "help": "print the 19-harness compatibility and verification matrix"
+    },
+    "mcp": {
+      "flags": [
+        "--allow-user-scope",
+        "--allow-writes",
+        "--root"
+      ],
+      "positionals": [],
+      "help": "run the stdio Model Context Protocol (MCP) server for agent harnesses"
+    },
+    "pack": {
+      "flags": [
+        "--format",
+        "--json",
+        "--out"
+      ],
+      "positionals": [
+        "path"
+      ],
+      "help": "build an immutable .tar.gz release bundle and SHA-256 provenance manifest"
+    },
+    "publish": {
+      "flags": [
+        "--dry-run",
+        "--format",
+        "--json",
+        "--registry"
+      ],
+      "positionals": [
+        "path"
+      ],
+      "help": "validate, security-gate, pack, and publish a skill to the registry"
+    },
+    "remove": {
+      "flags": [
+        "--dry-run",
+        "--format",
+        "--harness",
+        "--json",
+        "--path",
+        "--scope"
+      ],
+      "positionals": [
+        "skill"
+      ],
+      "help": "remove a skill from harnesses safely"
+    },
+    "rollback": {
+      "flags": [
+        "--backup-id",
+        "--dry-run",
+        "--format",
+        "--json",
+        "--path",
+        "--scope"
+      ],
+      "positionals": [
+        "skill"
+      ],
+      "help": "restore a skill (and its dependency graph) to its previous backup snapshot"
+    },
+    "sandbox": {
+      "flags": [
+        "--format",
+        "--json",
+        "--runtime"
+      ],
+      "positionals": [
+        "skill",
+        "target"
+      ],
+      "help": "[experimental] run opt-in dry-run behavioral sandbox on a skill"
+    },
+    "scan": {
+      "flags": [
+        "--engine",
+        "--format",
+        "--json",
+        "--max-risk-score",
+        "--offline"
+      ],
+      "positionals": [
+        "path"
+      ],
+      "help": "run security and supply-chain checks (0-100 risk score, JSON/SARIF)"
+    },
+    "search": {
+      "flags": [
+        "--category",
+        "--format",
+        "--json"
+      ],
+      "positionals": [
+        "query"
+      ],
+      "help": "search the skill registry catalog"
+    },
+    "status": {
+      "flags": [
+        "--format",
+        "--json",
+        "--scope"
+      ],
+      "positionals": [
+        "path"
+      ],
+      "help": "show unified workspace manifest, lockfile, per-harness, and drift status"
+    },
+    "sync": {
+      "flags": [
+        "--allow-risky",
+        "--dry-run",
+        "--force",
+        "--format",
+        "--harness",
+        "--json",
+        "--max-risk-score",
+        "--prefer",
+        "--scope",
+        "--strategy"
+      ],
+      "positionals": [
+        "path"
+      ],
+      "help": "synchronize skills (and transitive dependencies) across harnesses"
+    },
+    "uninstall": {
+      "flags": [
+        "--dry-run",
+        "--format",
+        "--harness",
+        "--json",
+        "--path",
+        "--scope"
+      ],
+      "positionals": [
+        "skill"
+      ],
+      "help": "remove a skill from harnesses safely"
+    },
+    "update": {
+      "flags": [
+        "--allow-risky",
+        "--dry-run",
+        "--format",
+        "--json",
+        "--path",
+        "--scope"
+      ],
+      "positionals": [
+        "skill"
+      ],
+      "help": "update managed skills from their tracked sources"
+    },
+    "validate": {
+      "flags": [
+        "--engine",
+        "--format",
+        "--json",
+        "--max-risk-score",
+        "--offline"
+      ],
+      "positionals": [
+        "path"
+      ],
+      "help": "validate SKILL.md files against the Agent Skills spec and compute risk score"
+    }
+  }
+}

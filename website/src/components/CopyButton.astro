@@ -1,0 +1,14 @@
+---
+interface Props {
+  /** Text placed on the clipboard. */
+  text: string;
+  /** Accessible name, e.g. "Copy install command". */
+  label?: string;
+}
+
+const { text, label = 'Copy command' } = Astro.props;
+---
+
+<button class="copy" type="button" data-copy={text} aria-label={label}>
+  <span data-copy-label>Copy</span>
+</button>

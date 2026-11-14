@@ -1,0 +1,60 @@
+name: Website
+
+# Builds and verifies skillporter.dev. It does not deploy anything.
+
+on:
+  pull_request:
+    paths:
+      - "website/**"
+      - "docs/**"
+      - "skillporter/**"
+      - "pyproject.toml"
+      - "package.json"
+      - ".github/workflows/website.yml"
+  push:
+    branches: [main]
+    paths:
+      - "website/**"
+      - "docs/**"
+      - "skillporter/**"
+      - "pyproject.toml"
+      - "package.json"
+      - ".github/workflows/website.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: website-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: build, type-check & content tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: website
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+      - name: Install build dependencies
+        run: npm ci
+      - name: Website data matches the Python registry and CLI
+        run: npm run data:check
+      - name: Type-check
+        run: npm run typecheck
+      - name: Build site and search index
+        run: npm run build
+      - name: Content, link, SEO and accuracy tests
+        run: npm test

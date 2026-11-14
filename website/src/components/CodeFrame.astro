@@ -1,0 +1,42 @@
+---
+import { Code } from 'astro:components';
+import { skillporterTheme } from '../lib/shiki-theme.mjs';
+import CopyButton from './CopyButton.astro';
+
+interface Props {
+  code: string;
+  lang: 'bash' | 'yaml' | 'json' | 'text' | 'python';
+  title: string;
+  /** Footer line, used to say where the content comes from. */
+  note?: string;
+  /** Override what the copy button copies. Pass `false` to hide the button. */
+  copy?: string | false;
+}
+
+const { code, lang, title, note, copy } = Astro.props;
+const copyText = copy === false ? null : (copy ?? code);
+---
+
+<figure class="frame codeframe">
+  <div class="frame__bar">
+    <span class="frame__title">{title}</span>
+    {copyText !== null && <CopyButton text={copyText} label={`Copy ${title}`} />}
+  </div>
+  <Code code={code} lang={lang} theme={skillporterTheme} />
+  {
+    note && (
+      <figcaption class="frame__foot">
+        <span>{note}</span>
+      </figcaption>
+    )
+  }
+</figure>
+
+<style>
+  .codeframe {
+    margin: 0;
+  }
+  .codeframe :global(.astro-code) {
+    border-radius: 0;
+  }
+</style>
