@@ -23,6 +23,8 @@ import subprocess
 import tarfile
 import tempfile
 import unicodedata
+import urllib.parse
+import urllib.request
 import zipfile
 import zlib
 from dataclasses import dataclass, field
@@ -473,19 +475,48 @@ def resolve_source(spec: str, *, base_dir: Path | None = None, ref_override: str
         git_url = f"https://github.com/{owner}/{repo}.git"
         return _git_clone(git_url, ref=ref, subpath=subpath, raw_spec=spec, kind="github")
 
-    # 2. Check arbitrary git URL (https://, http://, git@, file://) before Path()
-    if spec.startswith(("https://", "http://", "git@", "file://")):
-        url_part, _, frag_ref = spec.partition("@") if not spec.startswith("git@") else (spec, "", "")
+    # 2. Check explicit github: shorthand before Path() (avoids ':' syntax error on Windows)
+    if spec.startswith("github:"):
+        m_gh_explicit = _GITHUB_SHORTHAND_RE.match(spec)
+        if m_gh_explicit:
+            owner = m_gh_explicit.group("owner")
+            repo = m_gh_explicit.group("repo")
+            subpath = m_gh_explicit.group("subpath") or ""
+            ref = ref_override or (m_gh_explicit.group("ref") or "")
+            return _git_clone(
+                f"https://github.com/{owner}/{repo}.git",
+                ref=ref,
+                subpath=subpath,
+                raw_spec=spec,
+                kind="github",
+            )
+
+    # 3. Check arbitrary git URL (https://, http://, git@, file://) before Path()
+    if spec.lower().startswith(("https://", "http://", "file://")) or spec.startswith("git@"):
+        frag_ref = ""
+        url_part = spec
         if "#" in url_part:
             url_part, _, frag_ref = url_part.partition("#")
+        elif not url_part.startswith("git@") and not url_part.lower().startswith("file://"):
+            split_u = urllib.parse.urlsplit(url_part)
+            if "@" in split_u.path:
+                clean_path, _, frag_ref = split_u.path.rpartition("@")
+                url_part = urllib.parse.urlunsplit((split_u.scheme, split_u.netloc, clean_path, split_u.query, ""))
+        if url_part.lower().startswith("file://"):
+            parsed_f = urllib.parse.urlsplit(url_part)
+            local_git_path = urllib.request.url2pathname(urllib.parse.unquote(parsed_f.path))
+            url_part = str(Path(local_git_path).resolve())
         return _git_clone(url_part, ref=ref_override or frag_ref, raw_spec=spec, kind="git")
 
-    # 3. Check if spec is an existing local path (directory, SKILL.md file, or archive)
-    candidate = Path(spec).expanduser()
-    if not candidate.is_absolute():
-        candidate = (base / candidate).resolve()
+    # 4. Check if spec is an existing local path (directory, SKILL.md file, or archive)
+    candidate: Path | None = None
+    try:
+        cand_raw = Path(spec).expanduser()
+        candidate = (base / cand_raw).resolve() if not cand_raw.is_absolute() else cand_raw.resolve()
+    except OSError:
+        candidate = None
 
-    if candidate.exists():
+    if candidate is not None and candidate.exists():
         if candidate.is_file() and candidate.name == "SKILL.md":
             candidate = candidate.parent
         if candidate.is_file():

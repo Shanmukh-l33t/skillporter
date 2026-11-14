@@ -191,7 +191,8 @@ def cmd_add(args: argparse.Namespace) -> int:
             )
             return EXIT_PROBLEM
 
-        if (sec_critical > 0 or sec_high > 0) and not args.allow_risky:
+        incomplete_skills = [sname for sname, r in sec_reports.items() if not r.scan_complete]
+        if (sec_critical > 0 or sec_high > 0 or incomplete_skills) and not args.allow_risky:
             record_audit_event(
                 root,
                 interface="cli",
@@ -203,11 +204,16 @@ def cmd_add(args: argparse.Namespace) -> int:
                 scan_results=scan_audit,
                 force=args.force,
                 risk_accepted=False,
-                detail="blocked by static security policy",
+                detail="incomplete scan" if incomplete_skills else "blocked by static security policy",
                 scope=args.scope,
             )
+            reason = (
+                f"incomplete security scan on {incomplete_skills} (truncated or unreadable files)"
+                if incomplete_skills
+                else "static security policy"
+            )
             print(
-                "\nerror: installation blocked by static security policy "
+                f"\nerror: installation blocked by {reason} "
                 "(--force only overrides destination conflicts; pass --allow-risky after reviewing `skillporter scan`)",
                 file=sys.stderr,
             )
@@ -356,7 +362,7 @@ def cmd_install(args: argparse.Namespace) -> int:
             )
             return EXIT_PROBLEM
         exceeds = srep.exceeds_risk_threshold(max_risk_score)
-        if (not srep.passed or exceeds) and not allow_risky:
+        if (not srep.passed or not srep.scan_complete or exceeds) and not allow_risky:
             for f in srep.findings:
                 loc = f"{f.file}:{f.line}" if f.line else f.file
                 print(f"  [{f.severity}] {f.code} ({loc}): {f.message}", file=sys.stderr)
@@ -494,7 +500,9 @@ def cmd_update(args: argparse.Namespace) -> int:
                     }
                 }
                 exceeds = srep.exceeds_risk_threshold(max_risk_score)
-                if srep.has_structural_escape or ((not srep.passed or exceeds) and not allow_risky):
+                if srep.has_structural_escape or (
+                    (not srep.passed or not srep.scan_complete or exceeds) and not allow_risky
+                ):
                     for f in srep.findings:
                         loc = f"{f.file}:{f.line}" if f.line else f.file
                         print(f"  [{f.severity}] {f.code} ({loc}): {f.message}", file=sys.stderr)

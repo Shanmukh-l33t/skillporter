@@ -22,6 +22,8 @@ from __future__ import annotations
 import json
 import os
 import sys
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
 from . import __version__, harnesses
@@ -81,6 +83,12 @@ def _is_mcp_writes_allowed(explicit: bool | None = None) -> bool:
     if explicit is not None:
         return explicit
     return os.environ.get("SKILLPORTER_MCP_ALLOW_WRITES", "").strip().lower() in ("1", "true", "yes")
+
+
+def _is_mcp_remote_allowed(allow_writes: bool | None = None) -> bool:
+    if _is_mcp_writes_allowed(allow_writes):
+        return True
+    return os.environ.get("SKILLPORTER_MCP_ALLOW_REMOTE", "").strip().lower() in ("1", "true", "yes")
 
 
 def resolve_mcp_path(raw_path: str, *, workspace_root: Path | None = None) -> Path:
@@ -191,7 +199,7 @@ def _require_harnesses(
     return resolved
 
 
-def _validate_mcp_source(source_spec: object, ws_root: Path) -> str:
+def _validate_mcp_source(source_spec: object, ws_root: Path, *, allow_remote: bool = True) -> str:
     if not isinstance(source_spec, str) or not source_spec.strip():
         raise ValueError("MCP 'source' must be a non-empty string")
     spec = source_spec.strip()
@@ -201,13 +209,17 @@ def _validate_mcp_source(source_spec: object, ws_root: Path) -> str:
         raise ValueError(f"invalid MCP source {spec!r}: leading '-' is forbidden")
     if any(bad in spec for bad in (";", "|", "`", "$(")):
         raise ValueError(f"invalid MCP source {spec!r}: shell metacharacters are forbidden")
-    if spec.startswith("file://"):
-        file_part = spec[len("file://") :]
-        resolve_mcp_path(file_part, workspace_root=ws_root)
-        return spec
+    if spec.lower().startswith("file:"):
+        parsed = urllib.parse.urlparse(spec)
+        if parsed.netloc not in ("", "localhost"):
+            raise MCPBoundaryError(f"MCP remote/UNC file URI {spec!r} is rejected")
+        decoded_path = urllib.request.url2pathname(urllib.parse.unquote(parsed.path))
+        resolved_file = resolve_mcp_path(decoded_path, workspace_root=ws_root)
+        return str(resolved_file)
     norm = spec.replace("\\", "/")
     parts = [p for p in norm.split("/") if p]
-    is_remote = spec.startswith(("https://", "http://", "git@", "github:", "registry:"))
+    lower_spec = spec.lower()
+    is_remote = lower_spec.startswith(("https://", "http://", "git@", "github:", "registry:"))
     looks_local = (
         spec.startswith((".", "/", "\\", "~"))
         or (len(norm) >= 2 and norm[0].isalpha() and norm[1] == ":")
@@ -217,6 +229,12 @@ def _validate_mcp_source(source_spec: object, ws_root: Path) -> str:
     )
     if looks_local:
         resolve_mcp_path(spec, workspace_root=ws_root)
+        return spec
+    if not allow_remote:
+        raise MCPPermissionError(
+            "MCP read-only mode restricts inspect to local workspace paths; "
+            "set SKILLPORTER_MCP_ALLOW_REMOTE=1 or launch with --allow-writes to fetch remote sources"
+        )
     return spec
 
 
@@ -291,7 +309,8 @@ def _evaluate_skills_security(
                 f"security scan blocked {sdir.name}: structural filesystem escape cannot be overridden"
             )
         exceeds = sec.exceeds_risk_threshold(max_risk_score)
-        if (not sec.passed or exceeds) and not accept_risk:
+        incomplete = not sec.scan_complete
+        if (not sec.passed or incomplete or exceeds) and not accept_risk:
             record_audit_event(
                 root,
                 interface="mcp",
@@ -303,11 +322,13 @@ def _evaluate_skills_security(
                 scan_results=scan_summary,
                 force=force,
                 risk_accepted=False,
-                detail=f"security policy blocked {sdir.name} (risk {sec.risk_score}/100)",
+                detail=f"security policy blocked {sdir.name} (risk {sec.risk_score}/100, complete={sec.scan_complete})",
+            )
+            reason = "incomplete scan (truncated or unreadable files)" if incomplete else (
+                f"{sec.critical_count} critical, {sec.high_count} high findings"
             )
             msg = (
-                f"security scan blocked {sdir.name} (risk {sec.risk_score}/100): "
-                f"{sec.critical_count} critical, {sec.high_count} high findings "
+                f"security scan blocked {sdir.name} (risk {sec.risk_score}/100, {reason}) "
                 "(force does not bypass security; pass accept_risk=true only after reviewing findings)"
             )
             raise RuntimeError(msg)
@@ -622,7 +643,9 @@ def _call_tool(
     if name == "skillporter_inspect":
         if "source" not in args:
             raise ValueError("missing required MCP parameter 'source'")
-        source_spec = _validate_mcp_source(args["source"], ws_root)
+        source_spec = _validate_mcp_source(
+            args["source"], ws_root, allow_remote=_is_mcp_remote_allowed(allow_writes)
+        )
         resolved = resolve_source(source_spec, base_dir=ws_root)
         try:
             items = []

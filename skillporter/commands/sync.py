@@ -90,7 +90,13 @@ def cmd_lock(args: argparse.Namespace) -> int:
     if getattr(args, "check", False):
         issues = check_lockfile_staleness(root)
         manifest = load_manifest(root)
-        if manifest and manifest.skills and not any("corrupted" in i or "unsupported" in i for i in issues):
+        if (
+            manifest
+            and manifest.skills
+            and not any(
+                "corrupted" in i or "unsupported" in i or "source mismatch" in i for i in issues
+            )
+        ):
             graph_chk = None
             try:
                 lock_now = load_lockfile(root, warn_migration=False)
@@ -249,7 +255,7 @@ def cmd_sync(args: argparse.Namespace) -> int:
         for sname, copies in sorted(diag.skill_copies.items()):
             for cdir in copies:
                 srep = scan_skill(cdir)
-                if srep.has_structural_escape or (not srep.passed and not allow_risky):
+                if srep.has_structural_escape or ((not srep.passed or not srep.scan_complete) and not allow_risky):
                     print(
                         f"error: sync blocked by static security policy on {sname!r} ({cdir}); "
                         "run `skillporter scan` to inspect findings.",

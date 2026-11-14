@@ -88,10 +88,53 @@ jobs:
           python scripts/build_standalone.py
           test -f dist/skillporter.pyz
           test -f dist/SHA256SUMS.txt
-          sha256sum -c dist/SHA256SUMS.txt --ignore-missing || (cd dist && sha256sum -c SHA256SUMS.txt)
+          (cd dist && sha256sum -c SHA256SUMS.txt)
           node npm/bin/skillporter.js --version
           node npm/bin/skillporter.js matrix --json > /dev/null
           npm pack --dry-run
+
+  installer-e2e:
+    name: standalone installer (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build release artifact, sign SHA256SUMS.txt & verify install.sh lifecycle
+        run: |
+          set -euo pipefail
+          openssl ecparam -name prime256v1 -genkey -noout -out /tmp/sp-priv.pem
+          openssl ec -in /tmp/sp-priv.pem -pubout -out /tmp/sp-pub.pem
+          python scripts/build_standalone.py --sign-key /tmp/sp-priv.pem
+          mkdir -p /tmp/release-srv/v3.0.0 /tmp/fresh-bin
+          cp dist/skillporter.pyz dist/SHA256SUMS.txt dist/SHA256SUMS.txt.sig /tmp/release-srv/v3.0.0/
+          python -m http.server 18923 --bind 127.0.0.1 --directory /tmp/release-srv &
+          SRV_PID=$!
+          trap 'kill "$SRV_PID" 2>/dev/null || true' EXIT
+          sleep 1
+          # 1. Verify OpenSSL detached signature installation succeeds on fresh runner
+          SKILLPORTER_RELEASE_BASE_URL="http://127.0.0.1:18923" \
+            SKILLPORTER_VERSION="v3.0.0" \
+            SKILLPORTER_INSTALL_DIR="/tmp/fresh-bin" \
+            SKILLPORTER_PUBLIC_KEY_FILE="/tmp/sp-pub.pem" \
+            sh install.sh
+          /tmp/fresh-bin/skillporter --version
+          /tmp/fresh-bin/skillporter demo > /dev/null
+          # 2. Verify wrong pinned SHA-256 fails closed without corrupting installed binary
+          if SKILLPORTER_RELEASE_BASE_URL="http://127.0.0.1:18923" \
+            SKILLPORTER_VERSION="v3.0.0" \
+            SKILLPORTER_INSTALL_DIR="/tmp/fresh-bin" \
+            SKILLPORTER_SHA256="0000000000000000000000000000000000000000000000000000000000000000" \
+            sh install.sh 2>/dev/null; then
+            echo "expected checksum mismatch to fail" >&2
+            exit 1
+          fi
+          /tmp/fresh-bin/skillporter --version
 
   secrets:
     name: secret & supply-chain scan

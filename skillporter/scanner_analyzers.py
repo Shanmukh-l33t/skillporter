@@ -19,6 +19,7 @@ import ast
 import base64
 import binascii
 import re
+import zlib
 from dataclasses import dataclass, field
 
 MAX_ENCODED_CANDIDATES_PER_FILE = 32
@@ -51,7 +52,7 @@ _POWERSHELL_ENC_RE = re.compile(
     r"(?i)\b(?:powershell(?:\.exe)?|pwsh(?:\.exe)?)\b[^\n]*?\s-(?:e|ec|enc|encodedcommand)\s+([A-Za-z0-9+/=]{16,4096})"
 )
 
-_B64_CANDIDATE_RE = re.compile(r"(?<![A-Za-z0-9+/=])([A-Za-z0-9+/]{28,}={0,2})(?![A-Za-z0-9+/=])")
+_B64_CANDIDATE_RE = re.compile(r"(?<![A-Za-z0-9+/_-])([A-Za-z0-9+/_-]{28,}={0,2})(?![A-Za-z0-9+/_=-])")
 _HEX_CANDIDATE_RE = re.compile(r"(?<![0-9a-fA-F])((?:[0-9a-fA-F]{2}){20,2048})(?![0-9a-fA-F])")
 
 _JS_DYNAMIC_EVAL_RE = re.compile(
@@ -139,14 +140,38 @@ def _ast_contains_decoder(node: ast.AST, aliases: dict[str, str]) -> bool:
     return False
 
 
-def _is_getattr_exec(node: ast.expr) -> bool:
-    if not isinstance(node, ast.Call):
-        return False
-    if isinstance(node.func, ast.Name) and node.func.id == "getattr" and len(node.args) >= 2:
+def _is_getattr_or_subscript_exec(node: ast.expr) -> bool:
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "getattr"
+        and len(node.args) >= 2
+    ):
         attr_arg = node.args[1]
         if isinstance(attr_arg, ast.Constant) and attr_arg.value in ("eval", "exec", "__import__", "system"):
             return True
+    if isinstance(node, ast.Subscript):
+        slc = node.slice
+        if isinstance(slc, ast.Constant) and slc.value in ("eval", "exec", "__import__", "system"):
+            return True
     return False
+
+
+def _collect_binop_path_constants(node: ast.AST) -> str:
+    """Concatenate string constants left-to-right inside `Path / 'a' / 'b'` or `os.path.join` expressions."""
+    parts: list[str] = []
+
+    def _dfs(cur: ast.AST) -> None:
+        if isinstance(cur, ast.Constant) and isinstance(cur.value, str):
+            val = cur.value.replace("\\", "/").strip("/")
+            if val:
+                parts.append(val)
+            return
+        for child in ast.iter_child_nodes(cur):
+            _dfs(child)
+
+    _dfs(node)
+    return "/".join(parts)
 
 
 def analyze_python_ast(rel: str, text: str, signals: FileSignals) -> list[AnalyzerHit]:
@@ -179,8 +204,10 @@ def analyze_python_ast(rel: str, text: str, signals: FileSignals) -> list[Analyz
         lineno = getattr(node, "lineno", 1)
         qname = _call_qualname(node, aliases)
 
-        # 1. Dynamic / encoded execution (eval, exec, getattr(__builtins__, 'exec'))
-        if qname in ("eval", "exec", "builtins.eval", "builtins.exec") or _is_getattr_exec(node.func):
+        # 1. Dynamic / encoded execution (eval, exec, compile, getattr/subscript __builtins__)
+        if qname in ("eval", "exec", "compile", "builtins.eval", "builtins.exec") or _is_getattr_or_subscript_exec(
+            node.func
+        ):
             signals.has_dynamic_exec = True
             if any(_ast_contains_decoder(arg, aliases) for arg in node.args):
                 hits.append(
@@ -214,17 +241,21 @@ def analyze_python_ast(rel: str, text: str, signals: FileSignals) -> list[Analyz
             "subprocess.check_output",
         ):
             shell_true = False
+            kwargs_unpacked = False
             for kw in node.keywords:
-                if kw.arg == "shell" and (not isinstance(kw.value, ast.Constant) or bool(kw.value.value) is True):
+                if kw.arg is None:
+                    kwargs_unpacked = True
+                elif kw.arg == "shell" and (not isinstance(kw.value, ast.Constant) or bool(kw.value.value) is True):
                     shell_true = True
-            if shell_true:
+            if shell_true or kwargs_unpacked:
                 signals.has_dynamic_exec = True
+                detail_why = "shell=True" if shell_true else "**kwargs unpacking"
                 hits.append(
                     AnalyzerHit(
                         "HIGH",
                         "sec-py-unsafe-subprocess",
                         rel,
-                        f"Unsafe subprocess invocation `{qname}(..., shell=True)` allows shell injection",
+                        f"Unsafe subprocess invocation `{qname}(..., {detail_why})` risks shell injection",
                         line=lineno,
                         confidence="HIGH",
                     )
@@ -238,14 +269,17 @@ def analyze_python_ast(rel: str, text: str, signals: FileSignals) -> list[Analyz
                 elif not isinstance(first_arg, ast.Constant):
                     signals.has_dynamic_subprocess = True
 
-        if qname in ("os.system", "os.popen", "pty.spawn"):
+        if (
+            qname in ("os.system", "os.popen", "pty.spawn", "ctypes.CDLL", "ctypes.WinDLL")
+            or qname.startswith(("os.exec", "os.spawn", "os.posix_spawn"))
+        ):
             signals.has_dynamic_exec = True
             hits.append(
                 AnalyzerHit(
                     "HIGH",
                     "sec-dynamic-eval",
                     rel,
-                    f"Direct shell execution via `{qname}()`",
+                    f"Direct OS process/library execution via `{qname}()`",
                     line=lineno,
                     confidence="HIGH",
                 )
@@ -305,24 +339,22 @@ def analyze_python_ast(rel: str, text: str, signals: FileSignals) -> list[Analyz
         if qname in ("os.dup2", "posix.dup2"):
             has_fd_dup = True
 
-        # Check all string constants inside file/path calls for credential store targets
-        if qname in ("open", "os.path.expanduser", "Path", "pathlib.Path") or qname.endswith(
-            ("read_text", "read_bytes", "expanduser")
+        # Check single and `/` or `join` combined string constants inside file/path calls for credential stores
+        if qname in ("open", "os.path.expanduser", "os.path.join", "Path", "pathlib.Path") or qname.endswith(
+            ("read_text", "read_bytes", "expanduser", "joinpath")
         ):
-            for sub in ast.walk(node):
-                if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
-                    sval = sub.value.replace("\\", "/")
-                    if any(marker in sval for marker in _SENSITIVE_PATH_SUBSTRINGS):
-                        hits.append(
-                            AnalyzerHit(
-                                "HIGH",
-                                "sec-credential-harvest",
-                                rel,
-                                f"Python AST accesses sensitive host credential path ({sval})",
-                                line=lineno,
-                                confidence="HIGH",
-                            )
-                        )
+            combined_path = _collect_binop_path_constants(node)
+            if any(marker in combined_path for marker in _SENSITIVE_PATH_SUBSTRINGS):
+                hits.append(
+                    AnalyzerHit(
+                        "HIGH",
+                        "sec-credential-harvest",
+                        rel,
+                        f"Python AST accesses sensitive host credential path ({combined_path})",
+                        line=lineno,
+                        confidence="HIGH",
+                    )
+                )
 
     if has_socket_connect and has_fd_dup:
         hits.append(
@@ -504,12 +536,19 @@ def analyze_encoded_content(rel: str, text: str, signals: FileSignals) -> list[A
         if len(tok) > MAX_ENCODED_TOKEN_CHARS or len(tok) % 4 == 1:
             continue
         checked += 1
+        norm_b64 = tok.replace("-", "+").replace("_", "/")
         try:
-            padded = tok + ("=" * ((4 - len(tok) % 4) % 4))
+            padded = norm_b64 + ("=" * ((4 - len(norm_b64) % 4) % 4))
             raw = base64.b64decode(padded, validate=True)[:4096]
         except (binascii.Error, ValueError):
             continue
         decoded = _safe_decode_text(raw)
+        if not decoded and len(raw) >= 8 and raw[0] == 0x78:
+            try:
+                decompressed = zlib.decompressobj().decompress(raw, 4096)
+                decoded = _safe_decode_text(decompressed)
+            except zlib.error:
+                decoded = ""
         if len(decoded) < 16:
             continue
         signals.has_encoded_blob = True
@@ -520,7 +559,7 @@ def analyze_encoded_content(rel: str, text: str, signals: FileSignals) -> list[A
                     "CRITICAL",
                     "sec-encoded-payload",
                     rel,
-                    "Base64-encoded malicious command or prompt-injection payload detected",
+                    "Base64-encoded (or zlib-compressed) malicious command or prompt-injection payload detected",
                     line=line_no,
                     confidence="HIGH",
                 )

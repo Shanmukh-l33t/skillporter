@@ -50,8 +50,8 @@ fi
 DEST="${DEST_DIR}/skillporter"
 TMP_WORK="$(mktemp -d 2>/dev/null || mktemp -d -t skillporter-install)"
 chmod 700 "${TMP_WORK}"
-# Stage binary inside DEST_DIR so final `mv -f` is an atomic same-filesystem rename(2)
-TMP_BIN="${DEST_DIR}/.skillporter.tmp.$$"
+# Stage binary inside DEST_DIR via O_EXCL mktemp so final `mv -f` is an atomic same-filesystem rename(2)
+TMP_BIN="$(mktemp "${DEST_DIR}/.skillporter.tmp.XXXXXXXX")"
 
 cleanup() {
   rm -rf "${TMP_WORK}"
@@ -147,7 +147,7 @@ if [ -n "${SKILLPORTER_PUBLIC_KEY_FILE:-}" ]; then
   PROVENANCE_VERIFIED=1
 fi
 
-if [ "${PROVENANCE_VERIFIED}" -eq 0 ] && command -v gh >/dev/null 2>&1; then
+if [ "${PROVENANCE_VERIFIED}" -eq 0 ] && [ "${SKILLPORTER_ALLOW_UNATTESTED_CHECKSUM:-0}" != "1" ] && command -v gh >/dev/null 2>&1; then
   if gh attestation verify "${TMP_BIN}" --repo "${REPO}" --signer-workflow "${SIGNER_WORKFLOW}" >/dev/null 2>&1; then
     PROVENANCE_VERIFIED=1
   else

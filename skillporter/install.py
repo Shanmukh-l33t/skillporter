@@ -132,6 +132,37 @@ def _resolve_harness_skill_dest(
     return direct_dest
 
 
+def _is_safe_recovery_target(cand: Path, allowed_roots: list[Path]) -> bool:
+    """Verify a journal path resolves strictly beneath an allowed scope root (never the root itself or .git)."""
+    if not str(cand) or ".git" in cand.parts:
+        return False
+    try:
+        resolved_parent = cand.parent.resolve()
+        check_target = (resolved_parent / cand.name) if cand.is_symlink() else cand.resolve()
+    except OSError:
+        return False
+    for ar in allowed_roots:
+        if check_target == ar:
+            return False
+        if check_target.is_relative_to(ar) and resolved_parent.is_relative_to(ar):
+            return True
+    return False
+
+
+def _is_safe_prev_slot(prev_p: Path, txn_dir_resolved: Path) -> bool:
+    """Verify a journal `prev` slot resides directly inside the active transaction temp directory."""
+    if not prev_p.name.startswith("prev-") or prev_p.is_symlink():
+        try:
+            if prev_p.parent.resolve() != txn_dir_resolved or not prev_p.name.startswith("prev-"):
+                return False
+        except OSError:
+            return False
+    try:
+        return prev_p.parent.resolve() == txn_dir_resolved
+    except OSError:
+        return False
+
+
 def recover_interrupted_transactions(
     root: Path,
     *,
@@ -145,13 +176,22 @@ def recover_interrupted_transactions(
     if not tmp_parent.is_dir():
         return []
 
+    if scope == "user":
+        allowed_roots = [(home or Path(os.path.expanduser("~"))).resolve()]
+        hermes_env = os.environ.get("HERMES_HOME", "").strip()
+        if hermes_env:
+            allowed_roots.append(Path(hermes_env).expanduser().resolve())
+    else:
+        allowed_roots = [root]
+
     recovered: list[str] = []
     with workspace_lock(root):
         for txn_dir in sorted(tmp_parent.iterdir()):
-            if not txn_dir.is_dir() or not txn_dir.name.startswith("txn-"):
+            if not txn_dir.is_dir() or txn_dir.is_symlink() or not txn_dir.name.startswith("txn-"):
                 continue
+            txn_resolved = txn_dir.resolve()
             journal_file = txn_dir / "journal.json"
-            if journal_file.is_file():
+            if journal_file.is_file() and not journal_file.is_symlink():
                 try:
                     jdata = json.loads(journal_file.read_text(encoding="utf-8"))
                 except (OSError, json.JSONDecodeError):
@@ -163,6 +203,10 @@ def recover_interrupted_transactions(
                         continue
                     dest_p = Path(str(item.get("dest", "")))
                     prev_p = Path(str(item.get("prev", "")))
+                    if not _is_safe_prev_slot(prev_p, txn_resolved) or not _is_safe_recovery_target(
+                        dest_p, allowed_roots
+                    ):
+                        continue
                     if prev_p.exists() or prev_p.is_symlink():
                         if dest_p.is_symlink():
                             dest_p.unlink(missing_ok=True)
@@ -175,6 +219,8 @@ def recover_interrupted_transactions(
                         recovered.append(f"restored interrupted destination {dest_p} from {prev_p.name}")
                 for created_item in reversed(created):
                     cpath = Path(str(created_item))
+                    if not _is_safe_recovery_target(cpath, allowed_roots):
+                        continue
                     if cpath.is_symlink():
                         cpath.unlink(missing_ok=True)
                         recovered.append(f"removed uncommitted symlink {cpath}")
