@@ -253,6 +253,7 @@ def test_mcp_force_does_not_bypass_security_scan(tmp_path):
             },
         },
         workspace_root=ws,
+        allow_writes=True,
     )
     assert resp is not None
     assert resp["result"]["isError"] is True
@@ -303,6 +304,7 @@ def test_mcp_explicit_accept_risk_displays_findings_records_audit_and_blocks_esc
             },
         },
         workspace_root=ws,
+        allow_writes=True,
     )
     assert ok_override is not None
     assert ok_override["result"]["isError"] is False
@@ -338,6 +340,7 @@ def test_mcp_explicit_accept_risk_displays_findings_records_audit_and_blocks_esc
                 },
             },
             workspace_root=ws,
+            allow_writes=True,
         )
         assert sym_resp is not None
         assert sym_resp["result"]["isError"] is True

@@ -15,8 +15,9 @@ from skillporter.mcp_server import handle_mcp_request
 class SkillporterMCPClient:
     """In-process or stdio MCP client bridge for LangChain, CrewAI, and AutoGen agents."""
 
-    def __init__(self, workspace_root: str | Path = ".") -> None:
+    def __init__(self, workspace_root: str | Path = ".", *, allow_writes: bool = False) -> None:
         self.workspace_root = Path(workspace_root).resolve()
+        self.allow_writes = allow_writes
         self._req_id = 0
 
     def call_tool(self, tool_name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -29,6 +30,7 @@ class SkillporterMCPClient:
                 "params": {"name": tool_name, "arguments": arguments or {}},
             },
             workspace_root=self.workspace_root,
+            allow_writes=True if self.allow_writes else None,
         )
         if not resp or "result" not in resp:
             raise RuntimeError(f"MCP call failed: {resp}")

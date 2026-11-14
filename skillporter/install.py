@@ -75,6 +75,28 @@ def validate_skill_name_segment(skill_name: str, base: Path | None = None) -> st
     return clean
 
 
+def _verify_harness_base_within_scope(
+    base: Path, scope: str, root: Path, home: Path | None = None
+) -> None:
+    """Reject harness skill directories that escape their scope root via symlinks."""
+    resolved_base = base.resolve()
+    if scope == "project":
+        resolved_root = root.resolve()
+        if not resolved_base.is_relative_to(resolved_root):
+            raise InstallError(
+                f"harness skill directory {base} ({resolved_base}) escapes workspace root {resolved_root} via symlink"
+            )
+    elif scope == "user":
+        allowed_roots = [(home or Path(os.path.expanduser("~"))).resolve()]
+        hermes_env = os.environ.get("HERMES_HOME", "").strip()
+        if hermes_env:
+            allowed_roots.append(Path(hermes_env).expanduser().resolve())
+        if not any(resolved_base.is_relative_to(ar) for ar in allowed_roots):
+            raise InstallError(
+                f"user harness skill directory {base} ({resolved_base}) escapes user home scope via symlink"
+            )
+
+
 def _resolve_harness_skill_dest(
     base: Path, skill_name: str, *, src: Path | None = None, recursive: bool = False
 ) -> Path:
@@ -135,15 +157,30 @@ def recover_interrupted_transactions(
                 except (OSError, json.JSONDecodeError):
                     jdata = {}
                 replaced = jdata.get("replaced", []) if isinstance(jdata, dict) else []
+                created = jdata.get("created", []) if isinstance(jdata, dict) else []
                 for item in reversed(replaced):
                     if not isinstance(item, dict):
                         continue
                     dest_p = Path(str(item.get("dest", "")))
                     prev_p = Path(str(item.get("prev", "")))
-                    if (prev_p.exists() or prev_p.is_symlink()) and not (dest_p.exists() or dest_p.is_symlink()):
+                    if prev_p.exists() or prev_p.is_symlink():
+                        if dest_p.is_symlink():
+                            dest_p.unlink(missing_ok=True)
+                        elif dest_p.is_dir():
+                            shutil.rmtree(dest_p, ignore_errors=True)
+                        elif dest_p.exists():
+                            dest_p.unlink(missing_ok=True)
                         dest_p.parent.mkdir(parents=True, exist_ok=True)
                         shutil.move(str(prev_p), str(dest_p))
                         recovered.append(f"restored interrupted destination {dest_p} from {prev_p.name}")
+                for created_item in reversed(created):
+                    cpath = Path(str(created_item))
+                    if cpath.is_symlink():
+                        cpath.unlink(missing_ok=True)
+                        recovered.append(f"removed uncommitted symlink {cpath}")
+                    elif cpath.is_dir():
+                        shutil.rmtree(cpath, ignore_errors=True)
+                        recovered.append(f"removed uncommitted directory {cpath}")
             shutil.rmtree(txn_dir, ignore_errors=True)
         with contextlib.suppress(OSError):
             if not any(tmp_parent.iterdir()):
@@ -156,13 +193,17 @@ def _write_txn_journal(
     created_in_txn: list[Path],
     replaced_in_txn: list[tuple[Path, Path]],
     pending_pair: tuple[Path, Path] | None = None,
+    pending_created: Path | None = None,
 ) -> None:
+    all_created = list(created_in_txn)
+    if pending_created is not None and pending_created not in all_created:
+        all_created.append(pending_created)
     all_replaced = list(replaced_in_txn)
     if pending_pair is not None:
         all_replaced.append(pending_pair)
     payload = {
         "pid": os.getpid(),
-        "created": [str(p) for p in created_in_txn],
+        "created": [str(p) for p in all_created],
         "replaced": [{"dest": str(d), "prev": str(prv)} for d, prv in all_replaced],
     }
     atomic_write_text(txn_tmp_root / "journal.json", json.dumps(payload, indent=2) + "\n")
@@ -236,6 +277,7 @@ def plan_install(
                 continue
             primary = paths[0]
             base = resolve_path(primary.path, scope, root, home)
+            _verify_harness_base_within_scope(base, scope, root, home)
             raw_dest = _resolve_harness_skill_dest(base, sname, src=skill_dir, recursive=h.recursive)
             dest = raw_dest.resolve() if not raw_dest.is_symlink() else raw_dest
 
@@ -321,6 +363,8 @@ def _stage_and_copy_skill(
         _write_txn_journal(txn_tmp_root, created_in_txn, replaced_in_txn, pending_pair=(dest, prev_slot))
         shutil.move(str(dest), str(prev_slot))
         replaced_in_txn.append((dest, prev_slot))
+    else:
+        _write_txn_journal(txn_tmp_root, created_in_txn, replaced_in_txn, pending_created=dest)
 
     shutil.move(str(stage_dir), str(dest))
     return "created"
@@ -355,12 +399,14 @@ def _stage_and_link_skill(
             raise InstallError(f"{dest} exists as a real directory; re-run with --force to replace it")
 
     dest.parent.mkdir(parents=True, exist_ok=True)
+    txn_tmp_root.mkdir(parents=True, exist_ok=True)
     if existed:
-        txn_tmp_root.mkdir(parents=True, exist_ok=True)
         prev_slot = txn_tmp_root / f"prev-{uuid.uuid4().hex[:10]}"
         _write_txn_journal(txn_tmp_root, created_in_txn, replaced_in_txn, pending_pair=(dest, prev_slot))
         shutil.move(str(dest), str(prev_slot))
         replaced_in_txn.append((dest, prev_slot))
+    else:
+        _write_txn_journal(txn_tmp_root, created_in_txn, replaced_in_txn, pending_created=dest)
 
     try:
         rel_target = os.path.relpath(src.resolve(), dest.parent.resolve())
@@ -423,6 +469,7 @@ def install(
 
                 primary = paths[0]
                 base = resolve_path(primary.path, scope, root, home)
+                _verify_harness_base_within_scope(base, scope, root, home)
                 dest = _resolve_harness_skill_dest(base, skill_name, src=skill_dir, recursive=h.recursive)
 
                 if dest in written:
@@ -622,6 +669,7 @@ def uninstall(
                 results.append(InstallResult(skill_name, h.name, root, "skipped", f"no {scope} path"))
                 continue
             base = resolve_path(paths[0].path, scope, root, home)
+            _verify_harness_base_within_scope(base, scope, root, home)
             validate_skill_name_segment(skill_name, base)
             dest = base / skill_name
             if dest.is_symlink():

@@ -22,7 +22,9 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+import unicodedata
 import zipfile
+import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -125,6 +127,11 @@ def _validate_git_ref(ref: str) -> str:
     return ref
 
 
+_WIN_RESERVED_NAMES = frozenset(
+    {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(10)), *(f"LPT{i}" for i in range(10))}
+)
+
+
 def _unsafe_member_name(name: str) -> str:
     """Return a reason string when an archive member name is unsafe, else ""."""
     raw = name.replace("\\", "/")
@@ -137,15 +144,42 @@ def _unsafe_member_name(name: str) -> str:
         return "path traversal"
     if "\x00" in raw:
         return "NUL byte in name"
+    if any(ord(ch) < 32 for ch in raw):
+        return "control character in name"
+    for seg in parts:
+        if ":" in seg:
+            return "colon / alternate data stream in name"
+        if seg.endswith(".") or seg.endswith(" "):
+            return "trailing dot or space in segment"
+        stem = seg.split(".", 1)[0].upper()
+        if stem in _WIN_RESERVED_NAMES:
+            return f"Windows reserved device name {stem!r}"
     return ""
 
 
 def _normalized_archive_key(name: str) -> str:
-    """Return a normalized, case-folded POSIX path key for duplicate/collision detection."""
-    raw = name.replace("\\", "/").rstrip("/")
+    """Return a Unicode-NFC, case-folded POSIX path key for duplicate/collision detection."""
+    raw = unicodedata.normalize("NFC", name.replace("\\", "/").rstrip("/"))
     if not raw or raw == ".":
         return ""
-    return posixpath.normpath(raw).lower()
+    return posixpath.normpath(raw).casefold()
+
+
+def _open_new_archive_target(dest_dir: Path, target: Path):
+    """Safely create a brand-new regular file under *dest_dir* without following symlinks."""
+    cur = target.parent
+    while cur != dest_dir and dest_dir in cur.parents:
+        if cur.is_symlink():
+            raise SourceError(f"symlinked parent directory {cur} rejected during extraction")
+        cur = cur.parent
+    if target.is_symlink() or target.exists():
+        raise SourceError(f"refusing to overwrite pre-existing entry or symlink {target}")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
+    try:
+        fd = os.open(str(target), flags, 0o644)
+    except OSError as exc:
+        raise SourceError(f"cannot safely create extracted file {target}: {exc}") from exc
+    return os.fdopen(fd, "wb")
 
 
 def safe_extract_zip(
@@ -158,55 +192,82 @@ def safe_extract_zip(
 ) -> Path:
     """Extract a ZIP archive into *dest_dir*, rejecting path traversal, duplicates, symlinks, and zip bombs."""
     dest_dir = dest_dir.resolve()
+    existed_before = dest_dir.exists()
     dest_dir.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(archive_path, "r") as zf:
-        infos = zf.infolist()
-        if len(infos) > max_files:
-            raise SourceError(
-                f"archive {archive_path} contains {len(infos)} entries (exceeds limit of {max_files})"
-            )
-        seen_files: set[str] = set()
-        for info in infos:
-            name = info.filename
-            reason = _unsafe_member_name(name)
-            if reason:
-                raise SourceError(f"unsafe archive path {name!r} in {archive_path} ({reason} rejected)")
-            mode = (info.external_attr >> 16) & 0o170000
-            if mode == 0o120000:
-                raise SourceError(f"unsafe symlink entry {name!r} in {archive_path} (archive symlinks rejected)")
-            if info.file_size < 0 or info.file_size > max_file_bytes:
+    created_entries: list[Path] = []
+    try:
+        with zipfile.ZipFile(archive_path, "r") as zf:
+            infos = zf.infolist()
+            if len(infos) > max_files:
                 raise SourceError(
-                    f"archive member {name!r} exceeds maximum allowed size ({max_file_bytes} bytes)"
+                    f"archive {archive_path} contains {len(infos)} entries (exceeds limit of {max_files})"
                 )
-            if not info.is_dir():
-                nkey = _normalized_archive_key(name)
-                if nkey in seen_files:
+            seen_files: set[str] = set()
+            for info in infos:
+                name = info.filename
+                reason = _unsafe_member_name(name)
+                if reason:
+                    raise SourceError(f"unsafe archive path {name!r} in {archive_path} ({reason} rejected)")
+                mode = (info.external_attr >> 16) & 0o170000
+                if mode == 0o120000:
+                    raise SourceError(f"unsafe symlink entry {name!r} in {archive_path} (archive symlinks rejected)")
+                if mode != 0 and mode not in (0o100000, 0o040000):
                     raise SourceError(
-                        f"duplicate or case-colliding archive entry {name!r} in {archive_path}"
+                        f"unsafe special file entry {name!r} in {archive_path} (mode {oct(mode)} rejected)"
                     )
-                seen_files.add(nkey)
-            target = (dest_dir / name).resolve()
-            try:
-                target.relative_to(dest_dir)
-            except ValueError as exc:
-                raise SourceError(f"archive member {name!r} escapes destination directory") from exc
+                if info.file_size < 0 or info.file_size > max_file_bytes:
+                    raise SourceError(
+                        f"archive member {name!r} exceeds maximum allowed size ({max_file_bytes} bytes)"
+                    )
+                if not info.is_dir():
+                    nkey = _normalized_archive_key(name)
+                    if nkey in seen_files:
+                        raise SourceError(
+                            f"duplicate or case-colliding archive entry {name!r} in {archive_path}"
+                        )
+                    seen_files.add(nkey)
+                raw_target = dest_dir / unicodedata.normalize("NFC", name.replace("\\", "/"))
+                if raw_target.is_symlink():
+                    raise SourceError(f"archive member {name!r} targets an existing symlink in destination")
+                target = raw_target.resolve()
+                try:
+                    target.relative_to(dest_dir)
+                except ValueError as exc:
+                    raise SourceError(f"archive member {name!r} escapes destination directory") from exc
 
-        total_counter = [0]
-        for info in infos:
-            target = (dest_dir / info.filename).resolve()
-            if info.is_dir():
-                target.mkdir(parents=True, exist_ok=True)
-                continue
-            target.parent.mkdir(parents=True, exist_ok=True)
-            with zf.open(info) as src, open(target, "wb") as out:
-                _copy_bounded(
-                    src,
-                    out,
-                    member_name=info.filename,
-                    max_file_bytes=max_file_bytes,
-                    total_counter=total_counter,
-                    max_total_bytes=max_total_bytes,
-                )
+            total_counter = [0]
+            for info in infos:
+                rel_clean = unicodedata.normalize("NFC", info.filename.replace("\\", "/"))
+                raw_target = dest_dir / rel_clean
+                if info.is_dir():
+                    raw_target.mkdir(parents=True, exist_ok=True)
+                    created_entries.append(raw_target)
+                    continue
+                raw_target.parent.mkdir(parents=True, exist_ok=True)
+                created_entries.append(raw_target)
+                with zf.open(info) as src, _open_new_archive_target(dest_dir, raw_target) as out:
+                    _copy_bounded(
+                        src,
+                        out,
+                        member_name=info.filename,
+                        max_file_bytes=max_file_bytes,
+                        total_counter=total_counter,
+                        max_total_bytes=max_total_bytes,
+                    )
+    except SourceError:
+        for entry in reversed(created_entries):
+            if entry.is_file() or entry.is_symlink():
+                entry.unlink(missing_ok=True)
+        if not existed_before:
+            shutil.rmtree(dest_dir, ignore_errors=True)
+        raise
+    except (zipfile.BadZipFile, EOFError, zlib.error, OSError) as exc:
+        for entry in reversed(created_entries):
+            if entry.is_file() or entry.is_symlink():
+                entry.unlink(missing_ok=True)
+        if not existed_before:
+            shutil.rmtree(dest_dir, ignore_errors=True)
+        raise SourceError(f"corrupted or unreadable zip archive {archive_path}: {exc}") from exc
     return dest_dir
 
 
@@ -220,63 +281,86 @@ def safe_extract_tar(
 ) -> Path:
     """Extract a tar archive into *dest_dir*, rejecting path traversal, duplicates, symlinks/devices, and tar bombs."""
     dest_dir = dest_dir.resolve()
+    existed_before = dest_dir.exists()
     dest_dir.mkdir(parents=True, exist_ok=True)
-    with tarfile.open(archive_path, "r:*") as tf:
-        members = tf.getmembers()
-        if len(members) > max_files:
-            raise SourceError(
-                f"archive {archive_path} contains {len(members)} entries (exceeds limit of {max_files})"
-            )
-        seen_files: set[str] = set()
-        for member in members:
-            reason = _unsafe_member_name(member.name)
-            if reason:
-                raise SourceError(f"unsafe tar path {member.name!r} in {archive_path} ({reason} rejected)")
-            if member.issym() or member.islnk() or member.isdev() or member.isfifo() or not (
-                member.isfile() or member.isdir()
-            ):
+    created_entries: list[Path] = []
+    try:
+        with tarfile.open(archive_path, "r:*") as tf:
+            members = tf.getmembers()
+            if len(members) > max_files:
                 raise SourceError(
-                    f"unsafe special/symlink entry {member.name!r} in {archive_path} (rejected by security policy)"
+                    f"archive {archive_path} contains {len(members)} entries (exceeds limit of {max_files})"
                 )
-            if member.size < 0 or member.size > max_file_bytes:
-                raise SourceError(
-                    f"archive member {member.name!r} exceeds maximum allowed size ({max_file_bytes} bytes)"
-                )
-            if member.isfile():
-                nkey = _normalized_archive_key(member.name)
-                if nkey in seen_files:
+            seen_files: set[str] = set()
+            for member in members:
+                reason = _unsafe_member_name(member.name)
+                if reason:
+                    raise SourceError(f"unsafe tar path {member.name!r} in {archive_path} ({reason} rejected)")
+                if member.issym() or member.islnk() or member.isdev() or member.isfifo() or not (
+                    member.isfile() or member.isdir()
+                ):
                     raise SourceError(
-                        f"duplicate or case-colliding tar entry {member.name!r} in {archive_path}"
+                        f"unsafe special/symlink entry {member.name!r} in {archive_path} (rejected by security policy)"
                     )
-                seen_files.add(nkey)
-            target = (dest_dir / member.name).resolve()
-            try:
-                target.relative_to(dest_dir)
-            except ValueError as exc:
-                raise SourceError(f"tar member {member.name!r} escapes destination directory") from exc
+                if member.size < 0 or member.size > max_file_bytes:
+                    raise SourceError(
+                        f"archive member {member.name!r} exceeds maximum allowed size ({max_file_bytes} bytes)"
+                    )
+                if member.isfile():
+                    nkey = _normalized_archive_key(member.name)
+                    if nkey in seen_files:
+                        raise SourceError(
+                            f"duplicate or case-colliding tar entry {member.name!r} in {archive_path}"
+                        )
+                    seen_files.add(nkey)
+                raw_target = dest_dir / unicodedata.normalize("NFC", member.name.replace("\\", "/"))
+                if raw_target.is_symlink():
+                    raise SourceError(f"tar member {member.name!r} targets an existing symlink in destination")
+                target = raw_target.resolve()
+                try:
+                    target.relative_to(dest_dir)
+                except ValueError as exc:
+                    raise SourceError(f"tar member {member.name!r} escapes destination directory") from exc
 
-        total_counter = [0]
-        for member in members:
-            target = (dest_dir / member.name).resolve()
-            if member.isdir():
-                target.mkdir(parents=True, exist_ok=True)
-                continue
-            target.parent.mkdir(parents=True, exist_ok=True)
-            src = tf.extractfile(member)
-            if src is None:
-                continue
-            with src, open(target, "wb") as out:
-                _copy_bounded(
-                    src,
-                    out,
-                    member_name=member.name,
-                    max_file_bytes=max_file_bytes,
-                    total_counter=total_counter,
-                    max_total_bytes=max_total_bytes,
-                )
-            if member.mode:
-                with contextlib.suppress(OSError):
-                    os.chmod(target, member.mode & 0o777)
+            total_counter = [0]
+            for member in members:
+                rel_clean = unicodedata.normalize("NFC", member.name.replace("\\", "/"))
+                raw_target = dest_dir / rel_clean
+                if member.isdir():
+                    raw_target.mkdir(parents=True, exist_ok=True)
+                    created_entries.append(raw_target)
+                    continue
+                raw_target.parent.mkdir(parents=True, exist_ok=True)
+                src = tf.extractfile(member)
+                if src is None:
+                    continue
+                created_entries.append(raw_target)
+                with src, _open_new_archive_target(dest_dir, raw_target) as out:
+                    _copy_bounded(
+                        src,
+                        out,
+                        member_name=member.name,
+                        max_file_bytes=max_file_bytes,
+                        total_counter=total_counter,
+                        max_total_bytes=max_total_bytes,
+                    )
+                if member.mode:
+                    with contextlib.suppress(OSError):
+                        os.chmod(raw_target, member.mode & 0o755)
+    except SourceError:
+        for entry in reversed(created_entries):
+            if entry.is_file() or entry.is_symlink():
+                entry.unlink(missing_ok=True)
+        if not existed_before:
+            shutil.rmtree(dest_dir, ignore_errors=True)
+        raise
+    except (tarfile.TarError, EOFError, zlib.error, OSError) as exc:
+        for entry in reversed(created_entries):
+            if entry.is_file() or entry.is_symlink():
+                entry.unlink(missing_ok=True)
+        if not existed_before:
+            shutil.rmtree(dest_dir, ignore_errors=True)
+        raise SourceError(f"corrupted or unreadable tar archive {archive_path}: {exc}") from exc
     return dest_dir
 
 

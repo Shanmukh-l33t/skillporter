@@ -19,7 +19,7 @@ from pathlib import Path
 
 from . import __version__, harnesses
 from .diagnose import diagnose
-from .manifest import LOCKFILE_FILENAME, load_lockfile, load_manifest
+from .manifest import LOCKFILE_FILENAME, LockfileError, load_lockfile, load_manifest
 from .security import compute_tree_hash, scan_skill
 
 
@@ -30,7 +30,10 @@ def check_lockfile_staleness(root: Path, *, scope: str = "project") -> list[str]
     if not lock_path.is_file():
         return [f"missing lockfile: {LOCKFILE_FILENAME} does not exist (run `skillporter lock`)"]
 
-    lock = load_lockfile(root)
+    try:
+        lock = load_lockfile(root)
+    except LockfileError as exc:
+        return [str(exc)]
     manifest = load_manifest(root)
     diag = diagnose(root, scope=scope)
     problems: list[str] = []

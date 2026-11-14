@@ -19,6 +19,7 @@ import sys
 from pathlib import Path
 
 from . import __version__, harnesses
+from .atomic import workspace_lock
 from .audit import record_audit_event
 from .ci_report import check_lockfile_staleness, generate_ci_report, post_github_pr_comment
 from .demo import run_demo
@@ -32,7 +33,9 @@ from .install import uninstall as run_uninstall
 from .manifest import (
     LOCKFILE_FILENAME,
     MANIFEST_FILENAME,
+    MANIFEST_SCHEMA_VERSION,
     LockedSkill,
+    LockfileError,
     ManifestSkillSpec,
     ProjectManifest,
     load_lockfile,
@@ -841,10 +844,15 @@ def _cmd_scan(args: argparse.Namespace) -> int:
         verdict = "PASSED" if (rep.passed and not exceeds) else "BLOCKED"
         print(
             f"{sname}: {badge(verdict)}  "
-            f"(risk: {rep.risk_score}/100 · {rep.recommendation} · "
+            f"(risk: {rep.risk_score}/100 · {rep.recommendation} · posture: {rep.posture} · "
             f"engine: {rep.engine} v{rep.engine_version} · "
             f"sha256: {rep.tree_hash[:12] if rep.tree_hash else 'n/a'})"
         )
+        if not rep.scan_complete:
+            print(
+                f"  Completeness: INCOMPLETE (truncated={len(rep.files_truncated)}, "
+                f"unreadable={len(rep.files_unreadable)})"
+            )
         non_zero_cats = {k: v for k, v in rep.category_breakdown.items() if v > 0}
         if non_zero_cats:
             cats_str = ", ".join(f"{k}={v}" for k, v in non_zero_cats.items())
@@ -1138,15 +1146,19 @@ def _cmd_lock(args: argparse.Namespace) -> int:
     if getattr(args, "check", False):
         issues = check_lockfile_staleness(root)
         manifest = load_manifest(root)
-        if manifest and manifest.skills:
+        if manifest and manifest.skills and not any("corrupted" in i or "unsupported" in i for i in issues):
+            graph_chk = None
             try:
-                graph = resolve_dependency_graph(root, manifest)
                 lock_now = load_lockfile(root, warn_migration=False)
-                for sname in graph.install_order:
+                graph_chk = resolve_dependency_graph(root, manifest, lockfile=lock_now)
+                for sname in graph_chk.install_order:
                     if sname not in lock_now.skills:
                         issues.append(f"unpinned dependency in graph: {sname!r} is missing from {LOCKFILE_FILENAME}")
-            except DependencyError as exc:
-                issues.append(f"dependency error: {exc}")
+            except (DependencyError, LockfileError) as exc:
+                issues.append(f"dependency/lockfile error: {exc}")
+            finally:
+                if graph_chk is not None:
+                    graph_chk.cleanup()
 
         if fmt == "json":
             print(json.dumps({"clean": len(issues) == 0, "issues": issues}, indent=2))
@@ -1159,71 +1171,105 @@ def _cmd_lock(args: argparse.Namespace) -> int:
         print(f"{LOCKFILE_FILENAME} is up to date and verified (0 drift).")
         return EXIT_OK
 
-    records = load_state(root)
-    manifest = load_manifest(root)
-    lock = load_lockfile(root, warn_migration=False)
+    with workspace_lock(root):
+        records = load_state(root)
+        manifest = load_manifest(root)
+        try:
+            lock = load_lockfile(root, warn_migration=False)
+        except LockfileError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return EXIT_PROBLEM
 
-    graph = None
-    with contextlib.suppress(Exception):
-        graph = resolve_dependency_graph(root, manifest)
+        m_schema = manifest.schema_version if manifest else MANIFEST_SCHEMA_VERSION
+        m_scope = manifest.scope if manifest else "project"
+        lock.manifest_schema_version = m_schema
 
-    if records:
-        for sname, rec in sorted(records.items()):
-            gnode = graph.nodes.get(sname) if graph else None
-            lock.skills[sname] = LockedSkill(
-                name=sname,
-                source=rec.source,
-                resolved_commit=rec.resolved_commit or (gnode.resolved_commit if gnode else ""),
-                version=gnode.version if gnode else rec.version,
-                tree_hash=rec.tree_hash,
-                strategy=rec.strategy,
-                installed_targets=rec.harnesses,
-                locked_at=rec.updated_at,
-                dependencies=dict(gnode.dependencies) if gnode else {},
-                risk_score=gnode.risk_score if gnode else 0,
-                direct=gnode.direct if gnode else True,
-            )
-    if graph:
-        for sname, gnode in sorted(graph.nodes.items()):
-            if sname in lock.skills:
-                lock.skills[sname].dependencies = dict(gnode.dependencies)
-                lock.skills[sname].risk_score = gnode.risk_score
-                lock.skills[sname].direct = gnode.direct
-                if gnode.version and lock.skills[sname].version == "1.0.0":
-                    lock.skills[sname].version = gnode.version
-            else:
-                lock.skills[sname] = LockedSkill(
-                    name=sname,
-                    source=gnode.source,
-                    resolved_commit=gnode.resolved_commit,
-                    version=gnode.version,
-                    tree_hash=gnode.tree_hash,
-                    strategy="copy",
-                    installed_targets=manifest.harnesses if manifest else [],
-                    dependencies=dict(gnode.dependencies),
-                    risk_score=gnode.risk_score,
-                    direct=gnode.direct,
-                )
-    elif not records:
-        for skill_md in discover(root):
-            sname = skill_md.parent.name
-            if sname in lock.skills:
-                continue
-            thash, _ = compute_tree_hash(skill_md.parent)
-            srep = scan_skill(skill_md.parent, offline=True)
-            lock.skills[sname] = LockedSkill(
-                name=sname,
-                source=f"./{skill_md.parent.relative_to(root).as_posix()}",
-                resolved_commit="",
-                version="1.0.0",
-                tree_hash=thash,
-                strategy="copy",
-                installed_targets=[],
-                risk_score=srep.risk_score,
-                direct=True,
-            )
+        graph = None
+        with contextlib.suppress(Exception):
+            graph = resolve_dependency_graph(root, manifest, lockfile=lock if lock.skills else None)
 
-    lpath = save_lockfile(root, lock)
+        try:
+            if records:
+                for sname, rec in sorted(records.items()):
+                    gnode = graph.nodes.get(sname) if graph else None
+                    fhashes: dict[str, str] = dict(gnode.file_hashes) if (gnode and gnode.file_hashes) else {}
+                    if not fhashes and rec.destinations:
+                        first_d = Path(rec.destinations[0])
+                        if first_d.is_dir():
+                            _, fhashes = compute_tree_hash(first_d)
+                    lock.skills[sname] = LockedSkill(
+                        name=sname,
+                        source=rec.source,
+                        resolved_commit=rec.resolved_commit or (gnode.resolved_commit if gnode else ""),
+                        version=gnode.version if gnode else rec.version,
+                        tree_hash=rec.tree_hash,
+                        strategy=rec.strategy,
+                        installed_targets=rec.harnesses,
+                        locked_at=rec.updated_at,
+                        dependencies=dict(gnode.dependencies) if gnode else {},
+                        risk_score=gnode.risk_score if gnode else 0,
+                        direct=gnode.direct if gnode else True,
+                        file_hashes=fhashes,
+                        adapter_version=__version__,
+                        scope=rec.scope or m_scope,
+                        manifest_schema_version=m_schema,
+                    )
+            if graph:
+                for sname, gnode in sorted(graph.nodes.items()):
+                    if sname in lock.skills:
+                        lock.skills[sname].dependencies = dict(gnode.dependencies)
+                        lock.skills[sname].risk_score = gnode.risk_score
+                        lock.skills[sname].direct = gnode.direct
+                        if gnode.file_hashes and not lock.skills[sname].file_hashes:
+                            lock.skills[sname].file_hashes = dict(gnode.file_hashes)
+                        lock.skills[sname].adapter_version = __version__
+                        lock.skills[sname].manifest_schema_version = m_schema
+                        if gnode.version and lock.skills[sname].version == "1.0.0":
+                            lock.skills[sname].version = gnode.version
+                    else:
+                        lock.skills[sname] = LockedSkill(
+                            name=sname,
+                            source=gnode.source,
+                            resolved_commit=gnode.resolved_commit,
+                            version=gnode.version,
+                            tree_hash=gnode.tree_hash,
+                            strategy="copy",
+                            installed_targets=manifest.harnesses if manifest else [],
+                            dependencies=dict(gnode.dependencies),
+                            risk_score=gnode.risk_score,
+                            direct=gnode.direct,
+                            file_hashes=dict(gnode.file_hashes),
+                            adapter_version=__version__,
+                            scope=m_scope,
+                            manifest_schema_version=m_schema,
+                        )
+            elif not records:
+                for skill_md in discover(root):
+                    sname = skill_md.parent.name
+                    if sname in lock.skills:
+                        continue
+                    thash, fhashes = compute_tree_hash(skill_md.parent)
+                    srep = scan_skill(skill_md.parent, offline=True)
+                    lock.skills[sname] = LockedSkill(
+                        name=sname,
+                        source=f"./{skill_md.parent.relative_to(root).as_posix()}",
+                        resolved_commit="",
+                        version="1.0.0",
+                        tree_hash=thash,
+                        strategy="copy",
+                        installed_targets=[],
+                        risk_score=srep.risk_score,
+                        direct=True,
+                        file_hashes=fhashes,
+                        adapter_version=__version__,
+                        scope=m_scope,
+                        manifest_schema_version=m_schema,
+                    )
+        finally:
+            if graph is not None:
+                graph.cleanup()
+
+        lpath = save_lockfile(root, lock)
     if fmt == "json":
         print(json.dumps(lock.to_dict(), indent=2, sort_keys=True))
     else:
@@ -1246,122 +1292,118 @@ def _latest_tree_mtime_ns(skill_dir: Path) -> int:
 
 def _cmd_sync(args: argparse.Namespace) -> int:
     root = Path(args.path).expanduser().resolve()
-    manifest = load_manifest(root)
-    lock = load_lockfile(root)
-    targets = _resolve_target_harnesses(args.harness, root, scope=args.scope, default_detected=True)
-    force_flag = getattr(args, "force", False)
-    prefer_path = getattr(args, "prefer", None)
-    allow_risky = getattr(args, "allow_risky", False)
-    max_risk_score = getattr(args, "max_risk_score", None)
-    if max_risk_score is None and manifest is not None:
-        max_risk_score = manifest.max_risk_score
-
-    diag = run_diagnose(root, scope=args.scope)
-
-    # 1. Security scan every discovered skill copy before syncing or updating lockfile
-    for sname, copies in sorted(diag.skill_copies.items()):
-        for cdir in copies:
-            srep = scan_skill(cdir)
-            if srep.has_structural_escape or (not srep.passed and not allow_risky):
-                print(
-                    f"error: sync blocked by static security policy on {sname!r} ({cdir}); "
-                    "run `skillporter scan` to inspect findings.",
-                    file=sys.stderr,
-                )
-                return EXIT_PROBLEM
-            if srep.exceeds_risk_threshold(max_risk_score) and not allow_risky:
-                print(
-                    f"error: sync blocked by configured security.max_risk_score ({max_risk_score}) on {sname!r} "
-                    f"(risk_score {srep.risk_score}/100 > {max_risk_score})",
-                    file=sys.stderr,
-                )
-                return EXIT_PROBLEM
-
-    # 2. Check lockfile drift before overwriting skillporter.lock
-    if (root / LOCKFILE_FILENAME).is_file() and not force_flag and not prefer_path:
-        lock_mismatches: list[str] = []
-        for sname, locked in sorted(lock.skills.items()):
-            for cdir in diag.skill_copies.get(sname, []):
-                actual_hash, _ = compute_tree_hash(cdir)
-                if locked.tree_hash and actual_hash != locked.tree_hash:
-                    lock_mismatches.append(f"{sname} ({cdir}): locked {locked.tree_hash[:8]} != disk {actual_hash[:8]}")
-        if lock_mismatches:
-            print(
-                "error: on-disk skill content differs from skillporter.lock; refusing to re-lock without --force:",
-                file=sys.stderr,
-            )
-            for lm in lock_mismatches:
-                print(f"  - {lm}", file=sys.stderr)
-            return EXIT_PROBLEM
-
-    # 3. Check copy drift across harnesses
-    if diag.drifted and not force_flag and not prefer_path:
-        print(
-            "error: content drift detected across existing skill copies; refusing to overwrite without --force:",
-            file=sys.stderr,
-        )
-        for sname, phashes in sorted(diag.drifted.items()):
-            locs = ", ".join(f"{p} ({h[:8]})" for p, h in sorted(phashes.items()))
-            print(f"  - {sname}: {locs}", file=sys.stderr)
-        print(
-            "Re-run `skillporter sync --force` (or `--prefer <path>`) to synchronize "
-            "(existing copies are snapshotted to .skillporter/backups/ first).",
-            file=sys.stderr,
-        )
-        return EXIT_PROBLEM
-
-    synced_results = []
-    if manifest and manifest.skills and not prefer_path and not diag.drifted:
-        # Resolve full transitive dependency graph first (detects cycles and semver conflicts)
+    with workspace_lock(root):
+        manifest = load_manifest(root)
         try:
-            graph = resolve_dependency_graph(root, manifest)
-        except (DependencyCycleError, DependencyConflictError, DependencyError) as exc:
+            lock = load_lockfile(root)
+        except LockfileError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return EXIT_PROBLEM
+        has_existing_lock = (root / LOCKFILE_FILENAME).is_file()
+        targets = _resolve_target_harnesses(args.harness, root, scope=args.scope, default_detected=True)
+        force_flag = getattr(args, "force", False)
+        prefer_path = getattr(args, "prefer", None)
+        allow_risky = getattr(args, "allow_risky", False)
+        max_risk_score = getattr(args, "max_risk_score", None)
+        if max_risk_score is None and manifest is not None:
+            max_risk_score = manifest.max_risk_score
 
-        spec_by_name = {s.name: s for s in manifest.skills}
-        for sname in graph.install_order:
-            node = graph.nodes[sname]
-            spec = spec_by_name.get(sname)
-            skill_targets = (spec.harnesses if spec and spec.harnesses else None) or manifest.harnesses or targets
-            strategy = (spec.strategy if spec and spec.strategy else None) or manifest.strategy or args.strategy
+        diag = run_diagnose(root, scope=args.scope)
 
-            if node.skill_dir and node.skill_dir.exists():
-                sdir = node.skill_dir
-                srep = scan_skill(sdir)
+        # 1. Security scan every discovered skill copy before syncing or updating lockfile
+        for sname, copies in sorted(diag.skill_copies.items()):
+            for cdir in copies:
+                srep = scan_skill(cdir)
                 if srep.has_structural_escape or (not srep.passed and not allow_risky):
                     print(
-                        f"error: sync blocked by static security policy on {sdir.name!r}",
+                        f"error: sync blocked by static security policy on {sname!r} ({cdir}); "
+                        "run `skillporter scan` to inspect findings.",
                         file=sys.stderr,
                     )
                     return EXIT_PROBLEM
                 if srep.exceeds_risk_threshold(max_risk_score) and not allow_risky:
                     print(
-                        f"error: sync blocked by configured security.max_risk_score ({max_risk_score}) "
-                        f"on {sdir.name!r} (risk_score {srep.risk_score}/100 > {max_risk_score})",
+                        f"error: sync blocked by configured security.max_risk_score ({max_risk_score}) on {sname!r} "
+                        f"(risk_score {srep.risk_score}/100 > {max_risk_score})",
                         file=sys.stderr,
                     )
                     return EXIT_PROBLEM
-                res = run_install(
-                    root,
-                    sdir,
-                    skill_targets,
-                    strategy=strategy,
-                    scope=args.scope,
-                    force=True,
-                    source=node.source,
-                    resolved_commit=node.resolved_commit,
-                    version=node.version,
-                    record_state=True,
-                    skill_name_override=sname,
+
+        # 2. Check lockfile drift before overwriting skillporter.lock
+        if has_existing_lock and not force_flag and not prefer_path:
+            lock_mismatches: list[str] = []
+            for sname, locked in sorted(lock.skills.items()):
+                for cdir in diag.skill_copies.get(sname, []):
+                    actual_hash, _ = compute_tree_hash(cdir)
+                    if locked.tree_hash and actual_hash != locked.tree_hash:
+                        lock_mismatches.append(
+                            f"{sname} ({cdir}): locked {locked.tree_hash[:8]} != disk {actual_hash[:8]}"
+                        )
+            if lock_mismatches:
+                print(
+                    "error: on-disk skill content differs from skillporter.lock; refusing to re-lock without --force:",
+                    file=sys.stderr,
                 )
-                synced_results.extend(res)
-            elif spec:
-                resolved = resolve_source(spec.source, base_dir=root, ref_override=spec.ref)
-                try:
-                    for sdir in resolved.skill_dirs:
-                        if sdir.name != spec.name and len(resolved.skill_dirs) > 1:
-                            continue
+                for lm in lock_mismatches:
+                    print(f"  - {lm}", file=sys.stderr)
+                return EXIT_PROBLEM
+
+        # 3. Check copy drift across harnesses
+        if diag.drifted and not force_flag and not prefer_path:
+            print(
+                "error: content drift detected across existing skill copies; refusing to overwrite without --force:",
+                file=sys.stderr,
+            )
+            for sname, phashes in sorted(diag.drifted.items()):
+                locs = ", ".join(f"{p} ({h[:8]})" for p, h in sorted(phashes.items()))
+                print(f"  - {sname}: {locs}", file=sys.stderr)
+            print(
+                "Re-run `skillporter sync --force` (or `--prefer <path>`) to synchronize "
+                "(existing copies are snapshotted to .skillporter/backups/ first).",
+                file=sys.stderr,
+            )
+            return EXIT_PROBLEM
+
+        synced_results = []
+        if manifest and manifest.skills and not prefer_path and not diag.drifted:
+            # Resolve full transitive dependency graph first (honoring lockfile commit pins when present!)
+            try:
+                graph = resolve_dependency_graph(
+                    root,
+                    manifest,
+                    lockfile=(lock if has_existing_lock and not force_flag else None),
+                )
+            except (DependencyCycleError, DependencyConflictError, DependencyError) as exc:
+                print(f"error: {exc}", file=sys.stderr)
+                return EXIT_PROBLEM
+
+            try:
+                # Upfront integrity check against lockfile BEFORE installing any node
+                if has_existing_lock and not force_flag:
+                    for sname in graph.install_order:
+                        node = graph.nodes[sname]
+                        locked_node = lock.skills.get(sname)
+                        if locked_node and locked_node.tree_hash and node.skill_dir and node.skill_dir.exists():
+                            resolved_hash, _ = compute_tree_hash(node.skill_dir)
+                            if resolved_hash != locked_node.tree_hash:
+                                print(
+                                    f"error: upstream source integrity mismatch for {sname!r}: "
+                                    f"resolved tree_hash {resolved_hash[:12]} differs from skillporter.lock "
+                                    f"({locked_node.tree_hash[:12]}); pass --force if intentional.",
+                                    file=sys.stderr,
+                                )
+                                return EXIT_PROBLEM
+
+                spec_by_name = {s.name: s for s in manifest.skills}
+                for sname in graph.install_order:
+                    node = graph.nodes[sname]
+                    spec = spec_by_name.get(sname)
+                    spec_h = spec.harnesses if spec and spec.harnesses else None
+                    skill_targets = spec_h or manifest.harnesses or targets
+                    strategy = (spec.strategy if spec and spec.strategy else None) or manifest.strategy or args.strategy
+
+                    if node.skill_dir and node.skill_dir.exists():
+                        sdir = node.skill_dir
                         srep = scan_skill(sdir)
                         if srep.has_structural_escape or (not srep.passed and not allow_risky):
                             print(
@@ -1383,60 +1425,112 @@ def _cmd_sync(args: argparse.Namespace) -> int:
                             strategy=strategy,
                             scope=args.scope,
                             force=True,
-                            source=resolved.canonical_source,
-                            resolved_commit=resolved.resolved_commit,
+                            source=node.source,
+                            resolved_commit=node.resolved_commit,
+                            version=node.version,
                             record_state=True,
+                            skill_name_override=sname,
                         )
                         synced_results.extend(res)
-                finally:
-                    resolved.cleanup()
-    else:
-        canonical_by_name: dict[str, Path] = {}
-        if prefer_path:
-            pref = Path(prefer_path).expanduser()
-            if not pref.is_absolute():
-                pref = (root / pref).resolve()
-            if (pref / "SKILL.md").is_file():
-                canonical_by_name[pref.name] = pref
-            else:
-                for smd in discover(pref):
-                    canonical_by_name[smd.parent.name] = smd.parent
+                    elif spec:
+                        use_lock = has_existing_lock and not force_flag and sname in lock.skills
+                        pinned_ref = (
+                            lock.skills[sname].resolved_commit
+                            if (use_lock and lock.skills[sname].resolved_commit)
+                            else spec.ref
+                        )
+                        resolved = resolve_source(spec.source, base_dir=root, ref_override=pinned_ref)
+                        try:
+                            for sdir in resolved.skill_dirs:
+                                if sdir.name != spec.name and len(resolved.skill_dirs) > 1:
+                                    continue
+                                if use_lock and lock.skills[sname].tree_hash:
+                                    rhash, _ = compute_tree_hash(sdir)
+                                    if rhash != lock.skills[sname].tree_hash:
+                                        print(
+                                            f"error: upstream source integrity mismatch for {sname!r}: "
+                                            f"resolved tree_hash {rhash[:12]} differs from skillporter.lock "
+                                            f"({lock.skills[sname].tree_hash[:12]})",
+                                            file=sys.stderr,
+                                        )
+                                        return EXIT_PROBLEM
+                                srep = scan_skill(sdir)
+                                if srep.has_structural_escape or (not srep.passed and not allow_risky):
+                                    print(
+                                        f"error: sync blocked by static security policy on {sdir.name!r}",
+                                        file=sys.stderr,
+                                    )
+                                    return EXIT_PROBLEM
+                                if srep.exceeds_risk_threshold(max_risk_score) and not allow_risky:
+                                    print(
+                                        f"error: sync blocked by configured security.max_risk_score ({max_risk_score}) "
+                                        f"on {sdir.name!r} (risk_score {srep.risk_score}/100 > {max_risk_score})",
+                                        file=sys.stderr,
+                                    )
+                                    return EXIT_PROBLEM
+                                res = run_install(
+                                    root,
+                                    sdir,
+                                    skill_targets,
+                                    strategy=strategy,
+                                    scope=args.scope,
+                                    force=True,
+                                    source=resolved.canonical_source,
+                                    resolved_commit=resolved.resolved_commit,
+                                    record_state=True,
+                                )
+                                synced_results.extend(res)
+                        finally:
+                            resolved.cleanup()
+            finally:
+                graph.cleanup()
+        else:
+            canonical_by_name: dict[str, Path] = {}
+            if prefer_path:
+                pref = Path(prefer_path).expanduser()
+                if not pref.is_absolute():
+                    pref = (root / pref).resolve()
+                if (pref / "SKILL.md").is_file():
+                    canonical_by_name[pref.name] = pref
+                else:
+                    for smd in discover(pref):
+                        canonical_by_name[smd.parent.name] = smd.parent
 
-        for sname, copies in sorted(diag.skill_copies.items()):
-            if sname in canonical_by_name:
-                continue
-            if len(copies) == 1 or sname not in diag.drifted:
-                canonical_by_name[sname] = copies[0]
-                continue
-            ranked = sorted(copies, key=_latest_tree_mtime_ns, reverse=True)
-            if _latest_tree_mtime_ns(ranked[0]) == _latest_tree_mtime_ns(ranked[1]):
-                print(
-                    f"error: drifted copies of {sname!r} have identical modification timestamps; "
-                    "pass `--prefer <path>` to specify the authoritative copy.",
-                    file=sys.stderr,
-                )
+            for sname, copies in sorted(diag.skill_copies.items()):
+                if sname in canonical_by_name:
+                    continue
+                if len(copies) == 1 or sname not in diag.drifted:
+                    canonical_by_name[sname] = copies[0]
+                    continue
+                ranked = sorted(copies, key=_latest_tree_mtime_ns, reverse=True)
+                if _latest_tree_mtime_ns(ranked[0]) == _latest_tree_mtime_ns(ranked[1]):
+                    print(
+                        f"error: drifted copies of {sname!r} have identical modification timestamps; "
+                        "pass `--prefer <path>` to specify the authoritative copy.",
+                        file=sys.stderr,
+                    )
+                    return EXIT_PROBLEM
+                canonical_by_name[sname] = ranked[0]
+
+            if not canonical_by_name:
+                print(f"no skills or {MANIFEST_FILENAME} found under {root}")
                 return EXIT_PROBLEM
-            canonical_by_name[sname] = ranked[0]
 
-        if not canonical_by_name:
-            print(f"no skills or {MANIFEST_FILENAME} found under {root}")
-            return EXIT_PROBLEM
+            for _sname, sdir in sorted(canonical_by_name.items()):
+                res = run_install(
+                    root,
+                    sdir,
+                    targets,
+                    strategy=args.strategy,
+                    scope=args.scope,
+                    force=True,
+                    source=str(sdir),
+                    record_state=True,
+                )
+                synced_results.extend(res)
 
-        for _sname, sdir in sorted(canonical_by_name.items()):
-            res = run_install(
-                root,
-                sdir,
-                targets,
-                strategy=args.strategy,
-                scope=args.scope,
-                force=True,
-                source=str(sdir),
-                record_state=True,
-            )
-            synced_results.extend(res)
-
-    if (root / LOCKFILE_FILENAME).exists() or manifest is not None:
-        _cmd_lock(argparse.Namespace(path=str(root)))
+        if has_existing_lock or manifest is not None:
+            _cmd_lock(argparse.Namespace(path=str(root)))
 
     for r in synced_results:
         print(f"{r.action:9} {r.harness:16} {r.dest}")
@@ -2397,7 +2491,24 @@ def build_parser() -> argparse.ArgumentParser:
 
     # mcp
     mcp_p = sub.add_parser("mcp", help="run the stdio Model Context Protocol (MCP) server for agent harnesses")
-    mcp_p.set_defaults(func=lambda _a: run_mcp_stdio())
+    mcp_p.add_argument("--root", default=None, help="explicit workspace root boundary (default: cwd)")
+    mcp_p.add_argument(
+        "--allow-writes",
+        action="store_true",
+        help="enable mutating MCP tools (add, install, sync, remove); default is read-only",
+    )
+    mcp_p.add_argument(
+        "--allow-user-scope",
+        action="store_true",
+        help="permit scope='user' reads outside the project workspace",
+    )
+    mcp_p.set_defaults(
+        func=lambda a: run_mcp_stdio(
+            workspace_root=Path(a.root).expanduser().resolve() if getattr(a, "root", None) else None,
+            allow_writes=True if getattr(a, "allow_writes", False) else None,
+            allow_user_scope=True if getattr(a, "allow_user_scope", False) else None,
+        )
+    )
 
     # status
     st_p = sub.add_parser("status", help="show unified workspace manifest, lockfile, per-harness, and drift status")
