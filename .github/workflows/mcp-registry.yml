@@ -66,4 +66,11 @@ jobs:
         run: |
           set -euo pipefail
           ./mcp-publisher validate server.json
+          # Republishing an existing version is rejected, so a re-run (or a
+          # release after a manual dispatch) must no-op instead of failing.
+          if curl -fsS "https://registry.modelcontextprotocol.io/v0/servers?search=io.github.Shanmukh-l33t/skillporter" \
+            | python3 -c "import json,sys; v=sys.argv[1]; d=json.load(sys.stdin); sys.exit(0 if any(s['server']['version']==v for s in d.get('servers',[])) else 1)" "${VERSION}"; then
+            echo "registry already serves ${VERSION}; nothing to publish."
+            exit 0
+          fi
           ./mcp-publisher publish
