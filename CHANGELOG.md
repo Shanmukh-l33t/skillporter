@@ -20,7 +20,9 @@ versioning follows [Semantic Versioning](https://semver.org/).
 ### Fixed
 - Policy now applies to `--scope user`, `sync --prefer`, non-bundled `import` and `allowed_harnesses` for `move`, `self-skill` and `doctor --fix`.
 - The scanner and installer share one file list, so nothing under `node_modules`, `.venv` or similar is copied unscanned.
-- A registry token containing control characters is rejected and never printed; non-HTTP(S) and userinfo registry URLs are refused.
+- A registry token containing control characters is rejected and never printed; non-HTTP(S), userinfo, and non-loopback cleartext HTTP registry URLs are refused for both publishing and catalog loading.
+- `scan --ai-review` withholds `.env*`, private keys and credential files, redacts inline secrets before sending, and refuses non-loopback cleartext HTTP endpoints.
+- `scripts/build_standalone.py` builds bit-for-bit deterministic `.pyz` artifacts across runs.
 - `consolidate --rollback` can no longer restore files from a doctored backup path; `--apply` refuses to write through symlinks that leave the workspace.
 - MCP tools reject unknown arguments (a `dry_run` flag was previously ignored and wrote files); deeply nested JSON no longer kills the server.
 - The scanner now recognizes `eval "$(curl ...)"`, process substitution, `sh -c "$(wget ...)"`, `python -c "$(curl ...)"` and download-then-run as remote execution, and resolves aliased imports such as `from subprocess import run` when inferring capabilities.

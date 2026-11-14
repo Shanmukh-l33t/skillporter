@@ -690,7 +690,19 @@ def cmd_sync(args: argparse.Namespace) -> int:
                 elif sname_fb in records_fallback and records_fallback[sname_fb].harnesses:
                     eff_targets = [harnesses.get(h).name for h in records_fallback[sname_fb].harnesses]
                 else:
-                    eff_targets = targets
+                    # Unmanaged copies already sitting in primary harness dirs reconcile in place, so sync
+                    # never fans out to harnesses chosen by accident (e.g. a CLI found on the developer's PATH).
+                    on_disk_primary: list[str] = []
+                    seen_prim_paths: set[str] = set()
+                    for hname, rep in diag.reports.items():
+                        h_obj = harnesses.get(hname)
+                        prim = h_obj.primary_project_path if args.scope == "project" else h_obj.primary_user_path
+                        if prim is None or prim.path in seen_prim_paths:
+                            continue
+                        if any(loc.raw_path == prim.path and sname_fb in loc.skill_dirs for loc in rep.locations):
+                            seen_prim_paths.add(prim.path)
+                            on_disk_primary.append(hname)
+                    eff_targets = on_disk_primary if on_disk_primary else targets
                 res = run_install(
                     root,
                     sdir,

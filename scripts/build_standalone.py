@@ -10,11 +10,40 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import shutil
 import stat
 import subprocess
-import zipapp
+import zipfile
 from pathlib import Path
+
+_FIXED_ZIP_TIME = (2026, 1, 1, 0, 0, 0)
+_MAIN_ENTRY = (
+    "# -*- coding: utf-8 -*-\n"
+    "import skillporter.cli\n"
+    "skillporter.cli.entrypoint()\n"
+)
+
+
+def _write_deterministic_pyz(staging: Path, target: Path) -> None:
+    """Write a bit-for-bit reproducible executable zipapp regardless of filesystem mtime or walk order."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
+        main_info = zipfile.ZipInfo("__main__.py", date_time=_FIXED_ZIP_TIME)
+        main_info.compress_type = zipfile.ZIP_DEFLATED
+        main_info.external_attr = 0o644 << 16
+        zf.writestr(main_info, _MAIN_ENTRY.encode("utf-8"))
+
+        files = sorted(p for p in staging.rglob("*") if p.is_file())
+        for fpath in files:
+            arcname = fpath.relative_to(staging).as_posix()
+            zinfo = zipfile.ZipInfo(arcname, date_time=_FIXED_ZIP_TIME)
+            zinfo.compress_type = zipfile.ZIP_DEFLATED
+            zinfo.external_attr = 0o644 << 16
+            zf.writestr(zinfo, fpath.read_bytes())
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(b"#!/usr/bin/env python3\n" + buf.getvalue())
 
 
 def build_artifacts(repo_root: Path | None = None, *, sign_key: Path | None = None) -> dict[str, str]:
@@ -33,13 +62,7 @@ def build_artifacts(repo_root: Path | None = None, *, sign_key: Path | None = No
     )
 
     pyz_path = dist_dir / "skillporter.pyz"
-    zipapp.create_archive(
-        staging,
-        target=pyz_path,
-        interpreter="/usr/bin/env python3",
-        main="skillporter.cli:entrypoint",
-        compressed=True,
-    )
+    _write_deterministic_pyz(staging, pyz_path)
     pyz_path.chmod(pyz_path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     shutil.rmtree(staging)
 

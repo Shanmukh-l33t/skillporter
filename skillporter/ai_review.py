@@ -14,18 +14,80 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
+
+from .audit import redact_sensitive_text
 
 
 class AIReviewError(RuntimeError):
     """Raised when optional AI security review lacks authorization or credentials."""
 
+_KEYVALUE_SECRET_RE = re.compile(
+    r"(?im)\b[A-Z][A-Z0-9_]{2,}(?:_KEY|_TOKEN|_SECRET|_PASSWORD|_PASS|_APIKEY)\s*[:=]\s*(?:\"[^\"]+\"|'[^']+'|[^\s#]+)\b"
+)
+_AWS_ACCESS_ID_RE = re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b")
+_URL_CRED_RE = re.compile(r"(https?://)([^/@\s]+)@")
+_BEARER_RE = re.compile(r"\bBearer\s+[A-Za-z0-9._-]{8,}")
+_PRIVATE_KEY_BLOCK_RE = re.compile(
+    r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----", re.DOTALL
+)
 
-def collect_skill_review_bundle(skill_dir: Path, *, max_chars: int = 24000) -> tuple[str, int]:
-    """Assemble inspectable text from *skill_dir* up to *max_chars*."""
+def _redact_skill_text(text: str) -> str:
+    """Mask embedded secrets so a bundle that is sent still leaks nothing."""
+    out = _PRIVATE_KEY_BLOCK_RE.sub("[REDACTED_PRIVATE_KEY]", text)
+    out = redact_sensitive_text(out)
+    out = _AWS_ACCESS_ID_RE.sub("[REDACTED]", out)
+    out = _URL_CRED_RE.sub(r"\1[REDACTED]@", out)
+    out = _BEARER_RE.sub("Bearer [REDACTED]", out)
+    out = _KEYVALUE_SECRET_RE.sub(lambda m: re.sub(r"[:=]\s*.+", "=[REDACTED]", m.group(0)), out)
+    return out
+
+def _is_sensitive_file(rel: str) -> bool:
+    """A file whose contents must never be transmitted, even after redaction."""
+    leaf = rel.rsplit("/", 1)[-1].lower()
+    if leaf.startswith(".env") or leaf.startswith("id_rsa") or leaf.startswith("id_ed25519"):
+        return True
+    if leaf in (".netrc", "credentials", "credentials.json", "aws.txt", "secrets.txt"):
+        return True
+    return leaf.endswith((".pem", ".key", ".p12", ".pfx", ".kdbx"))
+
+def _validate_ai_base_url(base_url: str) -> None:
+    """Reject base URLs that would carry the provider API key in cleartext or to a hostile host."""
+    url = base_url.strip()
+    if any(ord(c) < 32 for c in url):
+        raise AIReviewError("SKILLPORTER_AI_BASE_URL contains control characters; refusing to send the API key there")
+    parts = urllib.parse.urlsplit(url)
+    if parts.scheme.lower() not in ("http", "https"):
+        raise AIReviewError(
+            "SKILLPORTER_AI_BASE_URL must use https:// (or http:// for localhost testing); "
+            f"unsupported scheme in {redact_sensitive_text(url)!r}"
+        )
+    host = (parts.hostname or "").lower()
+    if not host:
+        raise AIReviewError("SKILLPORTER_AI_BASE_URL has no host; refusing to send the API key there")
+    if parts.username is not None or parts.password is not None:
+        raise AIReviewError(
+            f"SKILLPORTER_AI_BASE_URL must not embed credentials (user:pass@host): {redact_sensitive_text(url)!r}"
+        )
+    if parts.scheme.lower() == "http" and host not in ("127.0.0.1", "localhost", "::1"):
+        raise AIReviewError(
+            f"refusing cleartext HTTP AI endpoint {redact_sensitive_text(url)!r}; "
+            "the API key would be sent in cleartext (use https://, or http:// for localhost testing)"
+        )
+
+def collect_skill_review_bundle(skill_dir: Path, *, max_chars: int = 24000) -> tuple[str, int, list[str]]:
+    """Assemble inspectable text from *skill_dir* up to *max_chars*.
+
+    Sensitive files (.env*, private keys, credentials) are withheld entirely; their names are
+    returned so the caller can tell the user what was not sent. Every transmitted chunk is
+    redacted so inline tokens or key material never leave the machine.
+    """
     chunks: list[str] = []
+    withheld: list[str] = []
     total = 0
     for fpath in sorted(skill_dir.rglob("*")):
         if not fpath.is_file() or fpath.is_symlink():
@@ -35,11 +97,14 @@ def collect_skill_review_bundle(skill_dir: Path, *, max_chars: int = 24000) -> t
             continue
         if fpath.suffix.lower() in {".png", ".jpg", ".gif", ".pdf", ".zip", ".gz", ".pyc", ".so", ".dll", ".exe"}:
             continue
+        if _is_sensitive_file(rel):
+            withheld.append(rel)
+            continue
         try:
             txt = fpath.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        snippet = f"=== FILE: {rel} ===\n{txt}\n"
+        snippet = f"=== FILE: {rel} ===\n{_redact_skill_text(txt)}\n"
         if total + len(snippet) > max_chars:
             rem = max(0, max_chars - total)
             if rem > 100:
@@ -49,7 +114,7 @@ def collect_skill_review_bundle(skill_dir: Path, *, max_chars: int = 24000) -> t
         chunks.append(snippet)
         total += len(snippet)
     combined = "\n".join(chunks)
-    return combined, len(combined.encode("utf-8"))
+    return combined, len(combined.encode("utf-8")), withheld
 
 
 def run_optional_ai_security_review(
@@ -59,13 +124,19 @@ def run_optional_ai_security_review(
     authorize_send: bool = False,
 ) -> dict[str, object]:
     """Run an optional LLM second-opinion review for natural-language prompt injection."""
-    bundle_text, byte_count = collect_skill_review_bundle(skill_dir)
+    bundle_text, byte_count, withheld = collect_skill_review_bundle(skill_dir)
     approx_tokens = max(1, len(bundle_text) // 4)
 
     if not authorize_send:
+        withheld_note = (
+            f" Sensitive files withheld (never sent): {', '.join(withheld)}."
+            if withheld
+            else ""
+        )
         raise AIReviewError(
             f"AI security review would transmit {byte_count} bytes (~{approx_tokens} tokens) from "
-            f"{skill_dir.name!r} to your configured model API; re-run with --yes-send to authorize transmission"
+            f"{skill_dir.name!r} to your configured model API; re-run with --yes-send to authorize transmission."
+            + withheld_note
         )
 
     eff_spec = model_spec.strip()
@@ -87,9 +158,15 @@ def run_optional_ai_security_review(
     raw_reply = ""
     if prov in ("openai", ""):
         api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+        if any(ord(c) < 32 for c in api_key):
+            raise AIReviewError(
+                "OPENAI_API_KEY contains whitespace or control characters; refusing to send it "
+                "(check the environment variable for stray newlines)"
+            )
         if not api_key:
             raise AIReviewError("OPENAI_API_KEY environment variable is required for OpenAI --ai-review")
         base_url = os.environ.get("SKILLPORTER_AI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+        _validate_ai_base_url(base_url)
         body = json.dumps(
             {
                 "model": model_name,
@@ -110,10 +187,18 @@ def run_optional_ai_security_review(
             with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310  # nosec B310
                 resp_json = json.loads(resp.read(1 << 20).decode("utf-8"))
             raw_reply = str(resp_json["choices"][0]["message"]["content"])
+        except urllib.error.HTTPError as exc:
+            # The provider's error body may echo the request, including the API key: never print it.
+            raise AIReviewError(f"AI review request failed with HTTP {exc.code}") from None
         except (urllib.error.URLError, KeyError, IndexError, json.JSONDecodeError) as exc:
-            raise AIReviewError(f"AI review request failed: {exc}") from exc
+            raise AIReviewError(f"AI review request failed: {redact_sensitive_text(str(exc))}") from exc
     elif prov == "anthropic":
         api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+        if any(ord(c) < 32 for c in api_key):
+            raise AIReviewError(
+                "ANTHROPIC_API_KEY contains whitespace or control characters; refusing to send it "
+                "(check the environment variable for stray newlines)"
+            )
         if not api_key:
             raise AIReviewError("ANTHROPIC_API_KEY environment variable is required for Anthropic --ai-review")
         body = json.dumps(
@@ -138,8 +223,10 @@ def run_optional_ai_security_review(
             with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310  # nosec B310
                 resp_json = json.loads(resp.read(1 << 20).decode("utf-8"))
             raw_reply = str(resp_json["content"][0]["text"])
+        except urllib.error.HTTPError as exc:
+            raise AIReviewError(f"Anthropic AI review request failed with HTTP {exc.code}") from None
         except (urllib.error.URLError, KeyError, IndexError, json.JSONDecodeError) as exc:
-            raise AIReviewError(f"Anthropic AI review request failed: {exc}") from exc
+            raise AIReviewError(f"Anthropic AI review request failed: {redact_sensitive_text(str(exc))}") from exc
     else:
         raise AIReviewError(f"unsupported AI review provider {prov!r}; use 'openai:<model>' or 'anthropic:<model>'")
 
@@ -161,6 +248,7 @@ def run_optional_ai_security_review(
         "model": model_name,
         "bytes_transmitted": byte_count,
         "estimated_input_tokens": approx_tokens,
+        "withheld_sensitive_files": withheld,
         "verdict": str(parsed.get("verdict", "CAUTION")),
         "summary": str(parsed.get("summary", "")),
         "findings": parsed.get("findings", []),

@@ -69,6 +69,6 @@ skillporter update pdf
 skillporter scan ./release-notes --ai-review --ai-model provider:model --yes-send
 ```
 
-The static scanner cannot recognize prompt injection written in ordinary prose. `--ai-review` asks a model you choose to read the skill. The model is given as `openai:<model>` or `anthropic:<model>`. It is off by default, needs your own API key in the environment, and sends nothing unless `--yes-send` is present. The result is advisory. The local scan works without it, and a clean result from either scan is not proof that a skill is safe.
+The static scanner cannot recognize prompt injection written in ordinary prose. `--ai-review` asks a model you choose to read the skill. The model is given as `openai:<model>` or `anthropic:<model>`. It is off by default, needs your own API key in the environment, and sends nothing unless `--yes-send` is present. Sensitive files such as `.env*`, private keys and credential files are withheld completely and inline tokens or key blocks are redacted before transmission, and non-loopback cleartext `http://` base URLs are refused. The result is advisory. The local scan works without it, and a clean result from either scan is not proof that a skill is safe.
 
 See [Security scanning](../security-scanning/README.md) for finding codes and [Security model](../security/README.md) for the limits of static analysis.

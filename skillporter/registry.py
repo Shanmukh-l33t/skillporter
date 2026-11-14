@@ -229,8 +229,51 @@ def _validate_bearer_token(token: str) -> None:
         )
 
 
+def _safe_redirect_opener() -> urllib.request.OpenerDirector:
+    """Opener that blocks unsafe redirects (non-http(s), non-loopback http, cross-host drops auth)."""
+
+    class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            new_p = urllib.parse.urlsplit(newurl)
+            new_host = (new_p.hostname or "").lower()
+            if new_p.scheme not in ("https", "http") or (
+                new_p.scheme == "http" and new_host not in ("127.0.0.1", "localhost", "::1")
+            ):
+                raise urllib.error.URLError(f"unsafe redirect to {newurl!r} blocked")
+            redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
+            if redirected is not None and new_host != (req.host or "").lower().split(":")[0]:
+                redirected.headers.pop("Authorization", None)
+                redirected.unredirected_hdrs.pop("Authorization", None)
+            return redirected
+
+    return urllib.request.build_opener(_SafeRedirectHandler())
+
+
+def _validate_remote_catalog_url(url: str) -> None:
+    """Same scheme/host/userinfo rules as publishing; cleartext HTTP is loopback-only."""
+    scheme, parts = _split_registry_url(url)
+    if scheme not in ("http", "https") or parts is None:
+        raise ValueError(
+            "unsupported registry catalog URL scheme; only https:// "
+            "(or http:// for localhost testing) is allowed"
+        )
+    shown = redact_sensitive_text(_redacted_url(parts))
+    host = (parts.hostname or "").lower()
+    if not host or any(ord(c) < 32 for c in url):
+        raise ValueError("invalid registry catalog URL")
+    if parts.username is not None or parts.password is not None:
+        raise ValueError(f"registry catalog URL {shown!r} must not embed credentials (user:pass@host)")
+    if scheme == "http" and host not in ("127.0.0.1", "localhost", "::1"):
+        raise ValueError(
+            f"refusing cleartext HTTP registry catalog URL {shown!r}; use https:// "
+            "(http:// is permitted only for localhost/127.0.0.1 testing)"
+        )
+
+
 def load_catalog(registry_url: str | None = None) -> list[RegistryPackage]:
     """Load the registry catalog from seed entries plus optional local/remote index."""
+    import sys
+
     packages: dict[str, RegistryPackage] = {p.slug.lower(): p for p in SEED_CATALOG}
     url = registry_url or os.environ.get("SKILLPORTER_REGISTRY_URL", "").strip()
     if not url:
@@ -238,17 +281,21 @@ def load_catalog(registry_url: str | None = None) -> list[RegistryPackage]:
 
     try:
         scheme, parts = _split_registry_url(url)
-        if scheme and scheme not in ("http", "https"):
-            return list(packages.values())
-        if parts is not None and (parts.username is not None or parts.password is not None):
-            return list(packages.values())
         if scheme in ("http", "https"):
+            _validate_remote_catalog_url(url)
             _MAX_REGISTRY_BYTES = 1 << 20
-            with urllib.request.urlopen(url.strip(), timeout=5) as resp:  # noqa: S310  # nosec B310
+            req = urllib.request.Request(
+                url.strip(),
+                headers={"User-Agent": "skillporter-registry-client/1.0", "Accept": "application/json"},
+            )
+            with _safe_redirect_opener().open(req, timeout=5) as resp:
                 body = resp.read(_MAX_REGISTRY_BYTES + 1)
             if len(body) > _MAX_REGISTRY_BYTES:
                 raise ValueError(f"registry payload exceeds {_MAX_REGISTRY_BYTES} bytes; refusing to parse")
             raw = json.loads(body.decode("utf-8"))
+        elif scheme:
+            print(f"warning: registry catalog {url!r} ignored: unsupported URL scheme", file=sys.stderr)
+            return list(packages.values())
         else:
             raw = json.loads(Path(url).expanduser().read_text(encoding="utf-8"))
         items = raw if isinstance(raw, list) else raw.get("packages", [])
@@ -273,8 +320,11 @@ def load_catalog(registry_url: str | None = None) -> list[RegistryPackage]:
                 dependencies=tuple(str(d) for d in item.get("dependencies", ())),
             )
             packages[pkg.slug.lower()] = pkg
-    except Exception:
-        pass
+    except (ValueError, OSError, json.JSONDecodeError) as exc:
+        # Never swallow silently: an ignored remote catalog is a security-relevant event.
+        cat_scheme, cat_parts = _split_registry_url(url)
+        shown = redact_sensitive_text(_redacted_url(cat_parts) if cat_parts else url)
+        print(f"warning: registry catalog {shown} ignored: {exc}", file=sys.stderr)
     return list(packages.values())
 
 
