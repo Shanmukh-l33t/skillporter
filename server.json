@@ -3,7 +3,7 @@
   "name": "io.github.Shanmukh-l33t/skillporter",
   "title": "Skillporter",
   "description": "Read-only MCP server that audits agent skills in one workspace: drift, duplicates, harness support.",
-  "version": "3.0.1",
+  "version": "3.1.0",
   "websiteUrl": "https://www.skillporter.dev",
   "repository": {
     "url": "https://github.com/Shanmukh-l33t/skillporter",
@@ -14,7 +14,7 @@
     {
       "registryType": "npm",
       "identifier": "@shanmukhdheekonda/skillporter",
-      "version": "3.0.1",
+      "version": "3.1.0",
       "transport": {
         "type": "stdio"
       },

@@ -58,7 +58,7 @@ def test_version_parity_across_python_root_npm_and_subdir_npm():
     npm_pkg = json.loads((repo / "npm" / "package.json").read_text(encoding="utf-8"))
     pyproject_txt = (repo / "pyproject.toml").read_text(encoding="utf-8")
 
-    assert __version__ == "3.0.1"
+    assert __version__ == "3.1.0"
     assert root_pkg["version"] == __version__
     assert npm_pkg["version"] == __version__
     assert f'version = "{__version__}"' in pyproject_txt

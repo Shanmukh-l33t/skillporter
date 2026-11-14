@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [Semantic Versioning](https://semver.org/).
 
+## [3.1.0] - 2026-11-14
+
+### Added
+- **Portable `.skillpack` Environments (`skillporter/portability.py`)**: Added `skillporter export` and `skillporter import` for packaging managed skills, provenance, lockfile hashes, and named profiles into SHA-256 verified offline `.tar.gz` bundles, automatically excluding `.env*`/key files, blocking embedded credentials on export, and running bounded `safe_extract_tar` + static security checks prior to import.
+- **Unified Environment Model & Comparison (`skillporter/environment.py`)**: Redesigned `skillporter status` to reconcile `skillporter.yaml`, `skillporter.lock`, `state.json`, active profile, managed, unmanaged, orphaned, duplicate, and drifted skills; added `skillporter diff` to compare workspaces against `.skillpack` archives, directories, or `profile:<name>`.
+- **Granular Harness Control (`skillporter/commands/harness_cmd.py`, `skillporter/install.py`)**: Added `skillporter harness {list,inspect,status}`, `skillporter move`, `skillporter adopt`, `skillporter outdated`, `--exclude-harness`, `compatible` target selector, `--on-conflict {fail,skip,overwrite}`, `--isolated` dedicated harness paths, and scope-validated custom `harness_paths`.
+- **Named Environment Profiles (`skillporter/profiles.py`)**: Added `skillporter profile {save,list,show,use,delete}` with `--prune` and durable `.skillporter/store/` caching for local harness-resident skills.
+- **Official AI Agent Skill & Expanded MCP Tools (`skillporter/bundled_skill/`, `skillporter/mcp_server.py`)**: Added `skillporter self-skill install` and four workspace-bounded MCP tools (`skillporter_status`, `skillporter_diff`, `skillporter_export`, `skillporter_import`).
+- **CLI Ergonomics (`skillporter/ui.py`, `skillporter/cli.py`)**: Grouped workflow help, global `-q`/`--quiet`, `-v`/`--verbose`, and `--no-color` flags, scalable table truncation on large skill sets, and next-step guidance.
+
+### Fixed
+- **User-Scope Discovery & Scan Caching (`skillporter/diagnose.py`)**: Fixed `diagnose(scope="user")` to discover user-level harness directories instead of `cwd`, eliminated 8x redundant `.agents/skills` SHA-256 walks, and eliminated false-positive missing-harness warnings on intentional single-harness installs.
+- **Windows Cross-Process Workspace Lock Race (`skillporter/atomic.py`)**: Prevented `PermissionError` during `open()`/`flush()` when another Windows process holds the mandatory byte-0 `msvcrt.locking` lock.
+
 ## [3.0.1] - 2026-11-14
 
 ### Fixed

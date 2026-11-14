@@ -1,12 +1,12 @@
 {
-  "generated_at": "2026-11-14T18:16:50Z",
+  "generated_at": "2026-11-14T18:42:25Z",
   "manifest_schema_version": 2,
   "reproducible": true,
   "schema_version": 2,
   "skills": {
     "pdf": {
       "adapt": false,
-      "adapter_version": "3.0.1",
+      "adapter_version": "3.1.0",
       "dependencies": {},
       "direct": true,
       "file_hashes": {
@@ -44,7 +44,7 @@
         "windsurf",
         "zed"
       ],
-      "locked_at": "2026-11-14T18:16:49Z",
+      "locked_at": "2026-11-14T18:42:25Z",
       "manifest_schema_version": 2,
       "name": "pdf",
       "pin_state": "PINNED_COMMIT",

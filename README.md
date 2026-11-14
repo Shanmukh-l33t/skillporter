@@ -12,8 +12,8 @@
   <p>The package manager, dependency resolver, and supply-chain security layer for AI agent skills.</p>
 
   <p>
-    <a href="https://pypi.org/project/skillporter/"><img src="https://img.shields.io/pypi/v/skillporter?style=flat-square&label=PyPI&color=155BE8" alt="PyPI v3.0.1" /></a>
-    <a href="https://www.npmjs.com/package/@shanmukhdheekonda/skillporter"><img src="https://img.shields.io/npm/v/%40shanmukhdheekonda%2Fskillporter?style=flat-square&label=npm&color=1461ED" alt="npm v3.0.1" /></a>
+    <a href="https://pypi.org/project/skillporter/"><img src="https://img.shields.io/pypi/v/skillporter?style=flat-square&label=PyPI&color=155BE8" alt="PyPI v3.1.0" /></a>
+    <a href="https://www.npmjs.com/package/@shanmukhdheekonda/skillporter"><img src="https://img.shields.io/npm/v/%40shanmukhdheekonda%2Fskillporter?style=flat-square&label=npm&color=1461ED" alt="npm v3.1.0" /></a>
     <a href="https://github.com/Shanmukh-l33t/skillporter/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Shanmukh-l33t/skillporter/ci.yml?branch=main&style=flat-square&label=CI" alt="CI status" /></a>
     <a href="https://github.com/Shanmukh-l33t/skillporter/blob/main/docs/harnesses/README.md"><img src="https://img.shields.io/badge/harnesses-19%20supported-F18A50?style=flat-square" alt="19 harnesses supported" /></a>
     <a href="https://github.com/Shanmukh-l33t/skillporter/blob/main/pyproject.toml"><img src="https://img.shields.io/badge/runtime%20deps-0-155BE8?style=flat-square" alt="Zero runtime dependencies" /></a>
@@ -91,8 +91,8 @@ pipx install skillporter
 # Verifies SHA256SUMS.txt and the GitHub OIDC provenance attestation
 # (`gh attestation verify`) or an out-of-band pinned digest
 # (`SKILLPORTER_SHA256=<64-hex>`). Never falls back to mutable `main`.
-curl -fsSL https://github.com/Shanmukh-l33t/skillporter/releases/download/v3.0.1/install.sh -o install.sh
-SKILLPORTER_VERSION=v3.0.1 sh install.sh
+curl -fsSL https://github.com/Shanmukh-l33t/skillporter/releases/download/v3.1.0/install.sh -o install.sh
+SKILLPORTER_VERSION=v3.1.0 sh install.sh
 ```
 
 Python 3.9 or newer is required, and the standalone installer checks for it before unpacking anything. The package ships with no runtime dependencies, so there is nothing else to audit or pin.

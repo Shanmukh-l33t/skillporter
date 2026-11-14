@@ -1,6 +1,6 @@
 # exit: 0
 $ skillporter audit .
-skillporter 3.0.1 — supply-chain security audit for ~/acme-api
+skillporter 3.1.0 — supply-chain security audit for ~/acme-api
 
 Installed/discovered skills: 1
 Recorded audit log events:   3 (0 explicit risk override(s))

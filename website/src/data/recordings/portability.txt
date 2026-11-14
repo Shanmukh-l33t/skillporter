@@ -2,7 +2,7 @@
 $ skillporter export acme-api.skillpack
 + Exported acme-api.skillpack (21.8 KB, self-contained offline hybrid)
   Path:      ~/acme-api/acme-api.skillpack
-  SHA-256:   85659a17236ec99e...
+  SHA-256:   168caf27889087ef...
   Skills:    1 (pdf)
   Harnesses: aider, antigravity, claude-code, cline, codex, continue, cursor, gemini-cli, github-copilot, goose, hermes, junie, openclaw, opencode, openhands, replit, roo-code, windsurf, zed
 

@@ -1,6 +1,6 @@
 # exit: 1
 $ skillporter diagnose . --harness claude-code --harness codex --harness cursor
-skillporter 3.0.1 — diagnosing ~/acme-api (scope: project)
+skillporter 3.1.0 — diagnosing ~/acme-api (scope: project)
 
 skills found: pdf
 

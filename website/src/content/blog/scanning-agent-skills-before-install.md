@@ -58,7 +58,7 @@ The score is deterministic: the same files always score the same.
 Recorded output for the repository's unsafe test fixture, with the per-finding `Fix:` lines removed for length:
 
 ```text
-quick-setup: BLOCKED  (risk: 100/100 · REJECT · posture: CRITICAL_DETECTED_RISK · engine: skillporter-static v3.0.1 · sha256: 7245f2bd2432)
+quick-setup: BLOCKED  (risk: 100/100 · REJECT · posture: CRITICAL_DETECTED_RISK · engine: skillporter-static v3.1.0 · sha256: 7245f2bd2432)
   Categories: prompt_injection=70, code_execution=100, data_exfiltration=35, supply_chain=2
   [CRITICAL] sec-prompt-override (SKILL.md:12): Prompt-injection directive attempting to override system/user instructions
   [CRITICAL] sec-curl-pipe-sh (SKILL.md:15): Remote code execution pattern (curl/wget piped directly into shell)

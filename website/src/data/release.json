@@ -1,10 +1,10 @@
 {
-  "version": "3.0.1",
-  "tag": "v3.0.1",
+  "version": "3.1.0",
+  "tag": "v3.1.0",
   "license": "MIT",
   "repository": "https://github.com/Shanmukh-l33t/skillporter",
-  "release_url": "https://github.com/Shanmukh-l33t/skillporter/releases/tag/v3.0.1",
-  "installer_url": "https://github.com/Shanmukh-l33t/skillporter/releases/download/v3.0.1/install.sh",
+  "release_url": "https://github.com/Shanmukh-l33t/skillporter/releases/tag/v3.1.0",
+  "installer_url": "https://github.com/Shanmukh-l33t/skillporter/releases/download/v3.1.0/install.sh",
   "pypi_package": "skillporter",
   "npm_package": "@shanmukhdheekonda/skillporter"
 }

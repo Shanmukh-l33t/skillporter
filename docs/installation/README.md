@@ -51,15 +51,15 @@ The installer is for Linux and macOS. On Windows, use `uv`, `pipx` or `npx`.
 Download the installer from the immutable release tag, then run it:
 
 ```bash
-curl -fsSL https://github.com/Shanmukh-l33t/skillporter/releases/download/v3.0.1/install.sh -o install.sh
-SKILLPORTER_VERSION=v3.0.1 sh install.sh
+curl -fsSL https://github.com/Shanmukh-l33t/skillporter/releases/download/v3.1.0/install.sh -o install.sh
+SKILLPORTER_VERSION=v3.1.0 sh install.sh
 ```
 
 The installer is deliberately not a `curl | sh` one-liner. Downloading it to a file lets you read it before it runs.
 
 ### What the installer verifies
 
-1. **Immutable tag.** `SKILLPORTER_VERSION` must look like `v3.0.1`. Branch names such as `main` and aliases such as `latest` are rejected.
+1. **Immutable tag.** `SKILLPORTER_VERSION` must look like `v3.1.0`. Branch names such as `main` and aliases such as `latest` are rejected.
 2. **Checksum.** The downloaded `skillporter.pyz` must match `SHA256SUMS.txt` from the same release.
 3. **Authenticity.** A checksum fetched from the same place as the file only detects corruption. It does not prove who published it. The installer therefore refuses to continue until one independent check passes.
 4. **Archive structure.** The download must be a valid Python zipapp. The payload is not executed during this check.
@@ -73,7 +73,7 @@ Choose one. Without any of them the installer exits with an error and writes not
 
 ```bash
 gh auth status
-SKILLPORTER_VERSION=v3.0.1 sh install.sh
+SKILLPORTER_VERSION=v3.1.0 sh install.sh
 ```
 
 Prerequisite: `gh` on `PATH` and signed in.
@@ -81,12 +81,12 @@ Prerequisite: `gh` on `PATH` and signed in.
 **Pinned SHA-256.** Supply the expected digest yourself. This is the right choice for Dockerfiles and CI, where the digest lives in your own repository.
 
 ```bash
-SKILLPORTER_VERSION=v3.0.1 \
+SKILLPORTER_VERSION=v3.1.0 \
 SKILLPORTER_SHA256=8bd7125b8f2a1a4f7c475406c71eaaec317bc4d7a0dd5d19e857301ef127179c \
 sh install.sh
 ```
 
-The digest above is `skillporter.pyz` from the v3.0.1 release. You can confirm it independently:
+The digest above is `skillporter.pyz` from the v3.1.0 release. You can confirm it independently:
 
 ```bash
 gh attestation verify skillporter.pyz --repo Shanmukh-l33t/skillporter
@@ -95,10 +95,10 @@ gh attestation verify skillporter.pyz --repo Shanmukh-l33t/skillporter
 **Detached signature.** The installer can verify `SHA256SUMS.txt.sig` with an OpenSSL public key:
 
 ```bash
-SKILLPORTER_VERSION=v3.0.1 SKILLPORTER_PUBLIC_KEY_FILE=/path/to/pub.pem sh install.sh
+SKILLPORTER_VERSION=v3.1.0 SKILLPORTER_PUBLIC_KEY_FILE=/path/to/pub.pem sh install.sh
 ```
 
-This path is for mirrors and internal builds that sign their own checksum file with `scripts/build_standalone.py --sign-key`. The official v3.0.1 GitHub release does not publish a signature file, so use attestation or a pinned digest for it.
+This path is for mirrors and internal builds that sign their own checksum file with `scripts/build_standalone.py --sign-key`. The official v3.1.0 GitHub release does not publish a signature file, so use attestation or a pinned digest for it.
 
 ### Installer environment variables
 

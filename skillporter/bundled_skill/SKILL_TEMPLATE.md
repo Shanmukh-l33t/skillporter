@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires Python 3.9+ and skillporter CLI (uvx skillporter, pipx, or npx @shanmukhdheekonda/skillporter). Zero external runtime dependencies.
 metadata:
   author: Shanmukh Dheekonda
-  version: "3.0.1"
+  version: "3.1.0"
 ---
 
 # Skillporter Agent Control Skill

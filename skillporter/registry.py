@@ -79,7 +79,7 @@ SEED_CATALOG: tuple[RegistryPackage, ...] = (
             "and autonomous harnesses."
         ),
         source="https://github.com/Shanmukh-l33t/skillporter/tree/main/skills/skillporter",
-        version="3.0.0",
+        version="3.1.0",
         category="developer-tools",
         tags=("skills", "package-manager", "diagnostics", "claude-code", "codex", "cursor", "hermes"),
         verified_harnesses=("claude-code", "codex", "cursor", "hermes", "openclaw", "github-copilot", "gemini-cli"),

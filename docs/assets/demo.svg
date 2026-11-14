@@ -92,7 +92,7 @@
     <rect x="30.5" y="10" width="4" height="4" fill="#F3F0E9" transform="rotate(45 32.5 12)"/>
   </g>
   <text x="64" y="27" class="sans ivory bold" font-size="13.5">Skillporter</text>
-  <text x="142" y="27" class="mono dim small">v3.0.1 · local-first CLI &amp; MCP</text>
+  <text x="142" y="27" class="mono dim small">v3.1.0 · local-first CLI &amp; MCP</text>
 
   <text x="766" y="27" class="mono amber micro">PINNED_COMMIT · 19 HARNESSES</text>
   <rect class="beacon" x="941" y="20" width="6" height="6" fill="#F18A50" transform="rotate(45 944 23)"/>
@@ -109,7 +109,7 @@
     <text x="24" y="126" class="mono"><tspan class="dim">Source:</tspan> <tspan class="blue">github:anthropics/skills</tspan>   <tspan class="dim">Commit:</tspan> <tspan class="ivory">2c5958ecac7c</tspan></text>
   </g>
   <g class="ln l2">
-    <text x="24" y="148" class="mono"><tspan class="dim">Validation:</tspan> <tspan class="ivory bold">PASSED</tspan>   <tspan class="dim">Security:</tspan> <tspan class="ivory bold">0/100 · APPROVE</tspan> <tspan class="dim">(static v3.0.1)</tspan></text>
+    <text x="24" y="148" class="mono"><tspan class="dim">Validation:</tspan> <tspan class="ivory bold">PASSED</tspan>   <tspan class="dim">Security:</tspan> <tspan class="ivory bold">0/100 · APPROVE</tspan> <tspan class="dim">(static v3.1.0)</tspan></text>
   </g>
   <g class="ln l3">
     <text x="24" y="170" class="mono"><tspan class="dim">Plan:</tspan> <tspan class="ivory">12 destinations across 19 harnesses</tspan> <tspan class="amber">(7 deduplicated)</tspan></text>
