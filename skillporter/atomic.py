@@ -91,14 +91,27 @@ def workspace_lock(root: Path, *, timeout_s: float = 10.0) -> Iterator[Path]:
                 held.pop(key, None)
         return
 
-    with open(lock_path, "a+", encoding="utf-8") as fh:
-        # Ensure at least 1 byte exists at offset 0 for Windows byte-range locking
-        fh.seek(0, os.SEEK_END)
-        if fh.tell() == 0:
-            fh.write("\n")
-            fh.flush()
+    deadline = time.monotonic() + timeout_s
+    fh = None
+    while True:
+        try:
+            fh = open(lock_path, "a+", encoding="utf-8")  # noqa: SIM115
+            break
+        except PermissionError as exc:
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"timed out acquiring workspace lock {lock_path}") from exc
+            time.sleep(0.05)
 
-        deadline = time.monotonic() + timeout_s
+    with fh:
+        # Best-effort 1-byte initialization; if another Windows process holds the
+        # mandatory byte-0 lock right now, flush() raises PermissionError and we
+        # proceed directly into the lock acquisition retry loop.
+        with contextlib.suppress(OSError):
+            fh.seek(0, os.SEEK_END)
+            if fh.tell() == 0:
+                fh.write("\n")
+                fh.flush()
+
         locked = False
         try:
             if _IS_WINDOWS:
@@ -127,10 +140,12 @@ def workspace_lock(root: Path, *, timeout_s: float = 10.0) -> Iterator[Path]:
                             raise TimeoutError(f"timed out acquiring workspace lock {lock_path}") from exc
                         time.sleep(0.05)
 
-            fh.seek(0)
-            fh.truncate()
-            fh.write(f"{os.getpid()}\n")
-            fh.flush()
+            with contextlib.suppress(OSError):
+                fh.seek(0)
+                if not _IS_WINDOWS:
+                    fh.truncate()
+                fh.write(f"{os.getpid():<12}\n")
+                fh.flush()
             held[key] = 1
             yield lock_path
         finally:
