@@ -36,7 +36,7 @@
 
 # Skillporter
 
-**Skillporter, also written Skill Porter, is the package manager for AI agent skills.** It is a zero runtime dependency CLI and MCP server that installs, pins, audits, synchronizes and rolls back `SKILL.md` packages across 19 AI coding and autonomous agent harnesses, including Claude Code, OpenAI Codex, Cursor, Windsurf, GitHub Copilot, Gemini CLI, Hermes Agent, OpenHands and Goose.
+**Skillporter, is the package manager for AI agent skills.** It is a zero runtime dependency CLI and MCP server that installs, pins, audits, synchronizes and rolls back `SKILL.md` packages across 19 AI coding and autonomous agent harnesses, including Claude Code, OpenAI Codex, Cursor, Windsurf, GitHub Copilot, Gemini CLI, Hermes Agent, OpenHands and Goose.
 
 ```bash
 uvx skillporter diagnose .                        # run the CLI without installing it (uv)
