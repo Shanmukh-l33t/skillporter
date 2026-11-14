@@ -105,9 +105,18 @@ const inDocs = currentPath === '/docs' || currentPath.startsWith('/docs/');
     position: sticky;
     top: 0;
     z-index: 100;
-    background: var(--midnight);
+    background: var(--header-bg);
+    backdrop-filter: saturate(160%) blur(12px);
+    -webkit-backdrop-filter: saturate(160%) blur(12px);
     border-bottom: 1px solid transparent;
-    transition: border-color var(--dur) var(--ease);
+    transition:
+      border-color var(--dur) var(--ease),
+      background-color var(--dur) var(--ease);
+  }
+  .site-header[data-menu-open='true'] {
+    background: var(--midnight);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
   .site-header[data-scrolled='true'],
   .site-header[data-menu-open='true'] {
@@ -173,15 +182,18 @@ const inDocs = currentPath === '/docs' || currentPath.startsWith('/docs/');
     padding: 0 0.6rem 0 0.7rem;
     border: 1px solid var(--border);
     border-radius: var(--radius-m);
+    background: var(--card);
     color: var(--text-3);
     font-size: var(--text-small);
     transition:
       color var(--dur) var(--ease),
-      border-color var(--dur) var(--ease);
+      border-color var(--dur) var(--ease),
+      transform var(--dur) var(--ease-out);
   }
   .search-trigger:hover {
     color: var(--ivory);
     border-color: var(--text-3);
+    transform: translateY(-1px);
   }
   .search-trigger__kbd {
     font-family: var(--font-mono);
@@ -200,14 +212,23 @@ const inDocs = currentPath === '/docs' || currentPath.startsWith('/docs/');
     height: 36px;
     border: 1px solid var(--border);
     border-radius: var(--radius-m);
+    background: var(--card);
     color: var(--text-2);
     transition:
       color var(--dur) var(--ease),
-      border-color var(--dur) var(--ease);
+      border-color var(--dur) var(--ease),
+      transform var(--dur) var(--ease-out);
   }
   .theme-toggle:hover {
     color: var(--ivory);
     border-color: var(--text-3);
+    transform: translateY(-1px);
+  }
+  .theme-toggle svg {
+    transition: transform var(--dur-med) var(--ease-out);
+  }
+  .theme-toggle:hover svg {
+    transform: rotate(-14deg) scale(1.06);
   }
   .theme-toggle__sun {
     display: none;
@@ -309,6 +330,7 @@ const inDocs = currentPath === '/docs' || currentPath.startsWith('/docs/');
       min-height: 44px;
       padding: 0;
       justify-content: center;
+      background: transparent;
       border-color: transparent;
       color: var(--ivory);
     }

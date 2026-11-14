@@ -191,6 +191,7 @@ function extraPaths(paths: { path: string; compat: boolean }[], primary: string 
     gap: 0.5rem;
     min-height: 40px;
     padding: 0 0.85rem;
+    background: var(--card);
     border: 1px solid var(--border);
     border-radius: 999px;
     font-size: 0.8125rem;
@@ -198,11 +199,13 @@ function extraPaths(paths: { path: string; compat: boolean }[], primary: string 
     transition:
       color var(--dur) var(--ease),
       border-color var(--dur) var(--ease),
-      background-color var(--dur) var(--ease);
+      background-color var(--dur) var(--ease),
+      transform var(--dur) var(--ease-out);
   }
   .filter:hover {
     color: var(--ivory);
     border-color: var(--text-3);
+    transform: translateY(-1px);
   }
   .filter[aria-pressed='true'] {
     color: var(--midnight);
@@ -245,7 +248,10 @@ function extraPaths(paths: { path: string; compat: boolean }[], primary: string 
   }
   tbody tr:hover th,
   tbody tr:hover td {
-    background: var(--deep-navy);
+    background: var(--card);
+  }
+  tbody tr[data-entering='true'] {
+    animation: row-in 200ms var(--ease-out) var(--row-delay, 0ms) both;
   }
   .h-name {
     display: block;
@@ -283,6 +289,12 @@ function extraPaths(paths: { path: string; compat: boolean }[], primary: string 
   }
   .docs-cell a:hover {
     color: var(--ivory);
+  }
+  .docs-cell a span {
+    transition: transform var(--dur) var(--ease-out);
+  }
+  .docs-cell a:hover span {
+    transform: translate(2px, -2px);
   }
   .matrix__source {
     margin-top: 1.25rem;

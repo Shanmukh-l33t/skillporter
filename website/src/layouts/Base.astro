@@ -35,7 +35,7 @@ const fullTitle = path === '/' ? title : `${title} | ${SITE.name}`;
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical} />
     {noindex && <meta name="robots" content="noindex" />}
-    <meta name="theme-color" content="#FFFFFF" />
+    <meta name="theme-color" content="#F5F6FA" />
     <meta name="color-scheme" content="light dark" />
     <script is:inline>
       (() => {
@@ -44,7 +44,7 @@ const fullTitle = path === '/' ? title : `${title} | ${SITE.name}`;
           const mode = saved === 'dark' ? 'dark' : 'light';
           document.documentElement.dataset.theme = mode;
           const meta = document.querySelector('meta[name="theme-color"]');
-          if (meta) meta.setAttribute('content', mode === 'dark' ? '#070D19' : '#FFFFFF');
+          if (meta) meta.setAttribute('content', mode === 'dark' ? '#070D19' : '#F5F6FA');
         } catch {}
       })();
     </script>

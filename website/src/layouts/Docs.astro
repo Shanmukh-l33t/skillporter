@@ -359,6 +359,7 @@ if (current) {
   .prose pre {
     border: 1px solid var(--border);
     border-radius: var(--radius-m);
+    box-shadow: var(--shadow-card-sm);
   }
   .prose .codeblock {
     position: relative;
@@ -371,12 +372,14 @@ if (current) {
     top: 0.55rem;
     right: 0.55rem;
     min-height: 32px;
-    background: var(--deep-navy);
+    background: var(--card);
   }
   .prose .table-scroll {
     overflow-x: auto;
     border: 1px solid var(--border);
     border-radius: var(--radius-m);
+    background: var(--card);
+    box-shadow: var(--shadow-card-sm);
     scrollbar-width: thin;
     scrollbar-color: var(--border) transparent;
   }
@@ -441,12 +444,17 @@ if (current) {
   .pager__link {
     display: block;
     padding: 0.9rem 1.1rem 1rem;
+    background: var(--card);
     border: 1px solid var(--border);
     border-radius: var(--radius-m);
-    transition: border-color var(--dur) var(--ease);
+    box-shadow: var(--shadow-card-sm);
+    transition:
+      border-color var(--dur) var(--ease),
+      transform var(--dur) var(--ease-out);
   }
   .pager__link:hover {
     border-color: var(--text-3);
+    transform: translateY(-1px);
   }
   .pager__link span {
     display: block;

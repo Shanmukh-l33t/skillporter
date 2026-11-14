@@ -693,6 +693,29 @@ const structuredData = [
   /* ------------------------------------------------------------------ hero */
   .hero {
     padding-top: clamp(2.75rem, 1rem + 6vw, 6rem);
+    background-image: var(--hero-wash);
+    background-repeat: no-repeat;
+  }
+  .hero__copy .overline {
+    animation: hero-rise 440ms var(--ease-out) both;
+  }
+  .hero h1 {
+    animation: hero-rise 480ms var(--ease-out) 55ms both;
+  }
+  .hero__lead {
+    animation: hero-rise 480ms var(--ease-out) 110ms both;
+  }
+  .hero__actions {
+    animation: hero-rise 480ms var(--ease-out) 165ms both;
+  }
+  .hero__install {
+    animation: hero-rise 520ms var(--ease-out) 130ms both;
+  }
+  .hero__facts {
+    animation: hero-rise 480ms var(--ease-out) 220ms both;
+  }
+  .demo-band {
+    animation: hero-rise 540ms var(--ease-out) 260ms both;
   }
   .hero__grid {
     display: grid;
@@ -790,14 +813,14 @@ const structuredData = [
     max-height: 31rem;
   }
   .section--alt :global(.frame) {
-    background: var(--midnight);
+    background: var(--alt-code-bg);
   }
   .section--alt :global(.astro-code) {
-    background: var(--midnight) !important;
+    background: var(--alt-code-bg) !important;
   }
   .section--alt :global(.frame__bar),
   .section--alt :global(.frame__foot) {
-    background: var(--deep-navy);
+    background: var(--card);
   }
   .section h3 {
     font-size: var(--text-h3);
@@ -1088,8 +1111,10 @@ const structuredData = [
   }
   .limits {
     padding: 1.6rem 1.6rem 1.75rem;
+    background: var(--card);
     border: 1px solid var(--amber);
     border-radius: var(--radius-m);
+    box-shadow: var(--shadow-card);
   }
   .limits h3 {
     font-size: 1.25rem;
@@ -1181,9 +1206,14 @@ const structuredData = [
     gap: 0.75rem;
     min-width: 0;
     padding: 0.35rem 0.4rem 0.35rem 0.85rem;
-    background: var(--deep-navy);
+    background: var(--card);
     border: 1px solid var(--border);
     border-radius: var(--radius-m);
+    box-shadow: var(--shadow-card-sm);
+    transition: border-color var(--dur) var(--ease);
+  }
+  .cmds li:hover .cmds__cmd {
+    border-color: var(--text-3);
   }
   .cmds__cmd code {
     min-width: 0;
@@ -1239,10 +1269,11 @@ const structuredData = [
     position: relative;
     display: block;
     padding: 1.1rem 2.25rem 1.2rem 1.15rem;
+    background: var(--card-subtle);
     transition: background-color var(--dur) var(--ease);
   }
   .links a:hover {
-    background: var(--midnight);
+    background: var(--card);
   }
   .links__label {
     display: block;
@@ -1263,10 +1294,13 @@ const structuredData = [
     right: 1rem;
     font-family: var(--font-mono);
     color: var(--text-3);
-    transition: color var(--dur) var(--ease);
+    transition:
+      color var(--dur) var(--ease),
+      transform var(--dur) var(--ease-out);
   }
   .links a:hover .links__arrow {
     color: var(--amber-ink);
+    transform: translate(2px, -2px);
   }
 
   .closing {
@@ -1290,9 +1324,10 @@ const structuredData = [
     justify-content: space-between;
     gap: 0.75rem;
     padding: 0.5rem 0.5rem 0.5rem 1rem;
-    background: var(--midnight);
+    background: var(--card);
     border: 1px solid var(--border);
     border-radius: var(--radius-m);
+    box-shadow: var(--shadow-card-sm);
   }
   .closing__cmd code {
     font-size: 0.9375rem;

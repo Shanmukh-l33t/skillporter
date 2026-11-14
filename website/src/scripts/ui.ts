@@ -13,11 +13,17 @@ const $$ = <T extends Element = HTMLElement>(sel: string, root: ParentNode = doc
 function initTheme(): void {
   const buttons = $$<HTMLButtonElement>('[data-theme-toggle]');
   if (!buttons.length) return;
+  let switchTimer = 0;
 
   const apply = (mode: 'light' | 'dark', persist = false) => {
+    if (persist) {
+      document.documentElement.setAttribute('data-theme-switching', '');
+      window.clearTimeout(switchTimer);
+      switchTimer = window.setTimeout(() => document.documentElement.removeAttribute('data-theme-switching'), 250);
+    }
     document.documentElement.dataset.theme = mode;
     const meta = $<HTMLMetaElement>('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', mode === 'dark' ? '#070D19' : '#FFFFFF');
+    if (meta) meta.setAttribute('content', mode === 'dark' ? '#070D19' : '#F5F6FA');
     const nextLabel = mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
     for (const button of buttons) {
       button.setAttribute('aria-label', nextLabel);
@@ -116,15 +122,52 @@ function initSectionSpy(): void {
 
 function initTabs(): void {
   for (const group of $$('[data-tabs]')) {
+    const tablist = $<HTMLElement>('.tabs', group);
     const tabs = $$<HTMLButtonElement>('[role="tab"]', group);
+    let glide: HTMLSpanElement | null = null;
+    if (tablist && tabs.length) {
+      glide = document.createElement('span');
+      glide.className = 'tabs__glide';
+      glide.setAttribute('aria-hidden', 'true');
+      tablist.appendChild(glide);
+    }
+
+    const syncGlide = (tab: HTMLButtonElement) => {
+      if (!tablist || !glide) return;
+      const pad = parseFloat(getComputedStyle(tab).paddingLeft) || 0;
+      const x = tab.offsetLeft + pad;
+      const w = Math.max(12, tab.offsetWidth - pad * 2);
+      tablist.style.setProperty('--glide-x', `${x}px`);
+      tablist.style.setProperty('--glide-w', `${w}px`);
+      tablist.dataset.glideReady = 'true';
+    };
+
+    const initial = tabs.find((t) => t.getAttribute('aria-selected') === 'true') ?? tabs[0];
+    if (initial) syncGlide(initial);
+    if (tablist && 'ResizeObserver' in window) {
+      new ResizeObserver(() => {
+        const cur = tabs.find((t) => t.getAttribute('aria-selected') === 'true');
+        if (cur) syncGlide(cur);
+      }).observe(tablist);
+    }
+
     const select = (tab: HTMLButtonElement, focus = false) => {
       for (const other of tabs) {
         const selected = other === tab;
         other.setAttribute('aria-selected', String(selected));
         other.tabIndex = selected ? 0 : -1;
         const panel = document.getElementById(other.getAttribute('aria-controls') ?? '');
-        if (panel) panel.hidden = !selected;
+        if (panel) {
+          panel.hidden = !selected;
+          if (selected) {
+            panel.dataset.entering = 'true';
+            panel.addEventListener('animationend', () => delete panel.dataset.entering, { once: true });
+          } else {
+            delete panel.dataset.entering;
+          }
+        }
       }
+      syncGlide(tab);
       if (focus) tab.focus();
       tab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     };
@@ -223,7 +266,14 @@ function initMatrix(): void {
         (kind === 'tier' && row.dataset.tier === value) ||
         (kind === 'category' && row.dataset.category === value);
       row.hidden = !match;
-      if (match) shown += 1;
+      if (match) {
+        row.style.setProperty('--row-delay', `${Math.min(shown * 16, 160)}ms`);
+        row.dataset.entering = 'true';
+        row.addEventListener('animationend', () => delete row.dataset.entering, { once: true });
+        shown += 1;
+      } else {
+        delete row.dataset.entering;
+      }
     }
     for (const button of buttons) button.setAttribute('aria-pressed', String(button.dataset.filter === filter));
     if (status) status.textContent = `Showing ${shown} of ${rows.length} harnesses.`;
@@ -485,6 +535,46 @@ function initDocs(): void {
   targets.forEach((target) => observer.observe(target));
 }
 
+/* --------------------------------------------------------- scroll reveal */
+
+function initReveal(): void {
+  if (!('IntersectionObserver' in window)) return;
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  const targets = $$(
+    '.section-head, .problems li, .answer, .feature, .steps li, .matrix__legend, .sec-grid, .sec-lower, .repro, .cmds li, .links li, .closing',
+  );
+  if (!targets.length) return;
+
+  const viewportH = window.innerHeight || document.documentElement.clientHeight;
+  const pending: HTMLElement[] = [];
+
+  for (const el of targets) {
+    const rect = el.getBoundingClientRect();
+    if (rect.top <= viewportH * 0.92) continue;
+    el.dataset.reveal = 'pending';
+    const parent = el.parentElement;
+    if (parent && /^(OL|UL)$/.test(parent.tagName)) {
+      const idx = Array.from(parent.children).indexOf(el);
+      if (idx > 0) el.style.setProperty('--reveal-delay', `${Math.min(idx * 45, 220)}ms`);
+    }
+    pending.push(el);
+  }
+  if (!pending.length) return;
+
+  const observer = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        (entry.target as HTMLElement).dataset.reveal = 'in';
+        observer.unobserve(entry.target);
+      }
+    },
+    { threshold: 0.08, rootMargin: '0px 0px -32px 0px' },
+  );
+  pending.forEach((el) => observer.observe(el));
+}
+
 initTheme();
 initHeader();
 initSectionSpy();
@@ -493,3 +583,4 @@ initCopy();
 initMatrix();
 initSearch();
 initDocs();
+initReveal();

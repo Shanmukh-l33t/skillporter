@@ -52,7 +52,8 @@
     padding: 0;
     border: 1px solid var(--border);
     border-radius: var(--radius-l);
-    background: var(--deep-navy);
+    background: var(--card);
+    box-shadow: var(--shadow-card);
     color: var(--text-2);
     overflow: hidden;
   }
@@ -61,6 +62,17 @@
   }
   .search[open] {
     display: flex;
+    animation: dialog-in 190ms var(--ease-out);
+  }
+  @keyframes dialog-in {
+    from {
+      opacity: 0;
+      transform: translateY(-8px) scale(0.985);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
   }
   .search__panel {
     display: flex;

@@ -435,9 +435,10 @@ test('the approved logo is present, unmodified and used in the header', () => {
   }
 });
 
-test('light default background is white and dark brand palette tokens are preserved', () => {
+test('light default background is soft off-white with elevated cards and dark brand palette tokens are preserved', () => {
   const css = readFileSync(join(WEBSITE, 'src/styles/global.css'), 'utf8').toLowerCase();
-  assert.match(css, /:root,\s*html\[data-theme='light'\]\s*\{[\s\S]*?--midnight:\s*#ffffff;/, 'light mode main background must be #ffffff');
+  assert.match(css, /:root,\s*html\[data-theme='light'\]\s*\{[\s\S]*?--midnight:\s*#f5f6fa;/, 'light mode canvas must be #f5f6fa');
+  assert.match(css, /:root,\s*html\[data-theme='light'\]\s*\{[\s\S]*?--card:\s*#ffffff;/, 'light mode elevated cards must be #ffffff');
   const darkBlock = /html\[data-theme='dark'\]\s*\{([\s\S]*?)\}/.exec(css)?.[1] ?? '';
   const palette = {
     '--midnight': '#070d19', '--deep-navy': '#0b1425', '--surface': '#111d31', '--electric': '#155be8', '--bridge': '#1461ed',

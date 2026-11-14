@@ -1,33 +1,44 @@
 /* ==========================================================================
-   Skillporter design tokens and base styles
-   Light mode (white main background) is the default; dark mode preserves the
-   exact midnight navy, deep navy, surface, electric blue, amber and ivory
-   palette. Both modes keep the brand's blue and amber identity intact.
+   Skillporter design tokens, elevation and motion system
+   Default light mode uses a calm soft alabaster-slate canvas (#f5f6fa) with
+   elevated crisp white (#ffffff) cards so it never glares and never looks
+   muddy. Dark mode preserves the exact midnight/navy/ivory brand palette.
    ========================================================================== */
 
 :root,
 html[data-theme='light'] {
-  /* Light mode surfaces & ink (main background pure white) */
-  --midnight: #ffffff;
-  --deep-navy: #f6f8fc;
-  --surface: #eef2f9;
+  /* Light mode surfaces & ink (calm off-white canvas + crisp elevated cards) */
+  --midnight: #f5f6fa;
+  --deep-navy: #eceff6;
+  --surface: #e3e8f2;
+  --card: #ffffff;
+  --card-subtle: #fafbfd;
+  --code-bg: #eff2f8;
+  --alt-code-bg: #f5f7fb;
+  --header-bg: rgb(245 246 250 / 0.84);
   --electric: #155be8;
   --bridge: #1461ed;
   --amber: #f18a50;
   --ivory: #070d19;
-  --text-2: #3b4963;
-  --border: #d8e0ed;
+  --text-2: #37455e;
+  --border: #d4dce9;
 
-  /* Derived neutrals & contrast-verified text accents */
-  --text-3: #56657f;
-  --border-soft: #e7ecf5;
+  /* Derived neutrals, shadows & contrast-verified text accents */
+  --text-3: #526079;
+  --border-soft: #e2e7f1;
   --blue-ink: #155be8;
   --electric-hover: #114fd0;
   --amber-soft: #9a3e0c;
-  --amber-ink: #b94e14;
+  --amber-ink: #b44a10;
   --on-electric: #ffffff;
   --path-ink: #1e2d47;
   --backdrop: rgb(7 13 25 / 0.42);
+  --shadow-card: 0 1px 2px rgb(7 13 25 / 0.04), 0 10px 28px -12px rgb(7 13 25 / 0.08);
+  --shadow-card-sm: 0 1px 2px rgb(7 13 25 / 0.03), 0 4px 12px -4px rgb(7 13 25 / 0.05);
+  --shadow-primary: 0 1px 2px rgb(21 91 232 / 0.22), 0 8px 20px -6px rgb(21 91 232 / 0.34);
+  --hero-wash:
+    radial-gradient(58rem 26rem at 18% -4%, rgb(21 91 232 / 0.06), transparent 70%),
+    radial-gradient(46rem 22rem at 82% 4%, rgb(241 138 80 / 0.065), transparent 70%);
 
   /* Type */
   --font-sans: 'Geist Variable', 'Geist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -47,13 +58,15 @@ html[data-theme='light'] {
   --section-y: clamp(4.5rem, 2.5rem + 8vw, 8.5rem);
   --header-h: 4rem;
 
-  /* Shape */
+  /* Shape & motion */
   --radius-s: 4px;
   --radius-m: 8px;
   --radius-l: 12px;
 
   --ease: cubic-bezier(0.2, 0, 0, 1);
-  --dur: 160ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur: 170ms;
+  --dur-med: 260ms;
 
   color-scheme: light;
 }
@@ -63,6 +76,11 @@ html[data-theme='dark'] {
   --midnight: #070d19;
   --deep-navy: #0b1425;
   --surface: #111d31;
+  --card: #070d19;
+  --card-subtle: #0b1425;
+  --code-bg: #0b1425;
+  --alt-code-bg: #070d19;
+  --header-bg: rgb(7 13 25 / 0.84);
   --electric: #155be8;
   --bridge: #1461ed;
   --amber: #f18a50;
@@ -80,8 +98,30 @@ html[data-theme='dark'] {
   --on-electric: #f3f0e9;
   --path-ink: #c3cddb;
   --backdrop: rgb(4 8 16 / 0.78);
+  --shadow-card: 0 14px 34px -16px rgb(0 0 0 / 0.55);
+  --shadow-card-sm: none;
+  --shadow-primary: 0 8px 22px -6px rgb(21 91 232 / 0.45);
+  --hero-wash:
+    radial-gradient(58rem 26rem at 18% -4%, rgb(21 91 232 / 0.11), transparent 70%),
+    radial-gradient(46rem 22rem at 82% 4%, rgb(241 138 80 / 0.07), transparent 70%);
 
   color-scheme: dark;
+}
+
+/* Smooth surface cross-fade only while the user clicks the theme toggle */
+html[data-theme-switching],
+html[data-theme-switching] body,
+html[data-theme-switching] .site-header,
+html[data-theme-switching] .section--alt,
+html[data-theme-switching] .frame,
+html[data-theme-switching] .frame__bar,
+html[data-theme-switching] .frame__foot,
+html[data-theme-switching] .astro-code {
+  transition:
+    background-color 220ms var(--ease),
+    border-color 220ms var(--ease),
+    color 220ms var(--ease),
+    box-shadow 220ms var(--ease) !important;
 }
 
 *,
@@ -201,6 +241,67 @@ samp {
 }
 .skip-link:focus {
   top: 0.75rem;
+}
+
+/* --------------------------------------------------------------------------
+   Motion keyframes & progressive scroll reveal
+   -------------------------------------------------------------------------- */
+
+@keyframes hero-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes copy-pop {
+  0% {
+    transform: scale(0.95);
+  }
+  60% {
+    transform: scale(1.03);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes row-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+[data-reveal='pending'] {
+  opacity: 0;
+  transform: translateY(14px);
+}
+[data-reveal='in'] {
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity 460ms var(--ease-out) var(--reveal-delay, 0ms),
+    transform 460ms var(--ease-out) var(--reveal-delay, 0ms);
 }
 
 /* --------------------------------------------------------------------------
@@ -342,10 +443,10 @@ samp {
   content: '→';
   font-family: var(--font-mono);
   color: var(--amber-ink);
-  transition: transform var(--dur) var(--ease);
+  transition: transform var(--dur-med) var(--ease-out);
 }
 .arrow-link:hover::after {
-  transform: translateX(3px);
+  transform: translateX(4px);
 }
 
 /* --------------------------------------------------------------------------
@@ -368,7 +469,12 @@ samp {
   transition:
     background-color var(--dur) var(--ease),
     border-color var(--dur) var(--ease),
-    color var(--dur) var(--ease);
+    color var(--dur) var(--ease),
+    transform var(--dur) var(--ease-out),
+    box-shadow var(--dur-med) var(--ease-out);
+}
+.btn:active {
+  transform: translateY(0) scale(0.985);
 }
 .btn--primary {
   background: var(--electric);
@@ -376,14 +482,19 @@ samp {
 }
 .btn--primary:hover {
   background: var(--electric-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-primary);
 }
 .btn--secondary {
+  background: var(--card);
   border-color: var(--border);
   color: var(--ivory);
+  box-shadow: var(--shadow-card-sm);
 }
 .btn--secondary:hover {
   border-color: var(--text-3);
   background: var(--deep-navy);
+  transform: translateY(-1px);
 }
 .btn--ghost {
   color: var(--text-2);
@@ -417,18 +528,25 @@ samp {
   font-size: var(--text-micro);
   letter-spacing: 0.04em;
   color: var(--text-2);
-  background: var(--midnight);
+  background: var(--card);
   transition:
     color var(--dur) var(--ease),
-    border-color var(--dur) var(--ease);
+    border-color var(--dur) var(--ease),
+    background-color var(--dur) var(--ease),
+    transform var(--dur) var(--ease-out);
 }
 .copy:hover {
   color: var(--ivory);
   border-color: var(--text-3);
+  transform: translateY(-1px);
+}
+.copy:active {
+  transform: scale(0.97);
 }
 .copy[data-copied='true'] {
   color: var(--amber-ink);
   border-color: var(--amber);
+  animation: copy-pop 240ms var(--ease-out);
 }
 
 /* --------------------------------------------------------------------------
@@ -436,6 +554,7 @@ samp {
    -------------------------------------------------------------------------- */
 
 .tabs {
+  position: relative;
   display: flex;
   gap: 0.25rem;
   overflow-x: auto;
@@ -462,14 +581,28 @@ samp {
 .tab[aria-selected='true'] {
   color: var(--ivory);
 }
-.tab[aria-selected='true']::after {
+/* Fallback static underline before JS initializes the sliding glide bar */
+.tabs:not([data-glide-ready]) .tab[aria-selected='true']::after {
   content: '';
   position: absolute;
   left: 0.85rem;
   right: 0.85rem;
-  bottom: -1px;
+  bottom: 0;
   height: 2px;
   background: var(--amber);
+}
+.tabs__glide {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: var(--glide-w, 0px);
+  background: var(--amber);
+  transform: translateX(var(--glide-x, 0px));
+  transition:
+    transform var(--dur-med) var(--ease-out),
+    width var(--dur-med) var(--ease-out);
+  pointer-events: none;
 }
 .tab:focus-visible {
   outline-offset: -3px;
@@ -481,16 +614,25 @@ samp {
   }
 }
 
+[role='tabpanel'][data-entering='true'] {
+  animation: panel-in 210ms var(--ease-out);
+}
+
 /* --------------------------------------------------------------------------
    Framed code and terminal surfaces
    -------------------------------------------------------------------------- */
 
 .frame {
-  background: var(--deep-navy);
+  background: var(--code-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-l);
+  box-shadow: var(--shadow-card);
   overflow: hidden;
   min-width: 0;
+  transition: border-color var(--dur-med) var(--ease);
+}
+.frame:hover {
+  border-color: color-mix(in srgb, var(--border) 72%, var(--text-3));
 }
 .frame__bar {
   display: flex;
@@ -500,7 +642,7 @@ samp {
   min-height: 46px;
   padding-inline: 0.5rem 0.75rem;
   border-bottom: 1px solid var(--border);
-  background: var(--midnight);
+  background: var(--card);
 }
 .frame__title {
   padding-left: 0.5rem;
@@ -523,7 +665,7 @@ samp {
   font-family: var(--font-mono);
   font-size: var(--text-micro);
   color: var(--text-3);
-  background: var(--midnight);
+  background: var(--card);
 }
 .frame__foot a {
   color: var(--text-2);
@@ -590,7 +732,7 @@ samp {
   font-family: var(--font-mono);
   font-size: 0.8125rem;
   line-height: 1.62;
-  background: var(--deep-navy) !important;
+  background: var(--code-bg) !important;
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
   tab-size: 2;
@@ -646,12 +788,18 @@ html[data-theme='dark'] .astro-code span {
 }
 
 /* --------------------------------------------------------------------------
-   Motion
+   Motion accessibility
    -------------------------------------------------------------------------- */
 
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
+  }
+  [data-reveal='pending'],
+  [data-reveal='in'] {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
   }
   *,
   *::before,

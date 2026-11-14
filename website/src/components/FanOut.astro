@@ -35,7 +35,7 @@ const harnessCount = harnessData.counts.total;
   </div>
 
   <div class="fanout__bridge" aria-hidden="true">
-    <span></span>
+    <span><i class="fanout__pulse"></i></span>
   </div>
 
   <ol class="fanout__targets">
@@ -71,7 +71,8 @@ const harnessCount = harnessData.counts.total;
     padding: 1.1rem 1.15rem 1.2rem;
     border: 1px solid var(--border);
     border-radius: var(--radius-m);
-    background: var(--deep-navy);
+    background: var(--card);
+    box-shadow: var(--shadow-card);
   }
   .fanout__repo {
     margin-top: 0.5rem;
@@ -116,6 +117,49 @@ const harnessCount = harnessData.counts.total;
     height: 1px;
     background: var(--amber);
   }
+  .fanout__pulse {
+    position: absolute;
+    top: -1px;
+    left: 0;
+    width: 22px;
+    height: 3px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, transparent, var(--electric), var(--amber), transparent);
+    animation: bridge-flow-x 2.6s var(--ease-out) infinite;
+    pointer-events: none;
+  }
+  @keyframes bridge-flow-x {
+    0% {
+      transform: translateX(-8px);
+      opacity: 0;
+    }
+    20% {
+      opacity: 1;
+    }
+    80% {
+      opacity: 1;
+    }
+    100% {
+      transform: translateX(62px);
+      opacity: 0;
+    }
+  }
+  @keyframes bridge-flow-y {
+    0% {
+      transform: translateY(-8px);
+      opacity: 0;
+    }
+    20% {
+      opacity: 1;
+    }
+    80% {
+      opacity: 1;
+    }
+    100% {
+      transform: translateY(34px);
+      opacity: 0;
+    }
+  }
   .fanout__bridge span::before,
   .fanout__bridge span::after {
     content: '';
@@ -145,8 +189,12 @@ const harnessCount = harnessData.counts.total;
     grid-template-columns: minmax(0, 15rem) minmax(0, 1fr);
     gap: 0.15rem 1.25rem;
     align-items: baseline;
-    padding: 0.55rem 0 0.55rem 1.5rem;
+    padding: 0.55rem 0.5rem 0.55rem 1.5rem;
     border-bottom: 1px solid var(--border-soft);
+    transition: background-color var(--dur) var(--ease);
+  }
+  .fanout__targets li:hover {
+    background: var(--deep-navy);
   }
   .fanout__targets li::before {
     content: '';
@@ -156,6 +204,13 @@ const harnessCount = harnessData.counts.total;
     width: 0.85rem;
     height: 1px;
     background: var(--border);
+    transition:
+      width var(--dur) var(--ease-out),
+      background-color var(--dur) var(--ease);
+  }
+  .fanout__targets li:hover::before {
+    width: 1.1rem;
+    background: var(--amber);
   }
   .fanout__targets code {
     font-size: 0.8125rem;
@@ -201,6 +256,14 @@ const harnessCount = harnessData.counts.total;
     .fanout__bridge span {
       width: 1px;
       height: 100%;
+    }
+    .fanout__pulse {
+      top: 0;
+      left: -1px;
+      width: 3px;
+      height: 18px;
+      background: linear-gradient(180deg, transparent, var(--electric), var(--amber), transparent);
+      animation: bridge-flow-y 2.4s var(--ease-out) infinite;
     }
     .fanout__bridge span::before {
       left: 50%;

@@ -24,13 +24,13 @@ export const skillporterLightTheme = {
   name: 'skillporter-daylight',
   type: 'light',
   colors: {
-    'editor.background': '#F6F8FC',
+    'editor.background': '#EFF2F8',
     'editor.foreground': midnight,
   },
   fg: midnight,
-  bg: '#F6F8FC',
+  bg: '#EFF2F8',
   settings: [
-    { settings: { foreground: midnight, background: '#F6F8FC' } },
+    { settings: { foreground: midnight, background: '#EFF2F8' } },
     { scope: ['comment', 'punctuation.definition.comment'], settings: { foreground: lightMuted } },
     {
       scope: ['string', 'string.quoted', 'string.unquoted', 'punctuation.definition.string'],
