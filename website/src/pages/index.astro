@@ -322,7 +322,7 @@ const structuredData = [
             <span class="hero-title__mask">
               <span class="hero-title__line hero-title__line--2">
                 <span class="hero-title__sheen">Every agent.</span>
-                <span class="hero-title__span" aria-hidden="true"><i></i></span>
+                <span class="hero-title__span" aria-hidden="true"><b><i></i></b></span>
               </span>
             </span>
           </h1>
@@ -737,6 +737,9 @@ const structuredData = [
       var(--hero-wash);
     background-repeat: no-repeat;
   }
+  .hero__copy {
+    min-width: 0;
+  }
   .hero__copy > .overline {
     animation: hero-rise 460ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
@@ -745,6 +748,7 @@ const structuredData = [
     align-items: center;
     gap: 0.5rem;
     max-width: 100%;
+    overflow: hidden;
     margin-top: 0.85rem;
     padding: 0.3rem 0.7rem 0.3rem 0.55rem;
     background: var(--card);
@@ -774,10 +778,10 @@ const structuredData = [
     color: var(--amber-ink);
   }
   .hero-ticker__window {
-    display: inline-block;
+    flex: 1 1 auto;
+    display: block;
     height: 1.4em;
     overflow: hidden;
-    vertical-align: bottom;
     min-width: 0;
   }
   .hero-ticker__track {
@@ -844,8 +848,8 @@ const structuredData = [
   .hero-title__mask {
     display: block;
     overflow: hidden;
-    padding-bottom: 0.14em;
-    margin-bottom: -0.1em;
+    padding-bottom: 0.18em;
+    margin-bottom: -0.12em;
   }
   .hero-title__line {
     display: inline-block;
@@ -906,7 +910,7 @@ const structuredData = [
     position: relative;
     display: block;
     height: 1.5px;
-    margin-top: 0.14em;
+    margin-top: 0.18em;
     background: linear-gradient(90deg, var(--electric), var(--amber));
     transform-origin: left center;
     animation: span-draw 780ms cubic-bezier(0.16, 1, 0.3, 1) 360ms both;
@@ -927,9 +931,15 @@ const structuredData = [
   .hero-title__span::after {
     right: 0;
   }
+  .hero-title__span b {
+    position: absolute;
+    inset: -1px 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
   .hero-title__span i {
     position: absolute;
-    top: -1px;
+    top: 0;
     left: 0;
     width: 28%;
     height: 3.5px;

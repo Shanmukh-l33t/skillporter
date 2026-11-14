@@ -1,9 +1,40 @@
-# Skillporter
+<div align="center">
+  <br />
+  <a href="https://www.skillporter.dev">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Shanmukh-l33t/skillporter/main/website/public/brand/skillporter-lockup.png" />
+      <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Shanmukh-l33t/skillporter/main/website/public/brand/skillporter-lockup-light.png" />
+      <img alt="Skillporter" src="https://raw.githubusercontent.com/Shanmukh-l33t/skillporter/main/website/public/brand/skillporter-lockup-light.png" width="380" />
+    </picture>
+  </a>
+  <br /><br />
+  <p><strong>ONE SKILL. EVERY AGENT.</strong></p>
+  <p>The package manager, dependency resolver, and supply-chain security layer for AI agent skills.</p>
 
-[![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)](https://www.python.org/)
-[![Harnesses: 19 Supported](https://img.shields.io/badge/harnesses-19%20supported-00b4d8)](https://github.com/Shanmukh-l33t/skillporter/blob/main/docs/harnesses/README.md)
-[![Zero Runtime Dependencies](https://img.shields.io/badge/dependencies-0-success)](https://github.com/Shanmukh-l33t/skillporter/blob/main/pyproject.toml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/Shanmukh-l33t/skillporter/blob/main/LICENSE)
+  <p>
+    <a href="https://pypi.org/project/skillporter/"><img src="https://img.shields.io/pypi/v/skillporter?style=flat-square&label=PyPI&color=155BE8" alt="PyPI v3.0.0" /></a>
+    <a href="https://www.npmjs.com/package/@shanmukhdheekonda/skillporter"><img src="https://img.shields.io/npm/v/%40shanmukhdheekonda%2Fskillporter?style=flat-square&label=npm&color=1461ED" alt="npm v3.0.0" /></a>
+    <a href="https://github.com/Shanmukh-l33t/skillporter/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Shanmukh-l33t/skillporter/ci.yml?branch=main&style=flat-square&label=CI" alt="CI status" /></a>
+    <a href="https://github.com/Shanmukh-l33t/skillporter/blob/main/docs/harnesses/README.md"><img src="https://img.shields.io/badge/harnesses-19%20supported-F18A50?style=flat-square" alt="19 harnesses supported" /></a>
+    <a href="https://github.com/Shanmukh-l33t/skillporter/blob/main/pyproject.toml"><img src="https://img.shields.io/badge/runtime%20deps-0-155BE8?style=flat-square" alt="Zero runtime dependencies" /></a>
+    <a href="https://github.com/Shanmukh-l33t/skillporter/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-263249?style=flat-square" alt="MIT License" /></a>
+  </p>
+
+  <p>
+    <a href="https://www.skillporter.dev"><strong>Website</strong></a> ·
+    <a href="https://www.skillporter.dev/docs"><strong>Documentation</strong></a> ·
+    <a href="https://www.skillporter.dev/install"><strong>Install</strong></a> ·
+    <a href="#harness-support-matrix-19-harnesses"><strong>19 Harnesses</strong></a> ·
+    <a href="https://www.skillporter.dev/docs/security"><strong>Security</strong></a> ·
+    <a href="#mcp-server"><strong>MCP Server</strong></a> ·
+    <a href="https://www.skillporter.dev/faq"><strong>FAQ</strong></a> ·
+    <a href="https://www.skillporter.dev/blog"><strong>Blog</strong></a>
+  </p>
+</div>
+
+---
+
+# Skillporter
 
 **Skillporter, also written Skill Porter, is the package manager for AI agent skills.** It is a zero runtime dependency CLI and MCP server that installs, pins, audits, synchronizes and rolls back `SKILL.md` packages across 19 AI coding and autonomous agent harnesses, including Claude Code, OpenAI Codex, Cursor, Windsurf, GitHub Copilot, Gemini CLI, Hermes Agent, OpenHands and Goose.
 
@@ -13,7 +44,11 @@ pipx install skillporter                          # install the CLI globally (PE
 npx @shanmukhdheekonda/skillporter diagnose .     # run the CLI without installing it (npm)
 ```
 
-**Website and documentation:** https://www.skillporter.dev
+<p align="center">
+  <a href="https://www.skillporter.dev">
+    <img src="https://raw.githubusercontent.com/Shanmukh-l33t/skillporter/main/docs/assets/demo.svg" alt="Skillporter 3.0 CLI and multi-harness bridge fan-out" width="100%" />
+  </a>
+</p>
 
 ---
 
@@ -30,9 +65,14 @@ Skillporter treats skills the way a package manager treats dependencies: one man
 
 ## What Skillporter does
 
-Skillporter is a lightweight, zero runtime dependency CLI and Model Context Protocol (MCP) server for the full lifecycle of an AI agent skill. It resolves skills from Git sources, validates them against the Agent Skills specification, security scans them, installs them into every detected harness, records the result in `skillporter.lock`, and keeps them reproducible afterwards. When a workspace drifts, it diagnoses the drift and rolls back to a verified snapshot instead of asking you to re-clone by hand.
-
-Beyond installation it covers the rest of the lifecycle: dependency graphs, catalog search, deterministic packaging with `provenance.json`, updating tracked skills behind the same security gate, and a read-only-by-default MCP server so an agent can inspect a workspace through JSON-RPC instead of a shell.
+| Capability | How it works |
+|---|---|
+| **Universal source resolution** | Fetches from GitHub shorthand (`owner/repo`), Git URLs, local paths, or archives without executing bundled scripts. |
+| **Shared-path deduplication** | Writes `.agents/skills/<skill>` once across 8 primary harnesses and preserves it during single-harness `remove`. |
+| **Static supply-chain assessment** | Inspects Python ASTs, JS/TS, Markdown instructions, and bounded Base64/Hex/PowerShell payloads before any file is written. |
+| **Deterministic lockfiles** | Pins `resolved_commit`, `tree_hash`, per-file SHA-256 `file_hashes`, and `pin_state` in `skillporter.lock`. |
+| **Crash-safe transactions** | Stages multi-harness installs behind a write-ahead `journal.json` and snapshots replaced copies into `.skillporter/backups/`. |
+| **Hardened MCP server** | Exposes read-only workspace inspection over JSON-RPC 2.0 stdio (`--allow-writes` required for mutations). |
 
 ## Installation
 
@@ -102,14 +142,6 @@ How the scan is graded and where its limits are is documented in [SECURITY.md](h
 - `skillporter audit` reports installed origins, lockfile drift, and `.skillporter/audit.jsonl` events, so any risk override is visible after the fact.
 
 Rollback is transactional rather than a re-download. Replacements are staged in `.skillporter/tmp/txn-*` behind a write-ahead `journal.json`, prior versions are snapshotted into `.skillporter/backups/`, and `skillporter rollback` restores a skill together with its dependency graph from SHA-256 verified backups.
-
-## What makes Skillporter different
-
-- **Multi harness management**: writes shared `.agents/skills/` once across 8 primary harnesses while preserving shared directories when individual harnesses are removed.
-- **Multi layer static security assessment**: combines Python AST analysis, JS and TS checks, Markdown prompt and delegation inspection, bounded Base64, Hex and PowerShell decoding, cross-file chain detection, completeness tracking (`INCOMPLETE_ASSESSMENT` on truncated or unreadable files), and optional NVIDIA SkillSpector integration.
-- **SHA-256 drift and duplicate detection**: `diagnose`, `status`, and `doctor` detect diverging copies across harnesses and duplicate loading within the same harness.
-- **Deterministic packaging**: `skillporter pack` produces a reproducible `.tar.gz` with a `provenance.json` manifest, and `skillporter graph --json` exports the topological dependency graph.
-- **CI native output**: SARIF 2.1.0 for GitHub Code Scanning, JSON for any other pipeline, and exit codes that distinguish a policy finding from a runtime error.
 
 ## Harness support matrix (19 harnesses)
 
@@ -184,12 +216,13 @@ Client setup for Claude Code and other MCP clients is covered in the [MCP guide]
 
 ## Documentation
 
+- [Website](https://www.skillporter.dev): overview, interactive terminal demo, and live 19-harness matrix.
 - [Documentation home](https://www.skillporter.dev/docs): the full guide set, from installation through lockfiles, scanning, and CI.
-- [Install](https://www.skillporter.dev/install): installation channels and options.
+- [Install](https://www.skillporter.dev/install): installation channels and provenance verification options.
 - [FAQ](https://www.skillporter.dev/faq): frequently asked questions.
-- [Blog](https://www.skillporter.dev/blog): blog and release write-ups.
+- [Blog](https://www.skillporter.dev/blog): engineering articles and release write-ups.
 
-The same pages are versioned in the repository under [`docs/`](https://github.com/Shanmukh-l33t/skillporter/tree/main/docs) if you prefer to read them on GitHub.
+The same guides are versioned in the repository under [`docs/`](https://github.com/Shanmukh-l33t/skillporter/tree/main/docs) if you prefer to read them on GitHub.
 
 ## Contributing
 
