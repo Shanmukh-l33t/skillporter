@@ -253,15 +253,27 @@ const projectLinks = [
 const structuredData = [
   {
     '@context': 'https://schema.org',
+    '@type': 'Organization',
+    name: SITE.name,
+    alternateName: SITE.alternateName,
+    url: SITE.url,
+    logo: `${SITE.url}/brand/skillporter-logo.png`,
+    sameAs: [release.repository, LINKS.pypi, LINKS.npm],
+  },
+  {
+    '@context': 'https://schema.org',
     '@type': 'WebSite',
     name: SITE.name,
+    alternateName: SITE.alternateName,
     url: SITE.url,
     description: SITE.description,
+    publisher: { '@type': 'Organization', name: SITE.name, url: SITE.url },
   },
   {
     '@context': 'https://schema.org',
     '@type': 'SoftwareApplication',
     name: SITE.name,
+    alternateName: SITE.alternateName,
     description: SITE.description,
     url: SITE.url,
     applicationCategory: 'DeveloperApplication',
@@ -276,8 +288,8 @@ const structuredData = [
 ---
 
 <Base
-  title="Skillporter: the package manager for AI agent skills"
-  description={`${SITE.description} Open source, MIT licensed, runs locally.`}
+  title="Skill Porter (Skillporter): the agent skill package manager"
+  description="Skill Porter, also written Skillporter, installs, pins, scans and synchronizes AI agent skills across 19 coding harnesses. Open source, MIT licensed, runs locally."
   path="/"
   structuredData={structuredData}
 >
@@ -286,11 +298,11 @@ const structuredData = [
     <section class="hero">
       <div class="wrap hero__grid">
         <div class="hero__copy">
-          <p class="overline">The package manager for AI agent skills</p>
+          <p class="overline">Skill Porter, the package manager for AI agent skills</p>
           <h1>One skill.<br />Every agent.</h1>
           <p class="hero__lead">
-            Install, synchronize, pin, inspect and manage AI agent skills across the tools you use. One consistent
-            workflow for your entire agent ecosystem.
+            Install, synchronize, pin, inspect and manage AI agent skills across the tools you use. Skill Porter
+            keeps one consistent workflow for your entire agent ecosystem.
           </p>
           <div class="hero__actions">
             <a class="btn btn--primary" href="/docs/getting-started">Get Started</a>

@@ -15,4 +15,15 @@ const docs = defineCollection({
   }),
 });
 
-export const collections = { docs };
+// Marketing and reference pages. The entry filename is the URL route, so
+// src/content/pages/skill-porter.md is published at /skill-porter.
+const pages = defineCollection({
+  loader: glob({ base: './src/content/pages', pattern: '*.md' }),
+});
+
+// Long-form articles published under /blog/<slug>.
+const blog = defineCollection({
+  loader: glob({ base: './src/content/blog', pattern: '*.md' }),
+});
+
+export const collections = { docs, pages, blog };

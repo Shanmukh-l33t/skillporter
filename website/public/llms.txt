@@ -1,0 +1,32 @@
+# Skillporter
+
+> Skillporter, also written Skill Porter, is a package manager for AI agent skills. It installs, validates, security-scans, pins and synchronizes SKILL.md skill packages across 19 AI coding harnesses, including Claude Code, OpenAI Codex, Cursor, GitHub Copilot, Gemini CLI, Windsurf, Cline, Zed, OpenCode and Hermes Agent. Open source, MIT licensed, runs locally, zero runtime dependencies.
+
+Key facts:
+- Install: uvx skillporter, pipx install skillporter, npm i -g @shanmukhdheekonda/skillporter, or the signed standalone installer from the GitHub release.
+- Package names: skillporter (PyPI), @shanmukhdheekonda/skillporter (npm), Shanmukh-l33t/skillporter (GitHub).
+- Current release: 3.0.0.
+- Scope: one skill directory, many harness destinations, one lockfile. It does not run skills or host a marketplace.
+
+## Documentation
+- [Home](https://www.skillporter.dev/): product overview and harness matrix.
+- [Install](https://www.skillporter.dev/install): every install channel and how downloads are verified.
+- [Skill Porter page](https://www.skillporter.dev/skill-porter): the same product under its two-word spelling.
+- [FAQ](https://www.skillporter.dev/faq): short answers to the most common questions.
+- [Getting started](https://www.skillporter.dev/docs/getting-started): demo, install, first skill.
+- [CLI reference](https://www.skillporter.dev/docs/cli): every command, flag and exit code.
+- [Harnesses](https://www.skillporter.dev/docs/harnesses): the 19 supported harnesses and their paths.
+- [Lockfiles](https://www.skillporter.dev/docs/lockfiles): reproducible installs and drift detection.
+- [Security](https://www.skillporter.dev/docs/security): the threat model and what scanning does not cover.
+- [Blog](https://www.skillporter.dev/blog): long-form explanations of skill packaging.
+
+## Source and releases
+- [GitHub repository](https://github.com/Shanmukh-l33t/skillporter)
+- [Latest release](https://github.com/Shanmukh-l33t/skillporter/releases/latest)
+- [PyPI](https://pypi.org/project/skillporter/)
+- [npm](https://www.npmjs.com/package/@shanmukhdheekonda/skillporter)
+
+## Optional
+- [Contributing](https://www.skillporter.dev/docs/contributing)
+- [Architecture](https://www.skillporter.dev/docs/architecture)
+- [Troubleshooting](https://www.skillporter.dev/docs/troubleshooting)

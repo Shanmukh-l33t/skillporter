@@ -292,11 +292,47 @@ test('all required routes are built', () => {
   const required = [
     '/', '/docs', '/docs/getting-started', '/docs/installation', '/docs/cli', '/docs/harnesses', '/docs/security',
     '/docs/lockfiles', '/docs/synchronization', '/docs/mcp', '/docs/configuration', '/docs/troubleshooting', '/docs/contributing',
+    '/skill-porter', '/faq', '/install', '/blog',
   ];
   for (const route of required) assert.ok(resolveRoute(route), `route not built: ${route}`);
   for (const page of DOC_PAGES) {
     assert.ok(resolveRoute(`/docs/${page.slug}`), `docs page not built: ${page.slug}`);
     assert.ok(existsSync(join(REPO, 'docs', page.dir, 'README.md')), `docs source missing: ${page.dir}`);
+  }
+  for (const slug of contentSlugs('src/content/pages')) {
+    assert.ok(resolveRoute(`/${slug}`), `content page not built: ${slug}`);
+  }
+  for (const slug of contentSlugs('src/content/blog')) {
+    assert.ok(resolveRoute(`/blog/${slug}`), `blog article not built: ${slug}`);
+  }
+});
+
+test('every page in the pages collection is a substantial page, not a stub', () => {
+  for (const slug of contentSlugs('src/content/pages')) {
+    const html = pages.get(`${slug}.html`);
+    assert.ok(html, `content page missing from the build: ${slug}`);
+    const main = /<main\b[\s\S]*?<\/main>/.exec(html)?.[0] ?? '';
+    const words = stripTags(main).split(/\s+/).filter(Boolean).length;
+    assert.ok(words > 300, `${slug} has only ${words} words`);
+  }
+  for (const slug of contentSlugs('src/content/blog')) {
+    const html = pages.get(`blog/${slug}.html`);
+    assert.ok(html, `blog article missing from the build: ${slug}`);
+    const main = /<main\b[\s\S]*?<\/main>/.exec(html)?.[0] ?? '';
+    const words = stripTags(main).split(/\s+/).filter(Boolean).length;
+    assert.ok(words > 600, `${slug} has only ${words} words`);
+    assert.match(html, /"@type":"BlogPosting"/, `${slug} has no BlogPosting structured data`);
+  }
+});
+
+test('the two-word brand name is present on the pages that must rank for it', () => {
+  for (const route of ['index.html', 'skill-porter.html', 'faq.html']) {
+    const html = pages.get(route);
+    assert.ok(html, `${route} missing`);
+    assert.ok((stripTags(html).match(/Skill Porter/g) ?? []).length >= 3, `${route} does not use the two-word brand name`);
+  }
+  for (const file of pages.keys()) {
+    assert.doesNotMatch(stripTags(pages.get(file)), /skill-porter/i, `${file} uses the hyphenated brand spelling in prose`);
   }
 });
 
@@ -372,14 +408,14 @@ test('every page has canonical, description and social metadata on skillporter.d
     assert.ok(description && description.length >= 50 && description.length <= 200, `${file}: description length ${description?.length}`);
 
     const canonical = /<link rel="canonical" href="([^"]+)"/.exec(html)?.[1];
-    const expected = file === '404.html' ? 'https://skillporter.dev/404' : `https://skillporter.dev${routeOf(file)}`;
+    const expected = file === '404.html' ? 'https://www.skillporter.dev/404' : `https://www.skillporter.dev${routeOf(file)}`;
     assert.equal(canonical, expected, `${file}: canonical`);
 
     for (const property of ['og:title', 'og:description', 'og:url', 'og:image', 'og:type']) {
       assert.match(html, new RegExp(`<meta property="${property}" content="[^"]+"`), `${file}: missing ${property}`);
     }
     assert.match(html, /<meta name="twitter:card" content="summary_large_image"/);
-    assert.match(html, /og:image" content="https:\/\/skillporter\.dev\/brand\/skillporter-social\.png"/);
+    assert.match(html, /og:image" content="https:\/\/www\.skillporter\.dev\/brand\/skillporter-social\.png"/);
     assert.match(html, /<html lang="en"/);
     assert.equal((html.match(/<h1\b/g) ?? []).length, 1, `${file}: must have exactly one h1`);
     assert.match(html, /<main\b[^>]*id="main"/, `${file}: skip-link target missing`);
@@ -387,13 +423,32 @@ test('every page has canonical, description and social metadata on skillporter.d
   assert.match(pages.get('404.html'), /<meta name="robots" content="noindex"/);
 });
 
-test('sitemap and robots.txt cover the canonical routes', () => {
+/** Slugs of the Markdown files in a content collection directory. */
+function contentSlugs(dir) {
+  const path = join(WEBSITE, dir);
+  if (!existsSync(path)) return [];
+  return readdirSync(path)
+    .filter((name) => name.endsWith('.md'))
+    .map((name) => name.replace(/\.md$/, ''))
+    .sort();
+}
+
+test('sitemap and robots.txt cover every canonical route', () => {
   const sitemap = readFileSync(join(DIST, 'sitemap.xml'), 'utf8');
-  const locs = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
-  const expected = ['https://skillporter.dev/', 'https://skillporter.dev/docs', ...DOC_PAGES.map((p) => `https://skillporter.dev/docs/${p.slug}`)];
-  assert.deepEqual(locs.sort(), expected.sort());
+  const locs = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]).sort();
+  const extraPages = contentSlugs('src/content/pages');
+  const posts = contentSlugs('src/content/blog');
+  const expected = [
+    'https://www.skillporter.dev/',
+    'https://www.skillporter.dev/docs',
+    ...DOC_PAGES.map((page) => `https://www.skillporter.dev/docs/${page.slug}`),
+    ...extraPages.map((slug) => `https://www.skillporter.dev/${slug}`),
+    'https://www.skillporter.dev/blog',
+    ...posts.map((slug) => `https://www.skillporter.dev/blog/${slug}`),
+  ].sort();
+  assert.deepEqual(locs, expected);
   const robots = readFileSync(join(DIST, 'robots.txt'), 'utf8');
-  assert.match(robots, /Sitemap: https:\/\/skillporter\.dev\/sitemap\.xml/);
+  assert.match(robots, /Sitemap: https:\/\/www\.skillporter\.dev\/sitemap\.xml/);
   assert.doesNotMatch(robots, /Disallow: \/\s*$/m);
 });
 
@@ -403,7 +458,7 @@ test('structured data is valid JSON-LD', () => {
   const app = scripts.find((s) => s['@type'] === 'SoftwareApplication');
   assert.ok(app, 'SoftwareApplication structured data missing');
   assert.equal(app.softwareVersion, release.version);
-  assert.equal(app.url, 'https://skillporter.dev');
+  assert.equal(app.url, 'https://www.skillporter.dev');
   assert.ok(!('aggregateRating' in app), 'ratings must not be invented');
 });
 

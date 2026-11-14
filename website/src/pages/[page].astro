@@ -1,0 +1,34 @@
+---
+import { getCollection } from 'astro:content';
+import Article from '../layouts/Article.astro';
+
+// Marketing and reference pages are authored as Markdown in
+// src/content/pages/. The filename becomes the route: skill-porter.md is
+// published at /skill-porter.
+export async function getStaticPaths() {
+  const entries = await getCollection('pages');
+  return entries.map((entry) => ({ params: { page: entry.id }, props: { entry } }));
+}
+
+const { entry } = Astro.props;
+if (!entry.rendered) throw new Error(`Page was not rendered: ${entry.id}`);
+
+const data = entry.data as {
+  title: string;
+  heading?: string;
+  description: string;
+  kicker?: string;
+  faq?: { q: string; a: string }[];
+};
+---
+
+<Article
+  title={data.title}
+  heading={data.heading ?? data.title}
+  description={data.description}
+  path={`/${entry.id}`}
+  kicker={data.kicker}
+  faq={data.faq}
+>
+  <Fragment set:html={entry.rendered.html} />
+</Article>

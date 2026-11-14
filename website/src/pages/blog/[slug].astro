@@ -1,0 +1,37 @@
+---
+import { getCollection } from 'astro:content';
+import Article from '../../layouts/Article.astro';
+
+export async function getStaticPaths() {
+  const entries = await getCollection('blog');
+  return entries.map((entry) => ({ params: { slug: entry.id }, props: { entry } }));
+}
+
+const { entry } = Astro.props;
+if (!entry.rendered) throw new Error(`Article was not rendered: ${entry.id}`);
+
+const data = entry.data as {
+  title: string;
+  heading?: string;
+  description: string;
+  date: string;
+  updated?: string;
+  tags?: string[];
+};
+---
+
+<Article
+  title={data.title}
+  heading={data.heading ?? data.title}
+  description={data.description}
+  path={`/blog/${entry.id}`}
+  date={data.date}
+  updated={data.updated}
+  kicker="Blog"
+  crumbs={[
+    { name: 'Blog', href: '/blog' },
+    { name: data.heading ?? data.title, href: `/blog/${entry.id}` },
+  ]}
+>
+  <Fragment set:html={entry.rendered.html} />
+</Article>

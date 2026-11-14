@@ -809,3 +809,293 @@ html[data-theme='dark'] .astro-code span {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ==========================================================================
+   Long-form content pages (/skill-porter, /faq, /install, /blog)
+   Reuses the same tokens as the rest of the site so article pages never look
+   bolted on. Typography is deliberately quieter than the landing page.
+   ========================================================================== */
+
+.article {
+  padding-block: clamp(2.5rem, 1.5rem + 4vw, 4.5rem) clamp(4rem, 3rem + 5vw, 6rem);
+  max-width: 52rem;
+}
+
+.article__crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: var(--text-small);
+  color: var(--text-3);
+  margin-bottom: 1.75rem;
+}
+
+.article__crumbs a {
+  color: var(--text-2);
+  text-decoration: none;
+}
+
+.article__crumbs a:hover {
+  color: var(--blue-ink);
+  text-decoration: underline;
+}
+
+.article__head {
+  margin-bottom: clamp(2rem, 1.4rem + 2vw, 3rem);
+  padding-bottom: 1.75rem;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.article__kicker {
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--amber-ink);
+  margin: 0 0 0.85rem;
+}
+
+.article__head h1 {
+  font-size: clamp(2rem, 1.35rem + 2.6vw, 3rem);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin: 0 0 1rem;
+  color: var(--ivory);
+}
+
+.article__lead {
+  font-size: var(--text-lead);
+  line-height: 1.6;
+  color: var(--text-2);
+  margin: 0;
+  max-width: 46rem;
+}
+
+.article__meta {
+  margin: 1.1rem 0 0;
+  font-size: var(--text-small);
+  color: var(--text-3);
+  font-family: var(--font-mono);
+}
+
+.prose {
+  font-size: 1.0625rem;
+  line-height: 1.75;
+  color: var(--text-2);
+}
+
+.prose > * + * {
+  margin-top: 1.15em;
+}
+
+.prose h2 {
+  font-size: clamp(1.375rem, 1.15rem + 1vw, 1.75rem);
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+  color: var(--ivory);
+  margin: 2.5em 0 0.75em;
+  scroll-margin-top: calc(var(--header-h) + 1.5rem);
+}
+
+.prose h3 {
+  font-size: 1.1875rem;
+  line-height: 1.35;
+  color: var(--ivory);
+  margin: 2em 0 0.5em;
+  scroll-margin-top: calc(var(--header-h) + 1.5rem);
+}
+
+.prose h2 + *,
+.prose h3 + * {
+  margin-top: 0;
+}
+
+.prose a {
+  color: var(--blue-ink);
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+  text-decoration-thickness: 1px;
+}
+
+.prose a:hover {
+  color: var(--electric-hover);
+}
+
+.prose strong {
+  color: var(--ivory);
+  font-weight: 600;
+}
+
+.prose ul,
+.prose ol {
+  padding-left: 1.35rem;
+}
+
+.prose li + li {
+  margin-top: 0.4em;
+}
+
+.prose li::marker {
+  color: var(--text-3);
+}
+
+.prose code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background: var(--code-bg);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-s);
+  padding: 0.12em 0.36em;
+  color: var(--path-ink);
+}
+
+.prose pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  padding: 1rem 1.15rem;
+  overflow-x: auto;
+  font-size: var(--text-small);
+  line-height: 1.6;
+}
+
+.prose pre code {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: inherit;
+}
+
+.prose blockquote {
+  margin: 1.5em 0;
+  padding: 0.25em 0 0.25em 1.1em;
+  border-left: 3px solid var(--amber);
+  color: var(--text-3);
+}
+
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-small);
+  display: block;
+  overflow-x: auto;
+}
+
+.prose th,
+.prose td {
+  border: 1px solid var(--border-soft);
+  padding: 0.6rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.prose th {
+  background: var(--card-subtle);
+  color: var(--ivory);
+  font-weight: 600;
+}
+
+.prose hr {
+  border: 0;
+  border-top: 1px solid var(--border-soft);
+  margin: 2.5em 0;
+}
+
+.article__faq {
+  margin-top: clamp(2.5rem, 2rem + 2vw, 4rem);
+  padding-top: 2rem;
+  border-top: 1px solid var(--border-soft);
+}
+
+.article__faq h2 {
+  font-size: clamp(1.375rem, 1.15rem + 1vw, 1.75rem);
+  color: var(--ivory);
+  margin: 0 0 1.25rem;
+}
+
+.article__faq dl {
+  margin: 0;
+}
+
+.article__faq dt {
+  font-weight: 600;
+  color: var(--ivory);
+  margin-top: 1.35rem;
+}
+
+.article__faq dt:first-child {
+  margin-top: 0;
+}
+
+.article__faq dd {
+  margin: 0.35rem 0 0;
+  color: var(--text-2);
+  line-height: 1.7;
+}
+
+.article__foot {
+  margin-top: clamp(2.5rem, 2rem + 2vw, 4rem);
+  padding-top: 1.75rem;
+  border-top: 1px solid var(--border-soft);
+  color: var(--text-3);
+  font-size: var(--text-small);
+  line-height: 1.7;
+}
+
+.article__foot code {
+  font-family: var(--font-mono);
+  font-size: 0.95em;
+  background: var(--code-bg);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-s);
+  padding: 0.1em 0.35em;
+}
+
+.article__foot a {
+  color: var(--blue-ink);
+}
+
+.post-list {
+  list-style: none;
+  padding: 0;
+  margin: 1.5rem 0 0;
+  display: grid;
+  gap: 1.5rem;
+}
+
+.post-list li {
+  margin: 0;
+  padding: 1.15rem 1.25rem;
+  background: var(--card);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-l);
+  box-shadow: var(--shadow-card-sm);
+}
+
+.post-list a {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  color: var(--ivory);
+  text-decoration: none;
+}
+
+.post-list a:hover {
+  color: var(--blue-ink);
+  text-decoration: underline;
+}
+
+.post-list time {
+  display: block;
+  margin-top: 0.3rem;
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  color: var(--text-3);
+}
+
+.post-list p {
+  margin: 0.55rem 0 0;
+  font-size: var(--text-small);
+  color: var(--text-2);
+  line-height: 1.6;
+}

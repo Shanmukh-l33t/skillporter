@@ -6,9 +6,11 @@ export { cliData, harnessData, release };
 
 export const SITE = {
   name: 'Skillporter',
-  url: 'https://skillporter.dev',
+  /** How people type the brand when they use two words. */
+  alternateName: 'Skill Porter',
+  url: 'https://www.skillporter.dev',
   tagline: 'One skill. Every agent.',
-  positioning: 'The package manager for AI agent skills.',
+  positioning: 'Skill Porter is the package manager for AI agent skills.',
   description:
     'Install, synchronize, pin, inspect and manage AI agent skills across multiple harnesses through one consistent workflow.',
   socialImage: '/brand/skillporter-social.png',

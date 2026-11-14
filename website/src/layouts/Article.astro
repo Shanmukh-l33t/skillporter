@@ -1,0 +1,139 @@
+---
+import Base from './Base.astro';
+import { SITE } from '../data/site';
+
+interface FaqItem {
+  q: string;
+  a: string;
+}
+
+interface Crumb {
+  name: string;
+  href: string;
+}
+
+interface Props {
+  /** Contents of the <title> element, without the brand suffix. */
+  title: string;
+  /** Visible page heading. */
+  heading: string;
+  description: string;
+  /** Site-relative canonical path, such as /faq. */
+  path: string;
+  /** ISO date (YYYY-MM-DD). Present only for dated articles. */
+  date?: string;
+  updated?: string;
+  kicker?: string;
+  faq?: FaqItem[];
+  crumbs?: Crumb[];
+}
+
+const { title, heading, description, path, date, updated, kicker, faq = [], crumbs = [] } = Astro.props;
+
+// The base layout appends the brand to every non-root title, so a frontmatter
+// title that already carries it would render the suffix twice.
+const cleanTitle = title.replace(/\s*\|\s*skillporter\s*$/i, '').replace(/\s*\|\s*skillporter\s*\|\s*skillporter\s*$/i, '');
+
+const structuredData: Record<string, unknown>[] = [];
+
+if (faq.length > 0) {
+  structuredData.push({
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: faq.map((item) => ({
+      '@type': 'Question',
+      name: item.q,
+      acceptedAnswer: { '@type': 'Answer', text: item.a },
+    })),
+  });
+}
+
+if (date) {
+  structuredData.push({
+    '@context': 'https://schema.org',
+    '@type': 'BlogPosting',
+    headline: heading,
+    description,
+    datePublished: date,
+    dateModified: updated ?? date,
+    url: new URL(path, SITE.url).href,
+    inLanguage: 'en',
+    author: { '@type': 'Organization', name: SITE.name, url: SITE.url },
+    publisher: { '@type': 'Organization', name: SITE.name, url: SITE.url },
+    isPartOf: { '@type': 'WebSite', name: SITE.name, url: SITE.url },
+  });
+}
+
+if (crumbs.length > 0) {
+  structuredData.push({
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [{ '@type': 'ListItem', position: 1, name: 'Home', item: SITE.url }, ...crumbs.map((crumb, i) => ({
+      '@type': 'ListItem',
+      position: i + 2,
+      name: crumb.name,
+      item: new URL(crumb.href, SITE.url).href,
+    }))],
+  });
+}
+---
+
+<Base title={cleanTitle} description={description} path={path} ogType={date ? 'article' : 'website'} structuredData={structuredData}>
+  <main id="main" class="article wrap">
+    {
+      crumbs.length > 0 && (
+        <nav class="article__crumbs" aria-label="Breadcrumb">
+          <a href="/">Home</a>
+          {crumbs.map((crumb) => (
+            <>
+              <span aria-hidden="true">/</span>
+              <a href={crumb.href}>{crumb.name}</a>
+            </>
+          ))}
+        </nav>
+      )
+    }
+
+    <header class="article__head">
+      {kicker && <p class="article__kicker">{kicker}</p>}
+      <h1>{heading}</h1>
+      <p class="article__lead">{description}</p>
+      {
+        date && (
+          <p class="article__meta">
+            <time datetime={date}>{date}</time>
+            {updated && updated !== date && <> · Updated <time datetime={updated}>{updated}</time></>}
+          </p>
+        )
+      }
+    </header>
+
+    <div class="prose">
+      <slot />
+    </div>
+
+    {
+      faq.length > 0 && (
+        <section class="article__faq" aria-labelledby="faq-heading">
+          <h2 id="faq-heading">Questions and answers</h2>
+          <dl>
+            {faq.map((item) => (
+              <>
+                <dt>{item.q}</dt>
+                <dd>{item.a}</dd>
+              </>
+            ))}
+          </dl>
+        </section>
+      )
+    }
+
+    <footer class="article__foot">
+      <p>
+        Install with <code>uvx skillporter</code>, <code>pipx install skillporter</code> or <code>npx @shanmukhdheekonda/skillporter</code>.
+        The full command set is in the <a href="/docs/cli">CLI reference</a>, and every install channel is on the
+        <a href="/install">install page</a>.
+      </p>
+    </footer>
+  </main>
+</Base>

@@ -73,6 +73,7 @@ const fullTitle = path === '/' ? title : `${title} | ${SITE.name}`;
     <meta name="twitter:image" content={socialImage} />
 
     {structuredData.map((data) => <script type="application/ld+json" set:html={JSON.stringify(data)} />)}
+    <slot name="head" />
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>

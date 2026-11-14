@@ -1,0 +1,38 @@
+---
+import { getCollection } from 'astro:content';
+import Article from '../../layouts/Article.astro';
+
+const entries = (await getCollection('blog'))
+  .map((entry) => ({
+    id: entry.id,
+    title: (entry.data.heading as string | undefined) ?? (entry.data.title as string),
+    description: entry.data.description as string,
+    date: entry.data.date as string,
+  }))
+  .sort((a, b) => b.date.localeCompare(a.date));
+---
+
+<Article
+  title="Skillporter blog"
+  heading="Managing agent skills, in depth"
+  description="Practical writing about agent skill packages: what a SKILL.md is, keeping skills in sync across harnesses, lockfiles that make installs reproducible, and scanning bundles before you trust them."
+  path="/blog"
+  kicker="Blog"
+>
+  <p>
+    These articles cover the mechanics behind skillporter: the file format the harnesses read, the drift that
+    appears when the same skill is copied into five directories, the lockfile that makes an install reproducible,
+    and the static scanning that runs before a skill lands in your workspace.
+  </p>
+  <ul class="post-list">
+    {
+      entries.map((entry) => (
+        <li>
+          <a href={`/blog/${entry.id}`}>{entry.title}</a>
+          <time datetime={entry.date}>{entry.date}</time>
+          <p>{entry.description}</p>
+        </li>
+      ))
+    }
+  </ul>
+</Article>

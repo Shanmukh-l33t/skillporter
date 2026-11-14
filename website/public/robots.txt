@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://skillporter.dev/sitemap.xml
+Sitemap: https://www.skillporter.dev/sitemap.xml
