@@ -75,7 +75,7 @@ Skill Porter states the limits plainly. A local directory is pinned by content, 
 
 ## Security scanning
 
-`scan` reads every skill it discovers and produces a risk score from 0 to 100. It parses Python with an AST for `eval`, `exec`, `shell=True` and unsafe deserialization, checks JavaScript for `new Function`, `vm` and `child_process`, and reads Markdown instructions for override phrasing, hidden HTML comments, hidden Unicode and exfiltration directives. It decodes bounded Base64, hex and PowerShell payloads, follows a payload split across files, and checks for secrets, archive traversal and symlinks that leave the skill root.
+`scan` reads every skill it discovers and produces a risk score from 0 to 100. It parses Python with an AST for `eval`, `exec`, `shell=True` and unsafe deserialization, checks JavaScript for `new Function`, `vm` and `child_process`, and reads Markdown instructions for override phrasing, hidden HTML comments, hidden Unicode and exfiltration directives. It decodes bounded Base64, hex and PowerShell payloads, follows a payload split across files, and checks for embedded secrets, traversal in referenced paths and symlinks that leave the skill root. Archive member checks run earlier, when an archive is unpacked, not during scoring.
 
 ```bash
 skillporter scan . --max-risk-score 30
