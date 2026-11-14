@@ -6,7 +6,7 @@ interface Props {
   loading?: 'eager' | 'lazy';
 }
 
-// Intrinsic size of public/brand/skillporter-lockup.webp, cropped from the
+// Intrinsic size of public/brand/skillporter-lockup*.webp, cropped from the
 // approved logo by scripts/make_brand_assets.py.
 const SOURCE_WIDTH = 966;
 const SOURCE_HEIGHT = 144;
@@ -15,25 +15,57 @@ const { height = 28, class: className, loading = 'eager' } = Astro.props;
 const width = Math.round((SOURCE_WIDTH / SOURCE_HEIGHT) * height);
 ---
 
-<picture class:list={['logo', className]}>
-  <source srcset="/brand/skillporter-lockup.webp" type="image/webp" />
-  <img
-    src="/brand/skillporter-lockup.png"
-    alt="Skillporter"
-    width={width}
-    height={height}
-    loading={loading}
-    decoding="async"
-  />
-</picture>
+<span class:list={['logo', className]}>
+  <picture class="logo__pic logo__pic--light">
+    <source srcset="/brand/skillporter-lockup-light.webp" type="image/webp" />
+    <img
+      src="/brand/skillporter-lockup-light.png"
+      alt="Skillporter"
+      width={width}
+      height={height}
+      loading={loading}
+      decoding="async"
+    />
+  </picture>
+  <picture class="logo__pic logo__pic--dark">
+    <source srcset="/brand/skillporter-lockup.webp" type="image/webp" />
+    <img
+      src="/brand/skillporter-lockup.png"
+      alt="Skillporter"
+      width={width}
+      height={height}
+      loading={loading}
+      decoding="async"
+    />
+  </picture>
+</span>
 
 <style>
   .logo {
-    display: block;
+    display: inline-flex;
+    align-items: center;
     flex: none;
+  }
+  .logo__pic {
+    display: block;
+  }
+  .logo__pic--dark {
+    display: none;
+  }
+  :global(html[data-theme='dark']) .logo__pic--light {
+    display: none;
+  }
+  :global(html[data-theme='dark']) .logo__pic--dark {
+    display: block;
   }
   .logo img {
     display: block;
     height: auto;
+  }
+  @media (max-width: 420px) {
+    .logo img {
+      max-height: 24px;
+      width: auto;
+    }
   }
 </style>

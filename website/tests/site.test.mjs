@@ -414,22 +414,37 @@ test('the approved logo is present, unmodified and used in the header', () => {
   assert.ok(existsSync(master), 'approved logo missing from website/public/brand/');
   const sha = createHash('sha256').update(readFileSync(master)).digest('hex');
   assert.equal(sha, readFileSync(join(WEBSITE, 'public/brand/skillporter-logo.sha256'), 'utf8').trim(), 'master logo bytes changed');
-  for (const asset of ['brand/skillporter-lockup.webp', 'brand/skillporter-lockup.png', 'brand/skillporter-social.png', 'favicon.ico', 'apple-touch-icon.png', 'icon-512.png']) {
+  for (const asset of [
+    'brand/skillporter-lockup.webp',
+    'brand/skillporter-lockup.png',
+    'brand/skillporter-lockup-light.webp',
+    'brand/skillporter-lockup-light.png',
+    'brand/skillporter-social.png',
+    'favicon.ico',
+    'apple-touch-icon.png',
+    'icon-512.png',
+  ]) {
     assert.ok(existsSync(join(DIST, asset)), `brand asset not built: ${asset}`);
   }
   for (const [file, html] of pages) {
+    assert.match(html, /<header\b[\s\S]*?skillporter-lockup-light\.(?:webp|png)[\s\S]*?<\/header>/, `${file}: header missing light-mode logo`);
     assert.match(html, /<header\b[\s\S]*?skillporter-lockup\.(?:webp|png)[\s\S]*?<\/header>/, `${file}: header does not use the approved logo`);
     assert.match(html, /<img[^>]+alt="Skillporter"/, `${file}: logo has no text alternative`);
+    assert.match(html, /<html lang="en" data-theme="light"/, `${file}: default theme must be light`);
+    assert.match(html, /data-theme-toggle/, `${file}: theme toggle missing`);
   }
 });
 
-test('brand palette tokens are the official values', () => {
+test('light default background is white and dark brand palette tokens are preserved', () => {
   const css = readFileSync(join(WEBSITE, 'src/styles/global.css'), 'utf8').toLowerCase();
+  assert.match(css, /:root,\s*html\[data-theme='light'\]\s*\{[\s\S]*?--midnight:\s*#ffffff;/, 'light mode main background must be #ffffff');
+  const darkBlock = /html\[data-theme='dark'\]\s*\{([\s\S]*?)\}/.exec(css)?.[1] ?? '';
   const palette = {
     '--midnight': '#070d19', '--deep-navy': '#0b1425', '--surface': '#111d31', '--electric': '#155be8', '--bridge': '#1461ed',
     '--amber': '#f18a50', '--ivory': '#f3f0e9', '--text-2': '#a6b0c0', '--border': '#263249',
   };
-  for (const [token, value] of Object.entries(palette)) assert.ok(css.includes(`${token}: ${value};`), `${token} is not ${value}`);
+  for (const [token, value] of Object.entries(palette)) assert.ok(darkBlock.includes(`${token}: ${value};`), `${token} is not ${value} in dark mode`);
+  assert.match(pages.get('index.html'), /--shiki-dark:/, 'dual-theme Shiki tokens missing');
 });
 
 /* ------------------------------------------------------- accessibility */

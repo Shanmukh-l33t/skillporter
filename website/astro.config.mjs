@@ -1,6 +1,6 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
-import { skillporterTheme } from './src/lib/shiki-theme.mjs';
+import { skillporterLightTheme, skillporterTheme } from './src/lib/shiki-theme.mjs';
 
 // Static, host-agnostic build. Pages are emitted as `/docs/cli.html` (and
 // `/docs/index.html`) and served at `/docs/cli`, matching the canonical URLs.
@@ -16,7 +16,10 @@ export default defineConfig({
   markdown: {
     syntaxHighlight: 'shiki',
     shikiConfig: {
-      theme: skillporterTheme,
+      themes: {
+        light: skillporterLightTheme,
+        dark: skillporterTheme,
+      },
       wrap: false,
     },
   },

@@ -227,7 +227,7 @@ if (current) {
     border-left-color: var(--amber);
   }
   .docs__navlink--top[aria-current='page'] {
-    color: var(--amber);
+    color: var(--amber-ink);
     border-left-color: transparent;
   }
 
@@ -410,6 +410,11 @@ if (current) {
   .prose td code {
     white-space: nowrap;
   }
+  @media (min-width: 640px) {
+    .prose td:first-child {
+      white-space: nowrap;
+    }
+  }
   .prose blockquote {
     margin-inline: 0;
     padding: 0.1rem 0 0.1rem 1.1rem;
@@ -508,7 +513,7 @@ if (current) {
     color: var(--ivory);
   }
   .docs__toc a[aria-current] {
-    color: var(--amber);
+    color: var(--amber-ink);
   }
 
   /* ---- responsive */

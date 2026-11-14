@@ -83,6 +83,35 @@ def key_out_background(im: Image.Image) -> Image.Image:
     return out
 
 
+def for_light_surface(im: Image.Image) -> Image.Image:
+    """Adapt an RGBA lockup for white surfaces without altering geometry or hue.
+
+    Saturated pixels (the electric-blue bridge and warm-amber arc/dot) keep
+    their exact RGB values; neutral ivory pixels (wordmark and endpoints) map
+    to Midnight (#070D19) with the original alpha preserved.
+    """
+    out = im.copy()
+    px = out.load()
+    w, h = out.size
+    for y in range(h):
+        for x in range(w):
+            r, g, b, a = px[x, y]
+            if a == 0:
+                continue
+            chroma = max(r, g, b) - min(r, g, b)
+            if chroma >= 80:
+                # Keep warm amber details (arc, divider, 'i' dot) crisp against white at 28px.
+                if r > g > b and (r - b) >= 60:
+                    px[x, y] = (min(255, round(r * 0.96)), round(g * 0.84), round(b * 0.72), a)
+                continue
+            t = max(0.0, (chroma - 28.0) / 52.0)
+            nr = round((1.0 - t) * MIDNIGHT[0] + t * r)
+            ng = round((1.0 - t) * MIDNIGHT[1] + t * g)
+            nb = round((1.0 - t) * MIDNIGHT[2] + t * b)
+            px[x, y] = (nr, ng, nb, a)
+    return out
+
+
 def crop_padded(im: Image.Image, box: tuple[int, int, int, int], pad: int) -> Image.Image:
     x0, y0, x1, y1 = box
     return im.crop((x0 - pad, y0 - pad, x1 + pad, y1 + pad))
@@ -154,6 +183,9 @@ def main() -> None:
 
     scale_to_height(lockup, 144).save(BRAND / "skillporter-lockup.webp", lossless=True, method=6)
     scale_to_height(lockup, 144).save(BRAND / "skillporter-lockup.png", optimize=True)
+    lockup_light = for_light_surface(lockup)
+    scale_to_height(lockup_light, 144).save(BRAND / "skillporter-lockup-light.webp", lossless=True, method=6)
+    scale_to_height(lockup_light, 144).save(BRAND / "skillporter-lockup-light.png", optimize=True)
     scale_to_width(mark, 512).save(BRAND / "skillporter-mark.webp", lossless=True, method=6)
     scale_to_width(mark, 512).save(BRAND / "skillporter-mark.png", optimize=True)
 

@@ -44,6 +44,23 @@ const inDocs = currentPath === '/docs' || currentPath.startsWith('/docs/');
         <span class="search-trigger__label">Search docs</span>
         <kbd class="search-trigger__kbd" data-search-kbd>Ctrl K</kbd>
       </button>
+      <button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch to dark mode">
+        <svg class="theme-toggle__moon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path
+            d="M13.25 9.85A5.5 5.5 0 0 1 6.15 2.75a5.5 5.5 0 1 0 7.1 7.1Z"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linejoin="round"></path>
+        </svg>
+        <svg class="theme-toggle__sun" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.5"></circle>
+          <path
+            d="M8 1.75v1.5M8 12.75v1.5M1.75 8h1.5M12.75 8h1.5M3.58 3.58l1.06 1.06M11.36 11.36l1.06 1.06M12.42 3.58l-1.06 1.06M4.64 11.36l-1.06 1.06"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"></path>
+        </svg>
+      </button>
       <a class="btn btn--primary btn--small site-header__cta" href="/docs/getting-started">Get Started</a>
       <button
         class="menu-toggle"
@@ -145,7 +162,7 @@ const inDocs = currentPath === '/docs' || currentPath.startsWith('/docs/');
   .site-header__actions {
     display: flex;
     align-items: center;
-    gap: 0.6rem;
+    gap: 0.55rem;
   }
 
   .search-trigger {
@@ -173,6 +190,33 @@ const inDocs = currentPath === '/docs' || currentPath.startsWith('/docs/');
     border: 1px solid var(--border);
     border-radius: 3px;
     color: var(--text-3);
+  }
+
+  .theme-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-m);
+    color: var(--text-2);
+    transition:
+      color var(--dur) var(--ease),
+      border-color var(--dur) var(--ease);
+  }
+  .theme-toggle:hover {
+    color: var(--ivory);
+    border-color: var(--text-3);
+  }
+  .theme-toggle__sun {
+    display: none;
+  }
+  :global(html[data-theme='dark']) .theme-toggle__moon {
+    display: none;
+  }
+  :global(html[data-theme='dark']) .theme-toggle__sun {
+    display: block;
   }
 
   .menu-toggle {
@@ -231,7 +275,7 @@ const inDocs = currentPath === '/docs' || currentPath.startsWith('/docs/');
     letter-spacing: -0.01em;
   }
   .mobile-menu li a[aria-current] span:first-child {
-    color: var(--amber);
+    color: var(--amber-ink);
   }
   .mobile-menu__arrow {
     font-family: var(--font-mono);
@@ -258,8 +302,10 @@ const inDocs = currentPath === '/docs' || currentPath.startsWith('/docs/');
     .menu-toggle {
       display: inline-flex;
     }
-    .search-trigger {
+    .search-trigger,
+    .theme-toggle {
       width: 44px;
+      height: 44px;
       min-height: 44px;
       padding: 0;
       justify-content: center;

@@ -1,27 +1,33 @@
 /* ==========================================================================
    Skillporter design tokens and base styles
-   Midnight navy environment, ivory reading colour, electric blue identity,
-   amber for the bridge and for the few things that need attention.
+   Light mode (white main background) is the default; dark mode preserves the
+   exact midnight navy, deep navy, surface, electric blue, amber and ivory
+   palette. Both modes keep the brand's blue and amber identity intact.
    ========================================================================== */
 
-:root {
-  /* Brand palette (official) */
-  --midnight: #070d19;
-  --deep-navy: #0b1425;
-  --surface: #111d31;
+:root,
+html[data-theme='light'] {
+  /* Light mode surfaces & ink (main background pure white) */
+  --midnight: #ffffff;
+  --deep-navy: #f6f8fc;
+  --surface: #eef2f9;
   --electric: #155be8;
   --bridge: #1461ed;
   --amber: #f18a50;
-  --ivory: #f3f0e9;
-  --text-2: #a6b0c0;
-  --border: #263249;
+  --ivory: #070d19;
+  --text-2: #3b4963;
+  --border: #d8e0ed;
 
-  /* Derived neutrals, kept inside the same hue family */
-  --text-3: #7c879b;
-  --border-soft: #1a2538;
-  --blue-ink: #8ab4ff; /* blue that passes contrast as text on midnight */
+  /* Derived neutrals & contrast-verified text accents */
+  --text-3: #56657f;
+  --border-soft: #e7ecf5;
+  --blue-ink: #155be8;
   --electric-hover: #114fd0;
-  --amber-soft: #f6b58e;
+  --amber-soft: #9a3e0c;
+  --amber-ink: #b94e14;
+  --on-electric: #ffffff;
+  --path-ink: #1e2d47;
+  --backdrop: rgb(7 13 25 / 0.42);
 
   /* Type */
   --font-sans: 'Geist Variable', 'Geist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -48,6 +54,32 @@
 
   --ease: cubic-bezier(0.2, 0, 0, 1);
   --dur: 160ms;
+
+  color-scheme: light;
+}
+
+html[data-theme='dark'] {
+  /* Official dark brand palette (unchanged) */
+  --midnight: #070d19;
+  --deep-navy: #0b1425;
+  --surface: #111d31;
+  --electric: #155be8;
+  --bridge: #1461ed;
+  --amber: #f18a50;
+  --ivory: #f3f0e9;
+  --text-2: #a6b0c0;
+  --border: #263249;
+
+  /* Derived dark neutrals */
+  --text-3: #7c879b;
+  --border-soft: #1a2538;
+  --blue-ink: #8ab4ff;
+  --electric-hover: #114fd0;
+  --amber-soft: #f6b58e;
+  --amber-ink: #f18a50;
+  --on-electric: #f3f0e9;
+  --path-ink: #c3cddb;
+  --backdrop: rgb(4 8 16 / 0.78);
 
   color-scheme: dark;
 }
@@ -126,7 +158,7 @@ samp {
 
 ::selection {
   background: var(--electric);
-  color: var(--ivory);
+  color: var(--on-electric);
 }
 
 :focus {
@@ -187,7 +219,7 @@ samp {
   position: relative;
 }
 
-/* The span: a rule with two endpoints, taken from the two ivory endpoints of
+/* The span: a rule with two endpoints, taken from the two endpoints of
    the bridge mark. It is the only recurring ornament on the site. */
 .span-rule {
   position: relative;
@@ -252,7 +284,7 @@ samp {
   font-family: var(--font-mono);
   font-size: var(--text-micro);
   letter-spacing: 0.06em;
-  color: var(--amber);
+  color: var(--amber-ink);
 }
 
 @media (max-width: 860px) {
@@ -309,7 +341,7 @@ samp {
 .arrow-link::after {
   content: '→';
   font-family: var(--font-mono);
-  color: var(--amber);
+  color: var(--amber-ink);
   transition: transform var(--dur) var(--ease);
 }
 .arrow-link:hover::after {
@@ -340,7 +372,7 @@ samp {
 }
 .btn--primary {
   background: var(--electric);
-  color: var(--ivory);
+  color: var(--on-electric);
 }
 .btn--primary:hover {
   background: var(--electric-hover);
@@ -395,7 +427,7 @@ samp {
   border-color: var(--text-3);
 }
 .copy[data-copied='true'] {
-  color: var(--amber);
+  color: var(--amber-ink);
   border-color: var(--amber);
 }
 
@@ -441,6 +473,12 @@ samp {
 }
 .tab:focus-visible {
   outline-offset: -3px;
+}
+@media (max-width: 420px) {
+  .tab {
+    padding: 0 0.62rem;
+    font-size: 0.75rem;
+  }
 }
 
 /* --------------------------------------------------------------------------
@@ -518,7 +556,7 @@ samp {
   overflow-wrap: anywhere;
 }
 .term .t-prompt {
-  color: var(--amber);
+  color: var(--amber-ink);
   user-select: none;
 }
 .term .t-cmd {
@@ -528,7 +566,7 @@ samp {
   color: var(--ivory);
 }
 .term .t-warn {
-  color: var(--amber);
+  color: var(--amber-ink);
 }
 .term .t-dim {
   color: var(--text-3);
@@ -537,14 +575,14 @@ samp {
   color: var(--blue-ink);
 }
 .term .t-path {
-  color: #c3cddb;
+  color: var(--path-ink);
 }
 .term .t-note {
   color: var(--text-3);
   font-style: italic;
 }
 
-/* Shiki output (Astro <Code> and Markdown) */
+/* Shiki output (Astro <Code> and Markdown, dual light/dark themes) */
 .astro-code {
   margin: 0;
   padding: 1.1rem 1.15rem;
@@ -556,6 +594,10 @@ samp {
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
   tab-size: 2;
+}
+html[data-theme='dark'] .astro-code,
+html[data-theme='dark'] .astro-code span {
+  color: var(--shiki-dark) !important;
 }
 .astro-code code {
   font-size: inherit;
@@ -583,7 +625,7 @@ samp {
   transform: rotate(45deg);
 }
 .chip[data-tier='RUNTIME_VERIFIED'] {
-  color: var(--amber);
+  color: var(--amber-ink);
 }
 .chip[data-tier='RUNTIME_VERIFIED']::before {
   background: var(--amber);

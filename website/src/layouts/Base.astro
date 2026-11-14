@@ -27,7 +27,7 @@ const fullTitle = path === '/' ? title : `${title} | ${SITE.name}`;
 ---
 
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -35,8 +35,19 @@ const fullTitle = path === '/' ? title : `${title} | ${SITE.name}`;
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical} />
     {noindex && <meta name="robots" content="noindex" />}
-    <meta name="theme-color" content="#070D19" />
-    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#FFFFFF" />
+    <meta name="color-scheme" content="light dark" />
+    <script is:inline>
+      (() => {
+        try {
+          const saved = localStorage.getItem('skillporter-theme');
+          const mode = saved === 'dark' ? 'dark' : 'light';
+          document.documentElement.dataset.theme = mode;
+          const meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute('content', mode === 'dark' ? '#070D19' : '#FFFFFF');
+        } catch {}
+      })();
+    </script>
 
     <link rel="icon" href="/favicon.ico" sizes="48x48" />
     <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32" />

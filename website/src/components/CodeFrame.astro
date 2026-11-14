@@ -1,6 +1,6 @@
 ---
 import { Code } from 'astro:components';
-import { skillporterTheme } from '../lib/shiki-theme.mjs';
+import { skillporterLightTheme, skillporterTheme } from '../lib/shiki-theme.mjs';
 import CopyButton from './CopyButton.astro';
 
 interface Props {
@@ -22,7 +22,7 @@ const copyText = copy === false ? null : (copy ?? code);
     <span class="frame__title">{title}</span>
     {copyText !== null && <CopyButton text={copyText} label={`Copy ${title}`} />}
   </div>
-  <Code code={code} lang={lang} theme={skillporterTheme} />
+  <Code code={code} lang={lang} themes={{ light: skillporterLightTheme, dark: skillporterTheme }} />
   {
     note && (
       <figcaption class="frame__foot">

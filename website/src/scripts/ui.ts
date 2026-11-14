@@ -8,6 +8,41 @@ const $ = <T extends Element = HTMLElement>(sel: string, root: ParentNode = docu
 const $$ = <T extends Element = HTMLElement>(sel: string, root: ParentNode = document) =>
   Array.from(root.querySelectorAll<T>(sel));
 
+/* ------------------------------------------------------------------ theme */
+
+function initTheme(): void {
+  const buttons = $$<HTMLButtonElement>('[data-theme-toggle]');
+  if (!buttons.length) return;
+
+  const apply = (mode: 'light' | 'dark', persist = false) => {
+    document.documentElement.dataset.theme = mode;
+    const meta = $<HTMLMetaElement>('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', mode === 'dark' ? '#070D19' : '#FFFFFF');
+    const nextLabel = mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
+    for (const button of buttons) {
+      button.setAttribute('aria-label', nextLabel);
+      button.setAttribute('title', nextLabel);
+    }
+    if (persist) {
+      try {
+        localStorage.setItem('skillporter-theme', mode);
+      } catch {
+        // Private browsing or blocked storage: keep session state in DOM.
+      }
+    }
+  };
+
+  const current = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+  apply(current, false);
+
+  for (const button of buttons) {
+    button.addEventListener('click', () => {
+      const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+      apply(next, true);
+    });
+  }
+}
+
 /* ----------------------------------------------------------------- header */
 
 function initHeader(): void {
@@ -450,6 +485,7 @@ function initDocs(): void {
   targets.forEach((target) => observer.observe(target));
 }
 
+initTheme();
 initHeader();
 initSectionSpy();
 initTabs();
