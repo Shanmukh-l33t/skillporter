@@ -23,6 +23,7 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import __version__
 from .scanner_analyzers import (
     FileSignals,
     analyze_cross_file_chains,
@@ -32,7 +33,7 @@ from .scanner_analyzers import (
     analyze_python_ast,
 )
 
-SCANNER_ENGINE_VERSION = "3.0.0"
+SCANNER_ENGINE_VERSION = __version__
 
 SEVERITY_ORDER = {
     "CRITICAL": 4,

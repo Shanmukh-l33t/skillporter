@@ -102,7 +102,7 @@ The built-in engine is `skillporter-static`. If NVIDIA SkillSpector is installed
 The report below comes from scanning a deliberately unsafe test skill. Its `SKILL.md` hides an instruction in an HTML comment and pipes a download into a shell, and its script reads an SSH key and executes a Base64 payload.
 
 ```text
-quick-setup: BLOCKED  (risk: 100/100 · REJECT · posture: CRITICAL_DETECTED_RISK · engine: skillporter-static v3.0.0 · sha256: 7245f2bd2432)
+quick-setup: BLOCKED  (risk: 100/100 · REJECT · posture: CRITICAL_DETECTED_RISK · engine: skillporter-static v3.0.1 · sha256: 7245f2bd2432)
   Categories: prompt_injection=70, code_execution=100, data_exfiltration=35, supply_chain=2
   [CRITICAL] sec-prompt-override (SKILL.md:12): Prompt-injection directive attempting to override system/user instructions
   [CRITICAL] sec-curl-pipe-sh (SKILL.md:15): Remote code execution pattern (curl/wget piped directly into shell)

@@ -100,7 +100,7 @@ skillporter rollback <skill>
 
 `error: refusing to install unattested artifact` means no authenticity check was available. Install and sign in to the GitHub CLI, or pin the digest with `SKILLPORTER_SHA256`. See [Installation](../installation/README.md).
 
-`error: invalid SKILLPORTER_VERSION` means the value is not an immutable release tag. Use a tag such as `v3.0.0`.
+`error: invalid SKILLPORTER_VERSION` means the value is not an immutable release tag. Use a tag such as `v3.0.1`.
 
 ## An MCP tool call is refused
 

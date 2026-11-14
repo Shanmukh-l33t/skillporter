@@ -201,9 +201,9 @@ test('installer instructions use the immutable release and keep verification', (
 test('the pinned digest in the docs is the published release artifact', () => {
   const digest = /SKILLPORTER_SHA256=([0-9a-f]{64})/.exec(stripTags(pages.get('docs/installation.html')))?.[1];
   assert.ok(digest, 'no pinned digest found');
-  // Recorded from `gh attestation verify` against the v3.0.0 release asset.
-  if (release.version === '3.0.0') {
-    assert.equal(digest, '5468ffad0fe81af08a4499eaac1ed380d00c8d5dd4896dda46098651874a53c3');
+  // Recorded from `gh attestation verify` against the v3.0.1 release asset.
+  if (release.version === '3.0.1') {
+    assert.equal(digest, '8bd7125b8f2a1a4f7c475406c71eaaec317bc4d7a0dd5d19e857301ef127179c');
   }
 });
 
