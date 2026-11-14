@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [Semantic Versioning](https://semver.org/).
 
+## [3.0.1] - 2026-11-14
+
+### Fixed
+- **npm package metadata for registry ownership**: the published `3.0.0` tarball was built before `mcpName` existed in `package.json`, so `registry.modelcontextprotocol.io` rejected the listing with `NPM package '@shanmukhdheekonda/skillporter' is missing required 'mcpName' field`. This patch republishes the package metadata (no code changes) so the MCP registry can verify package ownership and accept `server.json`.
+
 ## [3.0.0] - 2026-11-14
 
 ### Security (P0 & P1 Hardening)
