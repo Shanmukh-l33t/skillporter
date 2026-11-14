@@ -1,0 +1,69 @@
+name: Publish MCP registry listing
+
+# The official MCP registry verifies package ownership by reading the mcpName
+# field from the published npm metadata, so a listing can only be created after
+# the matching npm version is live. This job waits for that version, syncs
+# server.json to the release tag, then publishes with GitHub OIDC.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: Publish server.json to registry.modelcontextprotocol.io
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Sync server.json to this release
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "release" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="$(python3 -c "import tomllib,pathlib;print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")"
+          fi
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+          jq --arg v "$VERSION" '.version = $v | .packages[0].version = $v' server.json > server.json.tmp
+          mv server.json.tmp server.json
+          echo "manifest version: $(jq -r .version server.json)"
+
+      - name: Wait for the npm package to carry this version
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 40); do
+            served="$(npm view "@shanmukhdheekonda/skillporter@${VERSION}" version 2>/dev/null || true)"
+            if [ "${served}" = "${VERSION}" ]; then
+              echo "npm serves ${VERSION}"
+              exit 0
+            fi
+            echo "npm does not serve ${VERSION} yet (attempt ${attempt}); waiting"
+            sleep 15
+          done
+          echo "gave up waiting for npm ${VERSION}"
+          exit 1
+
+      - name: Install mcp-publisher
+        run: |
+          set -euo pipefail
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" -o mcp-publisher.tar.gz
+          tar xzf mcp-publisher.tar.gz mcp-publisher
+          chmod +x mcp-publisher
+          ./mcp-publisher --help
+
+      - name: Log in with GitHub OIDC
+        run: ./mcp-publisher login github-oidc
+
+      - name: Validate and publish
+        run: |
+          set -euo pipefail
+          ./mcp-publisher validate server.json
+          ./mcp-publisher publish
