@@ -77,7 +77,7 @@ Best for Dockerfiles and CI, where the digest lives in your own repository.
 
 ```bash
 SKILLPORTER_VERSION=v3.1.0 \
-SKILLPORTER_SHA256=8bd7125b8f2a1a4f7c475406c71eaaec317bc4d7a0dd5d19e857301ef127179c \
+SKILLPORTER_SHA256=34a629b962ca0650c9babfed0d3c84abba39fd31e30f2c3fe6b36fdcee62962a \
 sh install.sh
 ```
 

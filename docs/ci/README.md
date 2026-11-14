@@ -112,7 +112,7 @@ To install the standalone binary in a pipeline, pin both the tag and the digest 
 ```bash
 curl -fsSL https://github.com/Shanmukh-l33t/skillporter/releases/download/v3.1.0/install.sh -o install.sh
 SKILLPORTER_VERSION=v3.1.0 \
-SKILLPORTER_SHA256=8bd7125b8f2a1a4f7c475406c71eaaec317bc4d7a0dd5d19e857301ef127179c \
+SKILLPORTER_SHA256=34a629b962ca0650c9babfed0d3c84abba39fd31e30f2c3fe6b36fdcee62962a \
 sh install.sh
 ```
 
