@@ -14,7 +14,7 @@ export const SITE = {
   tagline: 'One skill. Every agent.',
   positioning: 'Skillporter is the package manager for AI agent skills.',
   description:
-    'Install, synchronize, secure, and reproduce AI agent skills across your development environments. Manage your skills once and keep every supported agent in sync.',
+    'Install, sync, scan and pin AI agent skills across 19 harnesses. One manifest and one lockfile keep Claude Code, Codex, Cursor, Copilot and the rest in step.',
   socialImage: '/brand/skillporter-social.png',
 } as const;
 

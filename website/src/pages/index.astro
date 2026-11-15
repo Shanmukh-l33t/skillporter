@@ -342,6 +342,18 @@ const structuredData = [
     downloadUrl: LINKS.release,
     offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
   },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareSourceCode',
+    name: `${SITE.name} source`,
+    description: SITE.description,
+    url: release.repository,
+    codeRepository: release.repository,
+    programmingLanguage: 'Python',
+    license: 'https://opensource.org/licenses/MIT',
+    runtimePlatform: 'Linux, macOS, Windows',
+    isPartOf: { '@type': 'SoftwareApplication', name: SITE.name, softwareVersion: release.version },
+  },
 ];
 ---
 

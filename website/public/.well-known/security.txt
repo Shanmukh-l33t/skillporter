@@ -1,0 +1,6 @@
+Contact: https://github.com/Shanmukh-l33t/skillporter/security/advisories/new
+Expires: 2027-11-15T00:00:00.000Z
+Canonical: https://www.skillporter.dev/.well-known/security.txt
+Preferred-Languages: en
+Policy: https://github.com/Shanmukh-l33t/skillporter/blob/main/SECURITY.md
+Acknowledgments: https://github.com/Shanmukh-l33t/skillporter/blob/main/SECURITY.md
