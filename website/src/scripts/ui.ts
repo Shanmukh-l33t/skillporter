@@ -108,6 +108,11 @@ function initSectionSpy(): void {
         else visible.delete(entry.target.id);
       }
       const current = sections.find((s) => visible.has(s.id))?.id;
+      const homeLink = $<HTMLAnchorElement>('[data-nav-home]');
+      if (homeLink && window.location.pathname === '/') {
+        if (current) homeLink.removeAttribute('aria-current');
+        else homeLink.setAttribute('aria-current', 'page');
+      }
       for (const [id, link] of byId) {
         if (id === current) link.setAttribute('aria-current', 'true');
         else link.removeAttribute('aria-current');

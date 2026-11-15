@@ -3,6 +3,7 @@ import CodeFrame from '../components/CodeFrame.astro';
 import CopyButton from '../components/CopyButton.astro';
 import FanOut from '../components/FanOut.astro';
 import HarnessMatrix from '../components/HarnessMatrix.astro';
+import HeroArchitecture from '../components/HeroArchitecture.astro';
 import InstallPanel from '../components/InstallPanel.astro';
 import SectionHead from '../components/SectionHead.astro';
 import TerminalDemo from '../components/TerminalDemo.astro';
@@ -123,22 +124,6 @@ skillporter add owner/repo/skills/pdf@v1.2.0 --harness claude-code --harness cod
 # A local directory, installed into Cursor's dedicated folder without sharing .agents/skills
 skillporter install ./skills/release-notes --harness cursor --isolated --dry-run`;
 
-const actionExample = `- uses: actions/checkout@v4
-- uses: Shanmukh-l33t/skillporter@${release.tag}
-  with:
-    command: validate
-    lock-check: "true"
-    max-risk-score: "30"`;
-
-const instructionsExample = `# Read-only report: overlap, conflicts, outdated paths, unclassified lines
-skillporter consolidate
-
-# Back up the originals, then write one canonical source and the native files
-skillporter consolidate --apply
-
-# Which instructions will Cursor actually load, and at what token cost?
-skillporter context --harness cursor`;
-
 const policyExample = `# skillporter.policy.yaml, committed with the repository
 block_severity: HIGH
 max_risk_score: 30
@@ -149,18 +134,6 @@ approved_sources:
 
 # Read what changes before accepting an update
 skillporter update --check`;
-
-const authoringExample = `skillporter new release-notes --with-tests
-skillporter lint ./release-notes --strict
-skillporter preview ./release-notes --harness cursor
-skillporter test ./release-notes
-skillporter suggest`;
-
-const mcpExample = `# Install the official Skillporter skill into your detected coding agents
-skillporter self-skill install --harness detected
-
-# Or register the workspace-bounded MCP server (read-only by default; 18 tools)
-claude mcp add skillporter -- uvx skillporter mcp`;
 
 const problems = [
   {
@@ -189,26 +162,28 @@ const problems = [
   },
 ];
 
+/* Three-step product workflow shown in How it works. */
 const steps = [
   {
-    title: 'Choose a source',
+    index: '01',
+    title: 'Manage',
     command: 'skillporter add <source>',
-    body: 'A GitHub repository, a Git URL, an archive or a local directory. It is fetched into a temporary directory. Nothing inside it is executed.',
+    body: 'Bring skills into one workflow from a GitHub repository, a Git URL, an archive or a local directory. Skillporter resolves, validates and assesses before anything is written.',
+    docs: '/docs/skill-management',
   },
   {
-    title: 'Inspect and validate',
-    command: 'validate + scan',
-    body: 'The skill is checked against the Agent Skills specification and statically assessed. A blocking result stops here, before any file is written.',
+    index: '02',
+    title: 'Synchronize',
+    command: 'skillporter sync',
+    body: 'Distribute the skill to every supported agent directory, keep one record of what was installed and from which commit, and detect drift when a copy changes on disk.',
+    docs: '/docs/synchronization',
   },
   {
-    title: 'Install into harnesses',
-    command: '--harness all',
-    body: 'Destinations are planned per adapter, shared directories are written once, and all copies land as a single transaction.',
-  },
-  {
-    title: 'Synchronize and maintain',
-    command: 'sync · lock --check · rollback',
-    body: 'The lockfile records what was installed. Later runs detect drift, reproduce the install elsewhere, or restore a snapshot.',
+    index: '03',
+    title: 'Protect',
+    command: 'skillporter scan .',
+    body: 'Statically validate skill contents, assess risk and pin file hashes in the lockfile, so a later install reproduces the same bytes or tells you exactly what differs.',
+    docs: '/docs/security-scanning',
   },
 ];
 
@@ -276,6 +251,52 @@ const lockFields = [
   ['reproducible', 'True only when no entry is UNPINNED_MUTABLE.'],
 ];
 
+/* Differentiation: what manual management and copy scripts can and cannot do. */
+const comparison = [
+  {
+    dim: 'Cross-agent install',
+    manual: 'Copy the folder into each agent directory by hand',
+    scripts: 'Possible with a script you write and maintain',
+    sp: 'One command plans every destination per adapter',
+  },
+  {
+    dim: 'Shared .agents/skills ownership',
+    manual: 'Unseen: seven agents read the same copy',
+    scripts: 'Rarely handled; deletes are unsafe',
+    sp: 'Written once, removed only when no reader needs it',
+  },
+  {
+    dim: 'Synchronization and drift',
+    manual: 'Not tracked',
+    scripts: 'Requires separate tooling',
+    sp: 'Built in: sync reconciles, diagnose names the drifted hash',
+  },
+  {
+    dim: 'Lockfiles and reproducibility',
+    manual: 'Requires manual setup',
+    scripts: 'Requires manual setup',
+    sp: 'Built in: skillporter.lock pins commit and per-file hashes',
+  },
+  {
+    dim: 'Integrity and risk verification',
+    manual: 'Separate tooling, if any',
+    scripts: 'Separate tooling, if any',
+    sp: 'Built in: static scan, structural checks, exit codes for CI',
+  },
+  {
+    dim: 'Transactional install and rollback',
+    manual: 'Not inherent',
+    scripts: 'Not inherent',
+    sp: 'Journal-based; a killed install is rolled back on the next run',
+  },
+  {
+    dim: 'Portable environments for teammates',
+    manual: 'Re-install everything by hand',
+    scripts: 'Possible, but ad hoc',
+    sp: 'One .skillpack archive, verified on import',
+  },
+];
+
 const projectLinks = [
   { label: 'Repository', detail: 'Shanmukh-l33t/skillporter', href: LINKS.repo },
   { label: 'Latest release', detail: release.tag, href: LINKS.release },
@@ -325,8 +346,8 @@ const structuredData = [
 ---
 
 <Base
-  title="Skill Porter (Skillporter): the agent skill package manager"
-  description="Skill Porter, also written Skillporter, installs, pins, scans and synchronizes AI agent skills across 19 harnesses, 15 coding and 4 autonomous agents. Open source, MIT licensed, runs locally."
+  title="Skillporter: the package manager for AI agent skills"
+  description={SITE.description}
   path="/"
   structuredData={structuredData}
 >
@@ -335,51 +356,35 @@ const structuredData = [
     <section class="hero">
       <div class="wrap hero__grid">
         <div class="hero__copy">
-          <p class="overline">Skill Porter, the package manager for AI agent skills</p>
-          <div class="hero-ticker" aria-hidden="true">
-            <span class="hero-ticker__node"></span>
-            <span class="hero-ticker__src">SKILL.md</span>
-            <span class="hero-ticker__sep">→</span>
-            <span class="hero-ticker__window">
-              <span class="hero-ticker__track">
-                <span>.claude/skills · Claude Code</span>
-                <span>.agents/skills · OpenAI Codex</span>
-                <span>.agents/skills · Cursor</span>
-                <span>$HERMES_HOME/skills · Hermes Agent</span>
-                <span>.github/skills · GitHub Copilot</span>
-                <span>.windsurf/skills · Windsurf</span>
-                <span>.claude/skills · Claude Code</span>
-              </span>
-            </span>
-          </div>
+          <p class="overline">AI AGENT SKILL MANAGEMENT</p>
           <h1 class="hero-title">
             <span class="hero-title__mask">
-              <span class="hero-title__line hero-title__line--1">One skill.</span>
+              <span class="hero-title__line hero-title__line--1">One source of truth</span>
             </span>
             <span class="hero-title__mask">
-              <span class="hero-title__line hero-title__line--2">
-                <span class="hero-title__sheen">Every agent.</span>
-                <span class="hero-title__span" aria-hidden="true"><b><i></i></b></span>
-              </span>
+              <span class="hero-title__line hero-title__line--2"
+                ><span class="hero-title__sheen">for every AI agent.</span
+                ><span class="hero-title__span" aria-hidden="true"><b><i></i></b></span
+              ></span>
             </span>
           </h1>
           <p class="hero__lead">
-            Install, synchronize, pin, inspect and move AI agent skills across harnesses, projects and machines. Skill
-            Porter keeps one reproducible, local-first workflow for your entire agent environment.
+            Skill Porter (Skillporter) is the package manager for AI agent skills. Install, synchronize, secure, and
+            reproduce skills across your development environments. Manage your skills once and keep every supported
+            agent in sync.
           </p>
           <div class="hero__actions">
             <a class="btn btn--primary" href="/docs/getting-started">Get Started</a>
-            <a class="btn btn--secondary" href="/docs">Explore Documentation</a>
-            <a class="arrow-link" href={LINKS.repo} rel="noopener">View on GitHub</a>
+            <a class="btn btn--secondary" href={LINKS.repo} rel="noopener">Explore GitHub</a>
           </div>
+          <p class="hero__hint">
+            <code>uvx skillporter demo</code> runs the whole workflow in a temporary directory. Nothing is installed,
+            nothing is sent anywhere.
+          </p>
         </div>
 
-        <div class="hero__install">
-          <p class="hero__install-label">
-            <span class="overline">Install</span>
-            <a href={LINKS.release} rel="noopener">{release.tag}</a>
-          </p>
-          <InstallPanel />
+        <div class="hero__visual">
+          <HeroArchitecture />
         </div>
       </div>
 
@@ -393,26 +398,10 @@ const structuredData = [
       </div>
     </section>
 
-    <!-- ============================== DEMO ============================== -->
-    <section class="demo-band" aria-labelledby="demo-title">
-      <div class="wrap">
-        <div class="demo-band__head">
-          <h2 id="demo-title">The CLI on a real workspace</h2>
-          <p>Each panel is output recorded from the released CLI. Nothing runs in your browser.</p>
-        </div>
-        <TerminalDemo />
-      </div>
-    </section>
-
     <!-- ============================ PROBLEM ============================= -->
-    <section class="section" id="product" aria-labelledby="product-title">
+    <section class="section" id="problem" aria-labelledby="problem-title">
       <div class="wrap">
-        <SectionHead
-          index="01"
-          label="The problem"
-          id="product-title"
-          title="AI skills are everywhere. Managing them shouldn't be complicated."
-        >
+        <SectionHead index="01" label="The problem" id="problem-title" title="Your AI workflows are spreading across agents. Your skills shouldn't become fragmented.">
           Every harness looks for skills in its own directory. Keeping one skill available to several of them means
           copying it by hand, and hand-made copies do not stay equal.
         </SectionHead>
@@ -429,12 +418,64 @@ const structuredData = [
           }
         </ol>
 
+        <div class="before-after" aria-label="Before and after centralized skill management">
+          <div class="ba-card ba-card--before">
+            <div class="ba-card__head">
+              <span class="overline">Before · Manual folders</span>
+              <span class="ba-card__tag ba-card__tag--warn">Fragmented &amp; drifting</span>
+            </div>
+            <ul class="ba-card__list">
+              <li>
+                <code>.claude/skills/pdf/SKILL.md</code>
+                <span>edited locally · out of sync</span>
+              </li>
+              <li>
+                <code>.windsurf/skills/pdf/SKILL.md</code>
+                <span>stale copy from two weeks ago</span>
+              </li>
+              <li>
+                <code>.github/skills/pdf/</code>
+                <span>missing in GitHub Copilot</span>
+              </li>
+              <li>
+                <code>.agents/skills/pdf/</code>
+                <span>shared by {counts.shared_primary} agents · unsafe to delete manually</span>
+              </li>
+            </ul>
+          </div>
+
+          <div class="ba-card ba-card--after">
+            <div class="ba-card__head">
+              <span class="overline">After · Managed with Skill Porter</span>
+              <span class="ba-card__tag ba-card__tag--ok">Pinned &amp; synchronized</span>
+            </div>
+            <ul class="ba-card__list">
+              <li>
+                <code>skillporter.yaml + skillporter.lock</code>
+                <span>commit &amp; per-file SHA-256 recorded</span>
+              </li>
+              <li>
+                <code>.claude/skills/pdf · .windsurf/skills/pdf</code>
+                <span>verified identical bytes</span>
+              </li>
+              <li>
+                <code>.agents/skills/pdf</code>
+                <span>written once · shared safely across {counts.shared_primary} harnesses</span>
+              </li>
+              <li>
+                <code>skillporter lock --check</code>
+                <span>flags drift immediately locally or in CI</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+
         <div class="answer">
           <div class="answer__head">
-            <h3>One install reaches every directory.</h3>
+            <h3>One install reaches every directory cleanly.</h3>
             <p>
-              <code class="ic">skillporter add</code> plans a destination per adapter and writes each directory once. Harnesses
-              that share a directory share the copy.
+              <code class="ic">skillporter add</code> plans a destination per adapter and writes each directory once.
+              Harnesses that share a directory share the copy.
             </p>
           </div>
           <FanOut />
@@ -447,28 +488,61 @@ const structuredData = [
       </div>
     </section>
 
-    <!-- =========================== CAPABILITIES ========================= -->
-    <section class="section section--alt" id="features" aria-labelledby="features-title">
+    <!-- =========================== HOW IT WORKS ========================= -->
+    <section class="section section--alt" id="how-it-works" aria-labelledby="how-title">
       <div class="wrap">
-        <SectionHead index="02" label="Capabilities" id="features-title" title="A package manager's job, done for skills.">
+        <SectionHead index="02" label="How it works" id="how-title" title="Three moves, all on your machine.">
+          Skillporter is a command-line tool. It runs where you run it: a laptop, a container, a CI runner. This website
+          installs nothing and executes nothing.
+        </SectionHead>
+
+        <ol class="steps">
+          {
+            steps.map((step) => (
+              <li>
+                <span class="steps__node" aria-hidden="true" />
+                <span class="index">{step.index}</span>
+                <h3>{step.title}</h3>
+                <code class="steps__cmd">{step.command}</code>
+                <p>{step.body}</p>
+                <a class="steps__docs" href={step.docs}>
+                  Docs <span aria-hidden="true">→</span>
+                </a>
+              </li>
+            ))
+          }
+        </ol>
+      </div>
+    </section>
+
+    <!-- ====================== CAPABILITIES: PILLARS ===================== -->
+    <section class="section" id="capabilities" aria-labelledby="capabilities-title">
+      <div class="wrap">
+        <SectionHead index="03" label="Core capabilities" id="capabilities-title" title="A package manager's job, done for skills.">
           Installing is the entry point. What stays behind matters more: a record of what was installed, where, from
           which commit, and whether it has changed since.
         </SectionHead>
 
         <article class="feature">
           <div class="feature__text">
-            <h3>Universal skill management</h3>
+            <span class="index">Pillar A</span>
+            <h3>Skill management</h3>
+            <p class="feature__kicker">One workflow to manage skills across your AI coding environments.</p>
             <p>
-              Point <code class="ic">add</code> at a GitHub repository, a Git URL, an archive or a local directory. Skillporter
-              resolves it, selects the skills you name and installs them for the harnesses you choose.
+              Point <code class="ic">add</code> at a GitHub repository, a Git URL, an archive or a local directory.
+              Skillporter resolves it, selects the skills you name and installs them for the harnesses you choose.
             </p>
             <ul class="ticks">
               <li>Copy by default, relative symlinks on request</li>
               <li>Include, exclude or isolate specific harnesses</li>
               <li>Project scope, user scope and named profiles</li>
+              <li>Export, diff and restore whole environments as .skillpack archives</li>
               <li>Removal and cross-harness move that keep shared copies intact</li>
             </ul>
-            <a class="arrow-link" href="/docs/skill-management">Skill management</a>
+            <p class="feature__links">
+              <a class="arrow-link" href="/docs/skill-management">Skill management</a>
+              <a class="arrow-link" href="/docs/portability">Portability and profiles</a>
+            </p>
           </div>
           <CodeFrame
             code={addExamples}
@@ -480,27 +554,21 @@ const structuredData = [
 
         <article class="feature feature--flip">
           <div class="feature__text">
-            <h3>Portable environments and profiles</h3>
-            <p>
-              <code class="ic">export</code> packages your managed skills, provenance, lockfile hashes and named
-              profiles into a single <code class="ic">.skillpack</code> archive, stripping <code class="ic">.env</code>
-              files and blocking embedded secrets. <code class="ic">diff</code> compares setups, and
-              <code class="ic">import</code> verifies every file hash and scans statically before restoring offline.
-            </p>
-            <a class="arrow-link" href="/docs/portability">Portability and profiles</a>
-          </div>
-          <Transcript recording="portability" title="offline .skillpack export and restoration preview" wrap />
-        </article>
-
-        <article class="feature">
-          <div class="feature__text">
-            <h3>Synchronization and drift detection</h3>
+            <span class="index">Pillar B</span>
+            <h3>Synchronization and reproducibility</h3>
+            <p class="feature__kicker">Keep every environment consistent and know when something changes.</p>
             <p>
               Every copy of a skill is hashed. When one diverges, <code class="ic">diagnose</code> and
-              <code class="ic">lock --check</code> say which copy and which hash. <code class="ic">sync</code> will not overwrite
-              a changed copy until you name the authoritative one, and it snapshots what it replaces.
+              <code class="ic">lock --check</code> say which copy and which hash. <code class="ic">sync</code> will not
+              overwrite a changed copy until you name the authoritative one, and it snapshots what it replaces.
             </p>
-            <a class="arrow-link" href="/docs/synchronization">Synchronization</a>
+            <ul class="ticks">
+              <li>skillporter.lock pins the commit and every file hash</li>
+              <li>Drift detection names the copy and the changed file</li>
+              <li>Transactional install: stage, journal, swap, commit</li>
+              <li>rollback restores the most recent snapshot</li>
+            </ul>
+            <a class="arrow-link" href="/docs/synchronization">Synchronization and lockfiles</a>
           </div>
           <div class="stack">
             <Transcript recording="lock-check-drift" title="lockfile check, after one copy was edited" wrap />
@@ -508,68 +576,32 @@ const structuredData = [
           </div>
         </article>
 
-        <article class="feature">
-          <div class="feature__text">
-            <h3>One set of instructions for every agent</h3>
-            <p>
-              Most projects end up with <code class="ic">CLAUDE.md</code>, <code class="ic">AGENTS.md</code>,
-              Cursor rules and a Copilot file that repeat each other and slowly disagree.
-              <code class="ic">consolidate</code> finds them, reports overlap and contradictions, and keeps one canonical
-              source. It needs no installed skills.
-            </p>
-            <ul class="ticks">
-              <li>Read-only by default, with a backup and <code class="ic">--rollback</code> before anything is rewritten</li>
-              <li>Refuses to apply contradictory rules, and keeps code blocks, tables and lines it cannot classify</li>
-              <li>Path-scoped rule files are left alone, and hand edits to generated files are detected</li>
-            </ul>
-            <a class="arrow-link" href="/docs/instructions">Instruction files and context</a>
+        <div class="repro" id="reproducibility">
+          <CodeFrame code={lockExample} lang="json" title="skillporter.lock" note={lockNote} copy={false} />
+          <div class="repro__side">
+            <dl class="fields">
+              {
+                lockFields.map(([name, text]) => (
+                  <div>
+                    <dt>
+                      <code>{name}</code>
+                    </dt>
+                    <dd>{text}</dd>
+                  </div>
+                ))
+              }
+            </dl>
+            <div class="repro__limits">
+              <h3>Where the guarantee stops</h3>
+              <ul>
+                <li>A local source is pinned by content, not by origin.</li>
+                <li>An unpinned remote source makes the whole lockfile non-reproducible, and the file says so.</li>
+                <li>The lockfile pins a skill's files. It does not pin what its scripts download at runtime.</li>
+              </ul>
+              <a class="arrow-link" href="/docs/lockfiles">Lockfiles</a>
+            </div>
           </div>
-          <CodeFrame code={instructionsExample} lang="bash" title="instruction files" copy="skillporter consolidate" />
-        </article>
-
-        <article class="feature feature--flip">
-          <div class="feature__text">
-            <h3>Capabilities, policy and readable updates</h3>
-            <p>
-              A skill can declare what it needs, and Skillporter compares that with what static analysis finds in its
-              files. A project policy decides which sources, capabilities and risk levels are allowed, and
-              <code class="ic">update --check</code> shows the added files, new capabilities and new findings before you accept a
-              version.
-            </p>
-            <p>
-              Declarations are audited, not enforced. A harness still runs whatever a skill contains, and a clean scan does
-              not prove a skill is safe.
-            </p>
-            <a class="arrow-link" href="/docs/policy">Policy and update review</a>
-          </div>
-          <CodeFrame code={policyExample} lang="yaml" title="project policy" />
-        </article>
-
-        <article class="feature">
-          <div class="feature__text">
-            <h3>Author, test and measure</h3>
-            <p>
-              <code class="ic">new</code>, <code class="ic">lint</code> and <code class="ic">preview</code> scaffold a skill,
-              check it and show what each harness receives. <code class="ic">test</code> runs the prompts in
-              <code class="ic">skill.test.yaml</code> against the description. <code class="ic">suggest</code> and
-              <code class="ic">insights</code> analyze the project locally and estimate context cost.
-            </p>
-            <p>
-              Offline tests are lexical, and token figures are estimates. Neither predicts what a model will do, and usage
-              is never reported unless you record it.
-            </p>
-            <p class="feature__links">
-              <a class="arrow-link" href="/docs/authoring">Authoring and testing</a>
-              <a class="arrow-link" href="/docs/insights">Suggestions and insights</a>
-            </p>
-          </div>
-          <CodeFrame
-            code={authoringExample}
-            lang="bash"
-            title="authoring workflow"
-            copy="skillporter lint ./release-notes"
-          />
-        </article>
+        </div>
 
         <article class="feature feature--wide">
           <div class="feature__text">
@@ -598,72 +630,62 @@ const structuredData = [
           </ol>
         </article>
 
-        <article class="feature feature--auto">
+        <article class="feature">
           <div class="feature__text">
-            <h3>Automation</h3>
+            <span class="index">Pillar C</span>
+            <h3>Security and integrity</h3>
+            <p class="feature__kicker">
+              Understand what your agents are being instructed to do before installing untrusted skills.
+            </p>
             <p>
-              Checks return fixed exit codes: <code class="ic">0</code> clean, <code class="ic">1</code> finding,
-              <code class="ic">2</code> could not run. The repository ships a GitHub Action, and
-              <code class="ic">skillporter mcp</code> exposes the same checks to an agent as a read-only tool server.
+              Skills contain prompt instructions and executable scripts. Before writing a file, Skill Porter validates
+              package structure, runs deterministic static analysis, compares declared vs. inferred capabilities, and
+              evaluates your committed <code class="ic">skillporter.policy.yaml</code>.
             </p>
+            <ul class="ticks">
+              <li>Static AST, shell, archive and prompt-override analysis</li>
+              <li>Project policies for approved sources, risk ceilings and banned capabilities</li>
+              <li>Human-readable <code class="ic">update --check</code> diffs before accepting new versions</li>
+              <li>Explicit boundary: static checks audit files and never guarantee runtime safety</li>
+            </ul>
             <p class="feature__links">
-              <a class="arrow-link" href="/docs/ci">CI and GitHub Actions</a>
-              <a class="arrow-link" href="/docs/mcp">MCP integration</a>
+              <a class="arrow-link" href="#security">Inspect the security model</a>
+              <a class="arrow-link" href="/docs/policy">Policy and update review</a>
             </p>
           </div>
-          <div class="stack">
-            <CodeFrame code={actionExample} lang="yaml" title=".github/workflows/skills.yml" />
-            <CodeFrame code={mcpExample} lang="bash" title="MCP server" copy="claude mcp add skillporter -- uvx skillporter mcp" />
-          </div>
+          <CodeFrame code={policyExample} lang="yaml" title="skillporter.policy.yaml + update review" />
         </article>
       </div>
     </section>
 
-    <!-- =========================== HOW IT WORKS ========================= -->
-    <section class="section" id="how-it-works" aria-labelledby="how-title">
-      <div class="wrap">
-        <SectionHead index="03" label="How it works" id="how-title" title="Four steps, all on your machine.">
-          Skillporter is a command-line tool. It runs where you run it: a laptop, a container, a CI runner. This website
-          installs nothing and executes nothing.
-        </SectionHead>
-
-        <ol class="steps">
-          {
-            steps.map((step, i) => (
-              <li>
-                <span class="steps__node" aria-hidden="true" />
-                <span class="index">Step {i + 1}</span>
-                <h3>{step.title}</h3>
-                <code class="steps__cmd">{step.command}</code>
-                <p>{step.body}</p>
-              </li>
-            ))
-          }
-        </ol>
-      </div>
-    </section>
-
-    <!-- ============================= HARNESSES ========================== -->
+    <!-- =========================== HARNESSES ========================== -->
     <section class="section section--alt" id="harnesses" aria-labelledby="harnesses-title">
       <div class="wrap">
         <SectionHead
           index="04"
           label="Harness compatibility"
           id="harnesses-title"
-          title={`${counts.total} adapters. Each one labeled with how it was verified.`}
+          title="One skill management workflow. Multiple AI agent environments."
         >
           Support type says how a harness consumes a skill. Verification says what evidence backs the adapter. They are
-          separate columns because they are separate claims.
+          separate columns because they are separate claims: nothing is marked runtime verified just because a
+          directory was created.
         </SectionHead>
         <HarnessMatrix />
       </div>
     </section>
 
-    <!-- ============================== SECURITY ========================== -->
+    <!-- ============================= SECURITY ========================== -->
     <section class="section" id="security" aria-labelledby="security-title">
       <div class="wrap">
-        <SectionHead index="05" label="Security and trust" id="security-title" title="Know what you're installing.">
+        <SectionHead
+          index="05"
+          label="Security and integrity"
+          id="security-title"
+          title="Understand what your agents are being instructed to do before installing untrusted skills."
+        >
           Skillporter assesses a skill before it writes a file, and it is specific about what that assessment covers.
+          It is static analysis, not a guarantee.
         </SectionHead>
 
         <div class="sec-grid">
@@ -719,49 +741,64 @@ const structuredData = [
       </div>
     </section>
 
-    <!-- =========================== REPRODUCIBILITY ====================== -->
-    <section class="section section--alt" id="reproducibility" aria-labelledby="repro-title">
+    <!-- =========================== WHY SKILLPORTER ====================== -->
+    <section class="section section--alt" id="comparison" aria-labelledby="comparison-title">
       <div class="wrap">
-        <SectionHead
-          index="06"
-          label="Reproducibility and integrity"
-          id="repro-title"
-          title="Same source. Same installation. Less uncertainty."
-        >
-          The lockfile pins each skill to a commit and to the hash of every file. A teammate or a CI job installs the
-          same content, or is told precisely what differs.
+        <SectionHead index="06" label="Why Skillporter" id="comparison-title" title="Compared to managing skills by hand.">
+          Git and symlinks can do parts of this job, and nothing is hidden here. The difference is that the pieces that
+          actually break are integrated into one workflow, with one record and one exit code.
         </SectionHead>
 
-        <div class="repro">
-          <CodeFrame code={lockExample} lang="json" title="skillporter.lock" note={lockNote} copy={false} />
-          <div class="repro__side">
-            <dl class="fields">
+        <div class="compare" role="region" aria-label="Comparison of manual management, copy scripts and Skillporter">
+          <table class="compare__table">
+            <caption class="sr-only">
+              Capability comparison: manual management, ad hoc copy scripts, and Skillporter.
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">Capability</th>
+                <th scope="col">Manual management</th>
+                <th scope="col">Copy scripts</th>
+                <th scope="col" class="compare__col-sp">
+                  <span class="chip chip--plain compare__sp">SkillPorter</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
               {
-                lockFields.map(([name, text]) => (
-                  <div>
-                    <dt>
-                      <code>{name}</code>
-                    </dt>
-                    <dd>{text}</dd>
-                  </div>
+                comparison.map((row) => (
+                  <tr>
+                    <th scope="row">{row.dim}</th>
+                    <td>{row.manual}</td>
+                    <td>{row.scripts}</td>
+                    <td class="compare__cell-sp">{row.sp}</td>
+                  </tr>
                 ))
               }
-            </dl>
-            <div class="repro__limits">
-              <h3>Where the guarantee stops</h3>
-              <ul>
-                <li>A local source is pinned by content, not by origin.</li>
-                <li>An unpinned remote source makes the whole lockfile non-reproducible, and the file says so.</li>
-                <li>The lockfile pins a skill's files. It does not pin what its scripts download at runtime.</li>
-              </ul>
-              <a class="arrow-link" href="/docs/lockfiles">Lockfiles</a>
-            </div>
-          </div>
+            </tbody>
+          </table>
         </div>
+
+        <p class="compare__note">
+          If a skill is for a single agent in a single machine, copying the folder is fine. Skillporter earns its place
+          where the same skills serve several agents, several projects, several people, or a CI pipeline that must fail
+          on a risky update.
+        </p>
       </div>
     </section>
 
-    <!-- ============================== WORKFLOW ========================== -->
+    <!-- ============================ DEMO ============================== -->
+    <section class="demo-band" aria-labelledby="demo-title">
+      <div class="wrap">
+        <div class="demo-band__head">
+          <h2 id="demo-title">The CLI on a real workspace</h2>
+          <p>Each panel is output recorded from the released CLI. Nothing runs in your browser.</p>
+        </div>
+        <TerminalDemo />
+      </div>
+    </section>
+
+    <!-- ============================ WORKFLOW =========================== -->
     <section class="section" id="workflow" aria-labelledby="workflow-title">
       <div class="wrap">
         <SectionHead index="07" label="Developer workflow" id="workflow-title" title="The commands you will actually run.">
@@ -790,17 +827,108 @@ const structuredData = [
             ))
           }
         </ul>
-        <p class="cmds__more">
-          <a class="arrow-link" href="/docs/cli">Full CLI reference</a>
-        </p>
+
+        <div class="more">
+          <article class="more__cell">
+            <h3>One set of instructions for every agent</h3>
+            <p>
+              <code class="ic">consolidate</code> finds CLAUDE.md, AGENTS.md, Cursor rules and the like, reports overlap
+              and contradictions, and keeps one canonical source. Read-only by default, with a backup and
+              <code class="ic">--rollback</code>.
+            </p>
+            <a class="arrow-link" href="/docs/instructions">Instruction files and context</a>
+          </article>
+          <article class="more__cell">
+            <h3>Capabilities, policy and readable updates</h3>
+            <p>
+              A skill can declare what it needs, and a project policy decides which sources, capabilities and risk
+              levels are allowed. <code class="ic">update --check</code> shows new files, new capabilities and new
+              findings before you accept a version.
+            </p>
+            <a class="arrow-link" href="/docs/policy">Policy and update review</a>
+          </article>
+          <article class="more__cell">
+            <h3>Author, test and measure</h3>
+            <p>
+              <code class="ic">new</code>, <code class="ic">lint</code>, <code class="ic">preview</code> and
+              <code class="ic">test</code> cover the authoring loop. Offline tests are lexical and token figures are
+              estimates; neither predicts what a model will do.
+            </p>
+            <a class="arrow-link" href="/docs/authoring">Authoring and testing</a>
+          </article>
+          <article class="more__cell">
+            <h3>CI, GitHub Actions and MCP</h3>
+            <p>
+              Checks return fixed exit codes: <code class="ic">0</code> clean, <code class="ic">1</code> finding,
+              <code class="ic">2</code> could not run. A GitHub Action and a read-only MCP server expose the same checks
+              to your pipeline and your agents.
+            </p>
+            <p class="feature__links">
+              <a class="arrow-link" href="/docs/ci">CI and GitHub Actions</a>
+              <a class="arrow-link" href="/docs/mcp">MCP integration</a>
+            </p>
+          </article>
+        </div>
       </div>
     </section>
 
-    <!-- ============================ OPEN SOURCE ========================= -->
-    <section class="section section--alt" id="open-source" aria-labelledby="oss-title">
+    <!-- ============================ ONBOARDING ========================= -->
+    <section class="section section--alt" id="get-started" aria-labelledby="start-title">
       <div class="wrap">
-        <SectionHead index="08" label="Open source" id="oss-title" title="Read the code. Run it yourself.">
-          Skillporter is developed in the open under the {release.license} License. The adapter registry, the scanner
+        <SectionHead index="08" label="Get started" id="start-title" title="From install to first synchronized skill in three commands.">
+          The recommended channel is <code class="ic">uv tool install skillporter</code>. Every channel below runs the
+          same Python core with zero runtime dependencies.
+        </SectionHead>
+
+        <div class="onboard">
+          <div class="onboard__panel">
+            <p class="overline">Recommended install</p>
+            <InstallPanel />
+          </div>
+          <ol class="onboard__first" aria-label="First workflow">
+            <li>
+              <span class="index">1</span>
+              <div class="onboard__cmd">
+                <code>
+                  <span class="t-prompt" aria-hidden="true">$ </span>uvx skillporter demo
+                </code>
+                <CopyButton text="uvx skillporter demo" label="Copy demo command" />
+              </div>
+              <p>Try the whole workflow in a temporary directory. It writes nothing to your project.</p>
+            </li>
+            <li>
+              <span class="index">2</span>
+              <div class="onboard__cmd">
+                <code>
+                  <span class="t-prompt" aria-hidden="true">$ </span>skillporter add anthropics/skills --skill pdf
+                </code>
+                <CopyButton
+                  text="skillporter add anthropics/skills --skill pdf"
+                  label="Copy first add command"
+                />
+              </div>
+              <p>Install a real skill across your detected or configured coding agents.</p>
+            </li>
+            <li>
+              <span class="index">3</span>
+              <div class="onboard__cmd">
+                <code>
+                  <span class="t-prompt" aria-hidden="true">$ </span>skillporter status
+                </code>
+                <CopyButton text="skillporter status" label="Copy status command" />
+              </div>
+              <p>See the manifest, the lockfile, and where every copy lives.</p>
+            </li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================ OPEN SOURCE ======================== -->
+    <section class="section" id="open-source" aria-labelledby="oss-title">
+      <div class="wrap">
+        <SectionHead index="09" label="Open source" id="oss-title" title="Read the code. Run it yourself.">
+          Skill Porter is developed in the open under the {release.license} License. The adapter registry, the scanner
           rules and the installer are all in the repository.
         </SectionHead>
 
@@ -833,7 +961,7 @@ const structuredData = [
           </div>
           <div class="closing__actions">
             <a class="btn btn--primary" href="/docs/getting-started">Get Started</a>
-            <a class="btn btn--secondary" href={LINKS.repo} rel="noopener">View on GitHub</a>
+            <a class="btn btn--secondary" href={LINKS.repo} rel="noopener">Explore GitHub</a>
           </div>
         </div>
       </div>
@@ -845,7 +973,7 @@ const structuredData = [
   /* ------------------------------------------------------------------ hero */
   .hero {
     position: relative;
-    padding-top: clamp(2.75rem, 1rem + 6vw, 6rem);
+    padding-top: clamp(1.75rem, 0.8rem + 2.6vw, 3.25rem);
     background-image:
       radial-gradient(34rem 24rem at var(--spot-x, 26%) var(--spot-y, 24%), rgb(21 91 232 / 0.055), transparent 70%),
       var(--hero-wash);
@@ -857,107 +985,12 @@ const structuredData = [
   .hero__copy > .overline {
     animation: hero-rise 460ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
-  .hero-ticker {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    max-width: 100%;
-    overflow: hidden;
-    margin-top: 0.85rem;
-    padding: 0.3rem 0.7rem 0.3rem 0.55rem;
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    box-shadow: var(--shadow-card-sm);
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
-    line-height: 1.4;
-    animation: hero-rise 500ms cubic-bezier(0.16, 1, 0.3, 1) 45ms both;
-  }
-  .hero-ticker__node {
-    flex: none;
-    width: 7px;
-    height: 7px;
-    background: var(--amber);
-    transform: rotate(45deg);
-    animation: ticker-pulse 2.4s ease-in-out infinite;
-  }
-  .hero-ticker__src {
-    flex: none;
-    color: var(--ivory);
-    font-weight: 500;
-  }
-  .hero-ticker__sep {
-    flex: none;
-    color: var(--amber-ink);
-  }
-  .hero-ticker__window {
-    flex: 1 1 auto;
-    display: block;
-    height: 1.4em;
-    overflow: hidden;
-    min-width: 0;
-  }
-  .hero-ticker__track {
-    display: flex;
-    flex-direction: column;
-    color: var(--blue-ink);
-    animation: ticker-roll 14.4s cubic-bezier(0.22, 1, 0.36, 1) 1.2s infinite;
-  }
-  .hero-ticker__track > span {
-    display: block;
-    height: 1.4em;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  @keyframes ticker-pulse {
-    0%,
-    100% {
-      transform: rotate(45deg) scale(0.92);
-      opacity: 0.75;
-    }
-    50% {
-      transform: rotate(45deg) scale(1.15);
-      opacity: 1;
-    }
-  }
-  @keyframes ticker-roll {
-    0%,
-    12% {
-      transform: translateY(0);
-    }
-    16.66%,
-    28.66% {
-      transform: translateY(-1.4em);
-    }
-    33.33%,
-    45.33% {
-      transform: translateY(-2.8em);
-    }
-    50%,
-    62% {
-      transform: translateY(-4.2em);
-    }
-    66.66%,
-    78.66% {
-      transform: translateY(-5.6em);
-    }
-    83.33%,
-    95.33% {
-      transform: translateY(-7em);
-    }
-    100% {
-      transform: translateY(-8.4em);
-    }
-  }
-
   .hero h1 {
-    margin-top: 1.25rem;
-    font-size: var(--text-display);
+    margin-top: 0.9rem;
+    font-size: clamp(2.25rem, 1.35rem + 2.85vw, 3.625rem);
     font-weight: 500;
-    line-height: 0.98;
-    letter-spacing: -0.045em;
+    line-height: 1.04;
+    letter-spacing: -0.042em;
   }
   .hero-title__mask {
     display: block;
@@ -986,40 +1019,9 @@ const structuredData = [
       transform: translateY(0);
     }
   }
-
-  /* Subtle precision light-sweep across "Every agent." */
   .hero-title__sheen {
-    background-image: linear-gradient(
-      108deg,
-      var(--ivory) 0%,
-      var(--ivory) 38%,
-      var(--electric) 47%,
-      var(--amber) 53%,
-      var(--ivory) 62%,
-      var(--ivory) 100%
-    );
-    background-size: 260% 100%;
-    background-position: 100% 50%;
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-    animation: title-sheen 7.5s cubic-bezier(0.4, 0, 0.2, 1) 0.9s infinite;
+    color: var(--ivory);
   }
-  .hero h1:hover .hero-title__sheen {
-    animation-duration: 3.2s;
-  }
-  @keyframes title-sheen {
-    0%,
-    14% {
-      background-position: 100% 50%;
-    }
-    46%,
-    100% {
-      background-position: 0% 50%;
-    }
-  }
-
-  /* Architectural bridge span rule under "Every agent." */
   .hero-title__span {
     position: relative;
     display: block;
@@ -1088,68 +1090,55 @@ const structuredData = [
       opacity: 0;
     }
   }
-
   .hero__lead {
     animation: hero-rise 520ms cubic-bezier(0.16, 1, 0.3, 1) 240ms both;
   }
   .hero__actions {
     animation: hero-rise 520ms cubic-bezier(0.16, 1, 0.3, 1) 300ms both;
   }
-  .hero__install {
+  .hero__hint {
+    margin-top: 1.4rem;
+    font-size: 0.875rem;
+    color: var(--text-3);
+    animation: hero-rise 540ms cubic-bezier(0.16, 1, 0.3, 1) 360ms both;
+  }
+  .hero__hint code {
+    font-size: 0.8125rem;
+    color: var(--ivory);
+    background: var(--surface);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-s);
+    padding: 0.08em 0.38em;
+  }
+  .hero__visual {
+    min-width: 0;
     animation: hero-rise 560ms cubic-bezier(0.16, 1, 0.3, 1) 180ms both;
-  }
-  .hero__facts {
-    animation: hero-rise 520ms cubic-bezier(0.16, 1, 0.3, 1) 360ms both;
-  }
-  .demo-band {
-    animation: hero-rise 580ms cubic-bezier(0.16, 1, 0.3, 1) 400ms both;
   }
   .hero__grid {
     display: grid;
-    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
-    gap: 3rem var(--gutter);
-    align-items: end;
+    grid-template-columns: minmax(0, 6fr) minmax(0, 6fr);
+    gap: 2.5rem var(--gutter);
+    align-items: center;
   }
   .hero__lead {
-    margin-top: 1.75rem;
-    max-width: 34rem;
+    margin-top: 1.25rem;
+    max-width: 33rem;
     font-size: var(--text-lead);
-    line-height: 1.5;
+    line-height: 1.52;
   }
   .hero__actions {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 0.75rem 0.85rem;
-    margin-top: 2.25rem;
-  }
-  .hero__actions .arrow-link {
-    margin-left: 0.5rem;
-  }
-  .hero__install {
-    min-width: 0;
-  }
-  .hero__install-label {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    margin-bottom: 0.7rem;
-  }
-  .hero__install-label a {
-    font-family: var(--font-mono);
-    font-size: var(--text-micro);
-    color: var(--amber-ink);
-  }
-  .hero__install-label a:hover {
-    text-decoration: underline;
-    text-underline-offset: 0.2em;
+    margin-top: 1.65rem;
   }
   .hero__facts {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem 2.25rem;
-    margin: clamp(2.5rem, 1.5rem + 3vw, 4.5rem) 0 0;
-    padding: 1.1rem 0 0;
+    margin: clamp(1.75rem, 1.2rem + 2vw, 2.75rem) 0 0;
+    padding: 0.95rem 0 0;
     list-style: none;
     border-top: 1px solid var(--border);
     font-family: var(--font-mono);
@@ -1164,7 +1153,8 @@ const structuredData = [
 
   /* ------------------------------------------------------------- demo band */
   .demo-band {
-    padding-top: clamp(2.5rem, 1.5rem + 3vw, 4rem);
+    padding: clamp(2.5rem, 1.5rem + 3vw, 4rem) 0 0;
+    animation: hero-rise 580ms cubic-bezier(0.16, 1, 0.3, 1) 400ms both;
   }
   .demo-band__head {
     display: flex;
@@ -1234,6 +1224,74 @@ const structuredData = [
     line-height: 1.55;
   }
 
+  .before-after {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.25rem;
+    margin-top: clamp(2.5rem, 1.5rem + 3vw, 3.75rem);
+  }
+  .ba-card {
+    padding: 1.35rem 1.45rem 1.4rem;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-l);
+    box-shadow: var(--shadow-card-sm);
+  }
+  .ba-card--after {
+    border-color: color-mix(in srgb, var(--electric) 45%, var(--border));
+  }
+  .ba-card__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding-bottom: 0.9rem;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .ba-card__tag {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.04em;
+    padding: 0.16rem 0.55rem;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+  }
+  .ba-card__tag--warn {
+    color: var(--amber-ink);
+    border-color: color-mix(in srgb, var(--amber) 50%, var(--border));
+  }
+  .ba-card__tag--ok {
+    color: var(--blue-ink);
+    border-color: color-mix(in srgb, var(--electric) 50%, var(--border));
+  }
+  .ba-card__list {
+    margin: 0.5rem 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .ba-card__list li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.2rem 1rem;
+    padding: 0.6rem 0;
+    border-bottom: 1px solid var(--border-soft);
+    font-size: 0.8125rem;
+  }
+  .ba-card__list li:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+  .ba-card__list code {
+    font-size: 0.78rem;
+    color: var(--ivory);
+  }
+  .ba-card__list span {
+    color: var(--text-3);
+  }
+
   .answer {
     margin-top: clamp(3.5rem, 2rem + 5vw, 6rem);
   }
@@ -1272,6 +1330,11 @@ const structuredData = [
   }
   .feature--flip .feature__text {
     order: 2;
+  }
+  .feature__kicker {
+    margin-top: 0.25rem;
+    font-size: 1.0625rem;
+    color: var(--text-3);
   }
   .feature__text p {
     margin-top: 1rem;
@@ -1315,7 +1378,6 @@ const structuredData = [
     gap: 1rem;
     min-width: 0;
   }
-
   .feature--wide {
     grid-template-columns: 1fr;
   }
@@ -1374,7 +1436,7 @@ const structuredData = [
   /* ----------------------------------------------------------------- steps */
   .steps {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     margin: 0;
     padding: 0;
     list-style: none;
@@ -1382,7 +1444,10 @@ const structuredData = [
   }
   .steps li {
     position: relative;
-    padding: 1.75rem 1.75rem 0 0;
+    padding: 1.75rem 1.75rem 0.25rem 0;
+  }
+  .steps li:last-child {
+    padding-right: 0;
   }
   .steps__node {
     position: absolute;
@@ -1390,22 +1455,12 @@ const structuredData = [
     left: 0;
     width: 7px;
     height: 7px;
-    background: var(--ivory);
-    transform: rotate(45deg);
-  }
-  .steps li:last-child::after {
-    content: '';
-    position: absolute;
-    top: -4px;
-    right: 0;
-    width: 7px;
-    height: 7px;
-    background: var(--ivory);
+    background: var(--amber);
     transform: rotate(45deg);
   }
   .steps h3 {
     margin-top: 0.85rem;
-    font-size: 1.25rem;
+    font-size: 1.375rem;
   }
   .steps__cmd {
     display: inline-block;
@@ -1417,6 +1472,19 @@ const structuredData = [
     margin-top: 0.75rem;
     font-size: 0.9375rem;
     line-height: 1.55;
+  }
+  .steps__docs {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-top: 0.9rem;
+    min-height: 32px;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-2);
+  }
+  .steps__docs:hover {
+    color: var(--ivory);
   }
 
   /* -------------------------------------------------------------- security */
@@ -1462,7 +1530,6 @@ const structuredData = [
   .layers .is-open dt span {
     color: var(--amber-ink);
   }
-
   .sec-lower {
     display: grid;
     grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
@@ -1518,6 +1585,8 @@ const structuredData = [
     grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
     gap: 2.5rem var(--gutter);
     align-items: start;
+    padding-block: clamp(2.5rem, 1.5rem + 3vw, 4rem);
+    border-top: 1px solid var(--border);
   }
   .fields {
     margin: 0;
@@ -1562,6 +1631,62 @@ const structuredData = [
     height: 6px;
     border: 1px solid var(--amber);
     transform: rotate(45deg);
+  }
+
+  /* ------------------------------------------------------------- comparison */
+  .compare {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-l);
+    background: var(--card);
+    box-shadow: var(--shadow-card-sm);
+  }
+  .compare__table {
+    width: 100%;
+    min-width: 46rem;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+  }
+  .compare__table th,
+  .compare__table td {
+    text-align: left;
+    vertical-align: top;
+    padding: 0.85rem 1rem;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .compare__table thead th {
+    font-family: var(--font-mono);
+    font-size: var(--text-micro);
+    font-weight: 500;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--text-2);
+    background: var(--card-subtle);
+  }
+  .compare__table tbody th {
+    font-weight: 500;
+    color: var(--ivory);
+    min-width: 12rem;
+  }
+  .compare__table tbody tr:last-child th,
+  .compare__table tbody tr:last-child td {
+    border-bottom: 0;
+  }
+  .compare__col-sp,
+  .compare__cell-sp {
+    background: color-mix(in srgb, var(--electric) 5%, transparent);
+  }
+  .compare__col-sp {
+    background: color-mix(in srgb, var(--electric) 8%, var(--card-subtle)) !important;
+  }
+  .compare__sp {
+    color: var(--blue-ink);
+  }
+  .compare__note {
+    max-width: 46rem;
+    margin: 1.5rem 0 0;
+    font-size: 0.9375rem;
+    color: var(--text-3);
   }
 
   /* -------------------------------------------------------------- commands */
@@ -1627,8 +1752,95 @@ const structuredData = [
   .cmds li > a:hover {
     color: var(--ivory);
   }
-  .cmds__more {
-    margin-top: 1.25rem;
+
+  .more {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.25rem;
+    margin-top: clamp(3rem, 2rem + 3vw, 4.5rem);
+  }
+  .more__cell {
+    padding: 1.5rem 1.6rem 1.6rem;
+    background: var(--card);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-l);
+    box-shadow: var(--shadow-card-sm);
+  }
+  .more__cell h3 {
+    font-size: 1.125rem;
+    letter-spacing: -0.01em;
+  }
+  .more__cell p {
+    margin-top: 0.65rem;
+    font-size: 0.9375rem;
+    line-height: 1.55;
+    color: var(--text-2);
+  }
+  .more__cell .arrow-link {
+    display: inline-flex;
+    margin-top: 0.9rem;
+  }
+
+  /* -------------------------------------------------------------- onboarding */
+  .onboard {
+    display: grid;
+    grid-template-columns: minmax(0, 6fr) minmax(0, 6fr);
+    gap: 2.5rem var(--gutter);
+    align-items: start;
+  }
+  .onboard__panel {
+    min-width: 0;
+  }
+  .onboard__panel > .overline {
+    margin-bottom: 0.9rem;
+  }
+  .onboard__first {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border-top: 1px solid var(--border);
+  }
+  .onboard__first li {
+    display: grid;
+    grid-template-columns: 2rem minmax(0, 1fr);
+    gap: 0.1rem 0.75rem;
+    padding: 1.15rem 0 1.3rem;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .onboard__first .index {
+    padding-top: 0.5rem;
+  }
+  .onboard__cmd {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    min-width: 0;
+    padding: 0.35rem 0.4rem 0.35rem 0.85rem;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-m);
+  }
+  .onboard__cmd code {
+    min-width: 0;
+    overflow-x: auto;
+    white-space: nowrap;
+    font-size: 0.8125rem;
+    color: var(--ivory);
+    scrollbar-width: none;
+  }
+  .onboard__cmd code::-webkit-scrollbar {
+    display: none;
+  }
+  .onboard__cmd .t-prompt {
+    color: var(--amber-ink);
+    user-select: none;
+  }
+  .onboard__first li p {
+    grid-column: 2;
+    margin-top: 0.5rem;
+    font-size: 0.9375rem;
+    line-height: 1.5;
   }
 
   /* ----------------------------------------------------------- open source */
@@ -1682,7 +1894,6 @@ const structuredData = [
     color: var(--amber-ink);
     transform: translate(2px, -2px);
   }
-
   .closing {
     display: grid;
     grid-template-columns: minmax(0, 5fr) minmax(0, 4fr) auto;
@@ -1716,7 +1927,6 @@ const structuredData = [
   }
   .closing__cmd .t-prompt {
     color: var(--amber-ink);
-    user-select: none;
   }
   .closing__actions {
     display: flex;
@@ -1746,29 +1956,32 @@ const structuredData = [
       grid-template-columns: 1fr;
       align-items: start;
     }
-    .hero__install {
+    .hero__lead {
       max-width: 40rem;
     }
     .sec-grid,
     .sec-lower,
     .repro,
     .feature,
-    .answer__head {
+    .answer__head,
+    .onboard,
+    .before-after {
       grid-template-columns: 1fr;
     }
     .feature--flip .feature__text {
       order: 0;
     }
     .steps {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      row-gap: 2.5rem;
+      grid-template-columns: 1fr;
+      row-gap: 2.25rem;
       border-top: 0;
     }
     .steps li {
       border-top: 1px solid var(--border);
+      padding-right: 0;
     }
-    .steps li:last-child::after {
-      display: none;
+    .more {
+      grid-template-columns: 1fr;
     }
     .links {
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1809,9 +2022,6 @@ const structuredData = [
     .hero__actions .btn {
       flex: 1 1 100%;
     }
-    .hero__actions .arrow-link {
-      margin-left: 0;
-    }
     .hero__facts {
       flex-direction: column;
       gap: 0.35rem;
@@ -1830,6 +2040,9 @@ const structuredData = [
     }
     .limits {
       padding: 1.25rem;
+    }
+    .onboard__first li {
+      grid-template-columns: 1.4rem minmax(0, 1fr);
     }
   }
 </style>

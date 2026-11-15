@@ -5,6 +5,7 @@ import CopyButton from './CopyButton.astro';
 interface Channel {
   id: string;
   label: string;
+  badge?: string;
   lines: string[];
   note: string;
   link?: { href: string; text: string };
@@ -12,34 +13,34 @@ interface Channel {
 
 const channels: Channel[] = [
   {
-    id: 'uvx',
-    label: 'uvx',
-    lines: ['uvx skillporter diagnose .'],
-    note: 'Runs the current release from PyPI without installing anything. Needs uv.',
+    id: 'uv',
+    label: 'uv (Recommended)',
+    lines: ['uv tool install skillporter'],
+    note: 'Installs the CLI globally in an isolated Python environment. Python 3.9+, zero runtime dependencies.',
   },
   {
-    id: 'uv',
-    label: 'uv',
-    lines: ['uv tool install skillporter'],
-    note: 'Installs the CLI into its own isolated environment.',
+    id: 'uvx',
+    label: 'uvx',
+    lines: ['uvx skillporter@latest demo'],
+    note: 'Try the current release directly from PyPI without installing anything permanently.',
   },
   {
     id: 'pipx',
     label: 'pipx',
     lines: ['pipx install skillporter'],
-    note: 'Installs the CLI into its own isolated environment.',
+    note: 'Installs the CLI into an isolated pipx environment on Linux, macOS, or Windows.',
   },
   {
     id: 'npx',
     label: 'npx',
-    lines: [`npx ${release.npm_package} diagnose .`],
-    note: 'A launcher for the same Python core. Needs Node 16+ and Python 3.9+.',
+    lines: [`npx ${release.npm_package}@latest diagnose .`],
+    note: 'Zero-setup Node launcher around the same Python core. Needs Node 16+ and Python 3.9+.',
   },
   {
     id: 'installer',
     label: 'Installer',
     lines: [`curl -fsSL ${release.installer_url} -o install.sh`, `SKILLPORTER_VERSION=${release.tag} sh install.sh`],
-    note: 'Linux and macOS. The installer checks the SHA-256, then requires proof of origin: a GitHub attestation (needs gh, signed in) or a digest you pin. It stops if neither is available.',
+    note: 'Linux and macOS. Verifies SHA-256 and requires proof of origin: a GitHub attestation (needs gh, signed in) or a pinned digest.',
     link: { href: '/docs/installation#standalone-release-installer', text: 'How verification works' },
   },
 ];
@@ -112,7 +113,7 @@ const channels: Channel[] = [
     margin-top: 0.8rem;
   }
   .install__note {
-    min-height: 4.6rem;
+    min-height: 4.4rem;
     padding: 0.85rem 1.15rem 1rem;
     border-top: 1px solid var(--border);
     font-size: 0.8125rem;
@@ -122,7 +123,7 @@ const channels: Channel[] = [
   }
   @media (max-width: 520px) {
     .install__note {
-      min-height: 6.6rem;
+      min-height: 5.8rem;
     }
   }
 </style>

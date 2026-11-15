@@ -23,8 +23,11 @@ const inDocs = currentPath === '/docs' || currentPath.startsWith('/docs/');
             <li>
               <a
                 href={item.href}
+                data-nav-home={item.href === '/' ? '' : undefined}
                 data-nav-section={item.section}
-                aria-current={item.href === '/docs' && inDocs ? 'page' : undefined}
+                aria-current={
+                  (item.href === '/' && currentPath === '/') || (item.href === '/docs' && inDocs) ? 'page' : undefined
+                }
                 rel={item.external ? 'noopener' : undefined}
               >
                 {item.label}
@@ -41,7 +44,7 @@ const inDocs = currentPath === '/docs' || currentPath.startsWith('/docs/');
           <circle cx="7" cy="7" r="4.75" stroke="currentColor" stroke-width="1.5"></circle>
           <path d="M10.5 10.5 14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path>
         </svg>
-        <span class="search-trigger__label">Search docs</span>
+        <span class="search-trigger__label">Search</span>
         <kbd class="search-trigger__kbd" data-search-kbd>Ctrl K</kbd>
       </button>
       <button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch to dark mode">
@@ -125,19 +128,23 @@ const inDocs = currentPath === '/docs' || currentPath.startsWith('/docs/');
   .site-header__inner {
     display: flex;
     align-items: center;
-    gap: 1.5rem;
+    gap: 1rem;
     height: var(--header-h);
   }
   .site-header__brand {
+    flex: none;
     display: flex;
     align-items: center;
     min-height: 44px;
     margin-right: auto;
   }
 
+  .site-nav {
+    flex: none;
+  }
   .site-nav ul {
     display: flex;
-    gap: 0.25rem;
+    gap: 0.15rem;
     margin: 0;
     padding: 0;
     list-style: none;
@@ -147,8 +154,9 @@ const inDocs = currentPath === '/docs' || currentPath.startsWith('/docs/');
     display: flex;
     align-items: center;
     height: var(--header-h);
-    padding-inline: 0.7rem;
+    padding-inline: 0.6rem;
     font-size: var(--text-small);
+    white-space: nowrap;
     color: var(--text-2);
     transition: color var(--dur) var(--ease);
   }
@@ -169,22 +177,25 @@ const inDocs = currentPath === '/docs' || currentPath.startsWith('/docs/');
   }
 
   .site-header__actions {
+    flex: none;
     display: flex;
     align-items: center;
     gap: 0.55rem;
   }
 
   .search-trigger {
+    flex: 0 0 auto;
     display: inline-flex;
     align-items: center;
-    gap: 0.55rem;
+    gap: 0.5rem;
     min-height: 36px;
-    padding: 0 0.6rem 0 0.7rem;
+    padding: 0 0.65rem 0 0.7rem;
     border: 1px solid var(--border);
     border-radius: var(--radius-m);
     background: var(--card);
     color: var(--text-3);
     font-size: var(--text-small);
+    white-space: nowrap;
     transition:
       color var(--dur) var(--ease),
       border-color var(--dur) var(--ease),
@@ -195,13 +206,21 @@ const inDocs = currentPath === '/docs' || currentPath.startsWith('/docs/');
     border-color: var(--text-3);
     transform: translateY(-1px);
   }
+  .search-trigger__label {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   .search-trigger__kbd {
+    flex: none;
     font-family: var(--font-mono);
     font-size: 0.6875rem;
     padding: 0.1rem 0.35rem;
     border: 1px solid var(--border);
     border-radius: 3px;
     color: var(--text-3);
+    white-space: nowrap;
   }
 
   .theme-toggle {
@@ -309,7 +328,13 @@ const inDocs = currentPath === '/docs' || currentPath.startsWith('/docs/');
     min-height: 52px;
   }
 
-  @media (max-width: 1080px) {
+  @media (min-width: 1181px) {
+    .search-trigger {
+      min-width: 9.75rem;
+      justify-content: space-between;
+    }
+  }
+  @media (max-width: 1180px) {
     .search-trigger__label {
       display: none;
     }

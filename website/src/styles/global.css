@@ -33,8 +33,9 @@ html[data-theme='light'] {
   --on-electric: #ffffff;
   --path-ink: #1e2d47;
   --backdrop: rgb(7 13 25 / 0.42);
-  --shadow-card: 0 1px 2px rgb(7 13 25 / 0.04), 0 10px 28px -12px rgb(7 13 25 / 0.08);
+  --shadow-card: 0 1px 2px rgb(7 13 25 / 0.05), 0 12px 32px -14px rgb(7 13 25 / 0.1);
   --shadow-card-sm: 0 1px 2px rgb(7 13 25 / 0.03), 0 4px 12px -4px rgb(7 13 25 / 0.05);
+  --shadow-card-lg: 0 1px 2px rgb(7 13 25 / 0.06), 0 28px 64px -24px rgb(7 13 25 / 0.16);
   --shadow-primary: 0 1px 2px rgb(21 91 232 / 0.22), 0 8px 20px -6px rgb(21 91 232 / 0.34);
   --hero-wash:
     radial-gradient(58rem 26rem at 18% -4%, rgb(21 91 232 / 0.06), transparent 70%),
@@ -100,6 +101,7 @@ html[data-theme='dark'] {
   --backdrop: rgb(4 8 16 / 0.78);
   --shadow-card: 0 14px 34px -16px rgb(0 0 0 / 0.55);
   --shadow-card-sm: none;
+  --shadow-card-lg: 0 24px 64px -20px rgb(0 0 0 / 0.68);
   --shadow-primary: 0 8px 22px -6px rgb(21 91 232 / 0.45);
   --hero-wash:
     radial-gradient(58rem 26rem at 18% -4%, rgb(21 91 232 / 0.11), transparent 70%),
@@ -699,7 +701,9 @@ samp {
   background: var(--code-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-l);
-  box-shadow: var(--shadow-card);
+  box-shadow:
+    0 0 0 1px rgb(7 13 25 / 0.015),
+    var(--shadow-card);
   overflow: hidden;
   min-width: 0;
   transition: border-color var(--dur-med) var(--ease);

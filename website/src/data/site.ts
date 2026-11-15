@@ -14,7 +14,7 @@ export const SITE = {
   tagline: 'One skill. Every agent.',
   positioning: 'Skill Porter is the package manager for AI agent skills.',
   description:
-    'Install, synchronize, pin, inspect and manage AI agent skills across multiple harnesses through one consistent workflow.',
+    'Install, synchronize, secure, and reproduce AI agent skills across your development environments. Manage your skills once and keep every supported agent in sync.',
   socialImage: '/brand/skillporter-social.png',
 } as const;
 
@@ -40,8 +40,8 @@ export interface NavItem {
 }
 
 export const PRIMARY_NAV: NavItem[] = [
-  { label: 'Product', href: '/#product', section: 'product' },
-  { label: 'Features', href: '/#features', section: 'features' },
+  { label: 'Home', href: '/' },
+  { label: 'Features', href: '/#capabilities', section: 'capabilities' },
   { label: 'Harnesses', href: '/#harnesses', section: 'harnesses' },
   { label: 'Security', href: '/#security', section: 'security' },
   { label: 'Documentation', href: '/docs' },

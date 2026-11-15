@@ -1,12 +1,13 @@
 # Skillporter
 
-> Skillporter, also written Skill Porter, is a package manager for AI agent skills. It installs, validates, security-scans, pins and synchronizes SKILL.md skill packages across 19 AI coding harnesses, including Claude Code, OpenAI Codex, Cursor, GitHub Copilot, Gemini CLI, Windsurf, Cline, Zed, OpenCode and Hermes Agent. Open source, MIT licensed, runs locally, zero runtime dependencies.
+> Skillporter, also written Skill Porter, is the package manager for AI agent skills. It installs, synchronizes, secures, and reproduces SKILL.md skill packages across 19 AI coding harnesses, including Claude Code, OpenAI Codex, Cursor, GitHub Copilot, Gemini CLI, Windsurf, Cline, Zed, OpenCode, and Hermes Agent. Open source, MIT licensed, runs locally, zero runtime dependencies.
 
 Key facts:
-- Install: uvx skillporter, pipx install skillporter, npm i -g @shanmukhdheekonda/skillporter, or the signed standalone installer from the GitHub release.
+- What it is: the package manager for AI agent skills, and cross-agent skill management in one workflow.
+- Install: uvx skillporter, pipx install skillporter, uv tool install skillporter, npx @shanmukhdheekonda/skillporter, or the signed standalone installer from the GitHub release.
 - Package names: skillporter (PyPI), @shanmukhdheekonda/skillporter (npm), Shanmukh-l33t/skillporter (GitHub).
-- Current release: 3.0.0.
-- Scope: one skill directory, many harness destinations, one lockfile. It does not run skills or host a marketplace.
+- Current release: 3.1.0.
+- Scope: one skill directory, many harness destinations, one lockfile. It synchronizes AI coding skills, detects drift, verifies content integrity, and does not run skills or host a marketplace.
 
 ## Documentation
 - [Home](https://www.skillporter.dev/): product overview and harness matrix.

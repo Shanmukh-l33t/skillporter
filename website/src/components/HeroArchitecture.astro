@@ -1,0 +1,402 @@
+---
+import lock from '../data/recordings/skillporter.lock.json';
+import { harnessData, release, tierLabel } from '../data/site';
+
+const locked = lock.skills.pdf;
+const sourceRepo = locked.source.replace(/^https:\/\/github\.com\//, '').replace(/\.git$/, '');
+
+const featuredIds = ['claude-code', 'codex', 'cursor', 'github-copilot', 'gemini-cli', 'opencode'] as const;
+const targets = featuredIds
+  .map((id) => harnessData.harnesses.find((h) => h.id === id))
+  .filter((h): h is NonNullable<typeof h> => Boolean(h));
+
+const { counts } = harnessData;
+---
+
+<figure class="arch" aria-label="SkillPorter architecture: one source skill synchronized across supported AI coding agents">
+  <div class="arch__chrome">
+    <span class="arch__dots" aria-hidden="true"><i></i><i></i><i></i></span>
+    <span class="arch__caption">WORKSPACE ARCHITECTURE · LOCAL-FIRST</span>
+    <span class="arch__ver">{release.tag}</span>
+  </div>
+
+  <div class="arch__body">
+    <!-- Node 1: One canonical source -->
+    <div class="arch__source">
+      <div class="arch__source-top">
+        <span class="arch__step">01 · CANONICAL SOURCE</span>
+        <span class="arch__hash">commit {locked.resolved_commit.slice(0, 8)}</span>
+      </div>
+      <div class="arch__source-main">
+        <code class="arch__pkg">{sourceRepo}/{locked.name}/SKILL.md</code>
+        <span class="arch__files">SKILL.md · scripts/ · references/</span>
+      </div>
+    </div>
+
+    <!-- Conduit down -->
+    <div class="arch__conduit" aria-hidden="true">
+      <span class="arch__wire"><i class="arch__signal"></i></span>
+    </div>
+
+    <!-- Node 2: SkillPorter integrity & sync layer -->
+    <div class="arch__engine">
+      <div class="arch__engine-head">
+        <span class="arch__step arch__step--accent">02 · SKILLPORTER INTEGRITY LAYER</span>
+        <code class="arch__cmd">skillporter add · sync</code>
+      </div>
+      <ul class="arch__gates" aria-label="Pre-install checks">
+        <li>
+          <span class="arch__gate-dot" aria-hidden="true"></span>
+          <b>Validate</b>
+          <span>SKILL.md spec</span>
+        </li>
+        <li>
+          <span class="arch__gate-dot" aria-hidden="true"></span>
+          <b>Static scan</b>
+          <span>risk {locked.risk_score}/100</span>
+        </li>
+        <li>
+          <span class="arch__gate-dot" aria-hidden="true"></span>
+          <b>Pin &amp; journal</b>
+          <span>skillporter.lock</span>
+        </li>
+      </ul>
+    </div>
+
+    <!-- Conduit down to agents -->
+    <div class="arch__conduit arch__conduit--fan" aria-hidden="true">
+      <span class="arch__wire"><i class="arch__signal arch__signal--delay"></i></span>
+    </div>
+
+    <!-- Node 3: Supported AI coding agents -->
+    <div class="arch__targets-wrap">
+      <div class="arch__targets-head">
+        <span class="arch__step">03 · SYNCHRONIZED AGENT ENVIRONMENTS</span>
+        <span class="arch__dedupe">{counts.shared_primary} share .agents/skills</span>
+      </div>
+      <ul class="arch__targets">
+        {
+          targets.map((h) => (
+            <li class="arch__target">
+              <div class="arch__target-row">
+                <span class="arch__agent">{h.name}</span>
+                <span class="chip" data-tier={h.verification} title={tierLabel(h.verification)}>
+                  {h.verification === 'RUNTIME_VERIFIED' ? 'Runtime' : 'Fixture'}
+                </span>
+              </div>
+              <code class="arch__path">
+                {h.project_primary}/{locked.name}
+              </code>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+  </div>
+
+  <figcaption class="arch__foot">
+    <span>
+      <b>{counts.total}</b> adapters · {counts.verification.RUNTIME_VERIFIED} runtime-verified ·{' '}
+      {counts.verification.FIXTURE_TESTED} fixture-tested
+    </span>
+    <a href="#harnesses">All {counts.total} harnesses →</a>
+  </figcaption>
+</figure>
+
+<style>
+  .arch {
+    margin: 0;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-l);
+    box-shadow: var(--shadow-card-lg);
+    overflow: hidden;
+  }
+
+  .arch__chrome {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.5rem 0.9rem;
+    background: var(--card-subtle);
+    border-bottom: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.06em;
+    color: var(--text-3);
+  }
+  .arch__dots {
+    display: inline-flex;
+    gap: 5px;
+  }
+  .arch__dots i {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--border);
+  }
+  .arch__ver {
+    color: var(--amber-ink);
+  }
+
+  .arch__body {
+    padding: 0.75rem 0.9rem 0.8rem;
+    background-image: radial-gradient(circle at 1px 1px, var(--border-soft) 1px, transparent 0);
+    background-size: 18px 18px;
+  }
+
+  .arch__step {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+  .arch__step--accent {
+    color: var(--blue-ink);
+    font-weight: 500;
+  }
+
+  /* Node 1: Source */
+  .arch__source {
+    padding: 0.75rem 0.9rem;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-m);
+    box-shadow: var(--shadow-card-sm);
+  }
+  .arch__source-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+  .arch__hash {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    color: var(--text-3);
+  }
+  .arch__source-main {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.25rem 0.75rem;
+    margin-top: 0.4rem;
+  }
+  .arch__pkg {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--ivory);
+  }
+  .arch__files {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    color: var(--text-3);
+  }
+
+  /* Conduits */
+  .arch__conduit {
+    display: flex;
+    justify-content: center;
+    height: 1.35rem;
+  }
+  .arch__wire {
+    position: relative;
+    display: block;
+    width: 1.5px;
+    height: 100%;
+    background: linear-gradient(180deg, var(--electric), var(--amber));
+    overflow: hidden;
+  }
+  .arch__signal {
+    position: absolute;
+    left: -1px;
+    top: -8px;
+    width: 3.5px;
+    height: 10px;
+    border-radius: 999px;
+    background: var(--amber);
+    animation: arch-drop 2.2s var(--ease-out) infinite;
+  }
+  .arch__signal--delay {
+    animation-delay: 0.75s;
+  }
+  @keyframes arch-drop {
+    0% {
+      transform: translateY(-6px);
+      opacity: 0;
+    }
+    25% {
+      opacity: 1;
+    }
+    80% {
+      opacity: 1;
+    }
+    100% {
+      transform: translateY(24px);
+      opacity: 0;
+    }
+  }
+
+  /* Node 2: SkillPorter Engine */
+  .arch__engine {
+    padding: 0.8rem 0.9rem 0.85rem;
+    background: var(--card);
+    border: 1px solid color-mix(in srgb, var(--electric) 45%, var(--border));
+    border-radius: var(--radius-m);
+    box-shadow: var(--shadow-card-sm);
+  }
+  .arch__engine-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.35rem 0.75rem;
+  }
+  .arch__cmd {
+    font-size: 0.72rem;
+    color: var(--ivory);
+    background: var(--code-bg);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-s);
+    padding: 0.1rem 0.45rem;
+  }
+  .arch__gates {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.45rem;
+    margin: 0.65rem 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .arch__gates li {
+    position: relative;
+    padding: 0.45rem 0.55rem 0.5rem 1.25rem;
+    background: var(--card-subtle);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-s);
+  }
+  .arch__gate-dot {
+    position: absolute;
+    left: 0.5rem;
+    top: 0.72rem;
+    width: 5px;
+    height: 5px;
+    background: var(--amber);
+    transform: rotate(45deg);
+  }
+  .arch__gates b {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--ivory);
+    line-height: 1.25;
+  }
+  .arch__gates li > span:last-child {
+    display: block;
+    margin-top: 0.12rem;
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    color: var(--text-3);
+  }
+
+  /* Node 3: Agent Targets */
+  .arch__targets-wrap {
+    padding: 0.75rem 0.85rem 0.85rem;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-m);
+  }
+  .arch__targets-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.25rem 0.75rem;
+    margin-bottom: 0.6rem;
+  }
+  .arch__dedupe {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    color: var(--amber-ink);
+  }
+  .arch__targets {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.45rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .arch__target {
+    padding: 0.48rem 0.6rem;
+    background: var(--card-subtle);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-s);
+    min-width: 0;
+    transition: border-color var(--dur) var(--ease);
+  }
+  .arch__target:hover {
+    border-color: var(--text-3);
+  }
+  .arch__target-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.4rem;
+  }
+  .arch__agent {
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--ivory);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .arch__path {
+    display: block;
+    margin-top: 0.18rem;
+    font-size: 0.6875rem;
+    color: var(--blue-ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .arch__foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.4rem 1rem;
+    padding: 0.65rem 1rem;
+    background: var(--card-subtle);
+    border-top: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    color: var(--text-3);
+  }
+  .arch__foot b {
+    font-weight: 500;
+    color: var(--ivory);
+  }
+  .arch__foot a {
+    color: var(--ivory);
+    font-weight: 500;
+    transition: color var(--dur) var(--ease);
+  }
+  .arch__foot a:hover {
+    color: var(--amber-ink);
+  }
+
+  @media (max-width: 580px) {
+    .arch__gates {
+      grid-template-columns: 1fr;
+    }
+    .arch__targets {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
