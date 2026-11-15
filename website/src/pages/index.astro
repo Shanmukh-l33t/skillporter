@@ -1934,8 +1934,216 @@ const structuredData = [
     gap: 0.75rem;
   }
 
+  /* ------------------------------------------------------- motion & flow */
+  /* Pointer-tracked elevation glow on the interactive cards. */
+  .ba-card,
+  .more__cell,
+  .limits {
+    position: relative;
+    isolation: isolate;
+  }
+  .ba-card::before,
+  .more__cell::before,
+  .limits::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    background: radial-gradient(
+      18rem circle at var(--card-x, 50%) var(--card-y, 0%),
+      rgb(21 91 232 / 0.09),
+      transparent 68%
+    );
+    opacity: 0;
+    transition: opacity 320ms var(--ease);
+    pointer-events: none;
+  }
+  .ba-card:hover::before,
+  .more__cell:hover::before,
+  .limits:hover::before {
+    opacity: 1;
+  }
+  .ba-card,
+  .more__cell {
+    transition:
+      border-color var(--dur-med) var(--ease),
+      box-shadow var(--dur-med) var(--ease),
+      transform var(--dur-med) var(--ease-out);
+  }
+  .ba-card:hover,
+  .more__cell:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-card);
+  }
+  .ba-card--after:hover {
+    border-color: color-mix(in srgb, var(--electric) 70%, var(--border));
+  }
+
+  /* A packet sweeps along the install-transaction rail, lighting each node in
+     turn. The failure branch is the last stop and stays amber. */
+  .txn {
+    position: relative;
+  }
+  .txn::after {
+    content: '';
+    position: absolute;
+    top: -1px;
+    left: 0;
+    width: 22%;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--amber), transparent);
+    animation: txn-flow 5.2s var(--ease) infinite;
+    pointer-events: none;
+  }
+  @keyframes txn-flow {
+    0% {
+      transform: translateX(-110%);
+      opacity: 0;
+    }
+    10% {
+      opacity: 1;
+    }
+    86% {
+      opacity: 1;
+    }
+    100% {
+      transform: translateX(460%);
+      opacity: 0;
+    }
+  }
+  .txn li::before {
+    animation: txn-node 5.2s var(--ease) infinite;
+  }
+  .txn li:nth-child(2)::before {
+    animation-delay: 0.5s;
+  }
+  .txn li:nth-child(3)::before {
+    animation-delay: 1s;
+  }
+  .txn li:nth-child(4)::before {
+    animation-delay: 1.5s;
+  }
+  .txn li:nth-child(5)::before {
+    animation-delay: 2.1s;
+  }
+  @keyframes txn-node {
+    0%,
+    28%,
+    100% {
+      background: var(--ivory);
+      box-shadow: 0 0 0 0 rgb(241 138 80 / 0);
+    }
+    10% {
+      background: var(--amber);
+      box-shadow: 0 0 0 4px rgb(241 138 80 / 0.16);
+    }
+  }
+  .txn__fail::before {
+    animation-name: txn-node-fail;
+  }
+  @keyframes txn-node-fail {
+    0%,
+    34%,
+    100% {
+      background: var(--amber);
+      box-shadow: 0 0 0 0 rgb(241 138 80 / 0);
+    }
+    14% {
+      background: var(--amber);
+      box-shadow: 0 0 0 5px rgb(241 138 80 / 0.22);
+    }
+  }
+
+  /* The 3-step workflow rail draws itself in once, then keeps a slow travelling
+     highlight so the sequence reads as one pipeline rather than three columns. */
+  .steps {
+    position: relative;
+  }
+  .steps::after {
+    content: '';
+    position: absolute;
+    top: -1px;
+    left: 0;
+    height: 1px;
+    width: 100%;
+    background: linear-gradient(90deg, var(--electric), var(--amber));
+    transform: scaleX(1);
+    transform-origin: left center;
+  }
+  .steps[data-reveal='pending']::after {
+    transform: scaleX(0);
+  }
+  .steps[data-reveal='in']::after {
+    animation: steps-draw 900ms var(--ease-out) 120ms both;
+  }
+  @keyframes steps-draw {
+    from {
+      transform: scaleX(0);
+    }
+    to {
+      transform: scaleX(1);
+    }
+  }
+  .steps__node {
+    animation: steps-node 3.6s var(--ease) infinite;
+  }
+  .steps li:nth-child(2) .steps__node {
+    animation-delay: 0.45s;
+  }
+  .steps li:nth-child(3) .steps__node {
+    animation-delay: 0.9s;
+  }
+  @keyframes steps-node {
+    0%,
+    26%,
+    100% {
+      box-shadow: 0 0 0 0 rgb(241 138 80 / 0);
+    }
+    9% {
+      box-shadow: 0 0 0 5px rgb(241 138 80 / 0.2);
+    }
+  }
+  .steps__cmd {
+    position: relative;
+  }
+  .steps__docs .arrow-link,
+  .arrow-link {
+    transition:
+      color var(--dur) var(--ease),
+      gap var(--dur) var(--ease-out);
+  }
+
+  /* Before/after: the drift rows in the 'before' card flicker faintly so the
+     mismatch reads as instability, while the 'after' rows settle. */
+  .ba-card--before .ba-card__list li:nth-child(1) span {
+    animation: ba-jitter 6s var(--ease) infinite;
+  }
+  .ba-card--before .ba-card__list li:nth-child(2) span {
+    animation: ba-jitter 6s var(--ease) 1.4s infinite;
+  }
+  .ba-card--before .ba-card__list li:nth-child(3) span {
+    animation: ba-jitter 6s var(--ease) 2.8s infinite;
+  }
+  @keyframes ba-jitter {
+    0%,
+    88%,
+    100% {
+      opacity: 1;
+    }
+    92% {
+      opacity: 0.45;
+    }
+    96% {
+      opacity: 0.85;
+    }
+  }
+
   /* ------------------------------------------------------------ responsive */
   @media (max-width: 1100px) {
+    .txn::after {
+      display: none;
+    }
     .txn {
       grid-template-columns: repeat(3, minmax(0, 1fr));
       row-gap: 1.5rem;
@@ -1970,6 +2178,9 @@ const structuredData = [
     }
     .feature--flip .feature__text {
       order: 0;
+    }
+    .steps::after {
+      display: none;
     }
     .steps {
       grid-template-columns: 1fr;

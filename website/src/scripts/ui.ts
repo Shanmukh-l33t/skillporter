@@ -547,7 +547,7 @@ function initReveal(): void {
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
   const targets = $$(
-    '.section-head, .problems li, .answer, .feature, .steps li, .matrix__legend, .sec-grid, .sec-lower, .repro, .cmds li, .links li, .closing',
+    '.section-head, .problems li, .ba-card, .answer, .feature, .steps, .steps li, .matrix__legend, .sec-grid, .sec-lower, .repro, .compare, .cmds li, .more__cell, .onboard__panel, .onboard__first li, .links li, .closing',
   );
   if (!targets.length) return;
 
@@ -609,6 +609,103 @@ function initHeroSpotlight(): void {
   );
 }
 
+/* ------------------------------------------------- architecture pipeline */
+
+function initHeroArchitecture(): void {
+  const arch = $<HTMLElement>('[data-arch]');
+  if (!arch) return;
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const status = $<HTMLElement>('[data-arch-status]', arch);
+  const gates = $$<HTMLElement>('[data-gate]', arch);
+  const sharedTargets = $$<HTMLElement>('[data-shared="true"]', arch);
+  const sharedPill = $<HTMLElement>('[data-shared-pill]', arch);
+
+  // Interactive shared-path highlight: hovering Codex, Cursor, or Gemini CLI illuminates all shared .agents/skills readers
+  const setSharedHover = (on: boolean) => {
+    if (on) arch.dataset.sharedHover = 'true';
+    else delete arch.dataset.sharedHover;
+  };
+  for (const el of sharedTargets) {
+    el.addEventListener('pointerenter', () => setSharedHover(true));
+    el.addEventListener('pointerleave', () => setSharedHover(false));
+  }
+  if (sharedPill) {
+    sharedPill.addEventListener('pointerenter', () => setSharedHover(true));
+    sharedPill.addEventListener('pointerleave', () => setSharedHover(false));
+  }
+
+  if (reduced) {
+    arch.dataset.phase = '2';
+    if (status) status.textContent = '03 · SYNCED';
+    for (const g of gates) g.classList.add('is-active');
+    return;
+  }
+
+  const phases: { phase: string; label: string; gateIdx: number; ms: number }[] = [
+    { phase: '0', label: '01 · SOURCE', gateIdx: -1, ms: 1500 },
+    { phase: '1', label: '02 · VALIDATE', gateIdx: 0, ms: 850 },
+    { phase: '1', label: '02 · SCAN 0/100', gateIdx: 1, ms: 900 },
+    { phase: '1', label: '02 · LOCKFILE', gateIdx: 2, ms: 900 },
+    { phase: '2', label: '03 · SYNCED', gateIdx: 3, ms: 2400 },
+  ];
+
+  let stepIdx = 0;
+  let paused = false;
+  let timer = 0;
+
+  const tick = () => {
+    if (paused) {
+      timer = window.setTimeout(tick, 600);
+      return;
+    }
+    const cur = phases[stepIdx]!;
+    arch.dataset.phase = cur.phase;
+    if (status) status.textContent = cur.label;
+    gates.forEach((g, idx) => {
+      g.classList.toggle('is-active', cur.gateIdx >= idx && cur.gateIdx >= 0);
+    });
+    stepIdx = (stepIdx + 1) % phases.length;
+    timer = window.setTimeout(tick, cur.ms);
+  };
+
+  arch.addEventListener('pointerenter', () => {
+    paused = true;
+  });
+  arch.addEventListener('pointerleave', () => {
+    paused = false;
+  });
+
+  window.clearTimeout(timer);
+  tick();
+}
+
+/* --------------------------------------------------- interactive surface glow */
+
+function initCardGlow(): void {
+  if (!window.matchMedia('(hover: hover)').matches) return;
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  const cards = $$<HTMLElement>('.arch, .ba-card, .more__cell, .limits');
+  for (const card of cards) {
+    let raf = 0;
+    card.addEventListener(
+      'pointermove',
+      (event) => {
+        if (raf) return;
+        const cx = event.clientX;
+        const cy = event.clientY;
+        raf = window.requestAnimationFrame(() => {
+          raf = 0;
+          const rect = card.getBoundingClientRect();
+          card.style.setProperty('--card-x', `${Math.round(cx - rect.left)}px`);
+          card.style.setProperty('--card-y', `${Math.round(cy - rect.top)}px`);
+        });
+      },
+      { passive: true },
+    );
+  }
+}
+
 initTheme();
 initHeader();
 initSectionSpy();
@@ -619,3 +716,5 @@ initSearch();
 initDocs();
 initReveal();
 initHeroSpotlight();
+initHeroArchitecture();
+initCardGlow();

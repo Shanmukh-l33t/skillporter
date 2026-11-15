@@ -13,19 +13,33 @@ const targets = featuredIds
 const { counts } = harnessData;
 ---
 
-<figure class="arch" aria-label="SkillPorter architecture: one source skill synchronized across supported AI coding agents">
+<figure
+  class="arch"
+  data-arch
+  data-phase="0"
+  aria-label="SkillPorter architecture: one source skill validated, scanned, locked, and synchronized across supported AI coding agents"
+>
   <div class="arch__chrome">
-    <span class="arch__dots" aria-hidden="true"><i></i><i></i><i></i></span>
-    <span class="arch__caption">WORKSPACE ARCHITECTURE · LOCAL-FIRST</span>
-    <span class="arch__ver">{release.tag}</span>
+    <div class="arch__chrome-left">
+      <span class="arch__dots" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span class="arch__live" aria-hidden="true"></span>
+      <span class="arch__caption">WORKSPACE ARCHITECTURE · LOCAL-FIRST</span>
+    </div>
+    <div class="arch__chrome-right">
+      <span class="arch__phase-pill" data-arch-status aria-hidden="true">01 · SOURCE</span>
+      <span class="arch__ver">{release.tag}</span>
+    </div>
   </div>
 
   <div class="arch__body">
     <!-- Node 1: One canonical source -->
-    <div class="arch__source">
+    <div class="arch__source" data-arch-stage="0">
+      <span class="arch__scanline" aria-hidden="true"></span>
       <div class="arch__source-top">
         <span class="arch__step">01 · CANONICAL SOURCE</span>
-        <span class="arch__hash">commit {locked.resolved_commit.slice(0, 8)}</span>
+        <span class="arch__hash">
+          commit <b>{locked.resolved_commit.slice(0, 8)}</b> · sha256:{locked.tree_hash.slice(0, 8)}
+        </span>
       </div>
       <div class="arch__source-main">
         <code class="arch__pkg">{sourceRepo}/{locked.name}/SKILL.md</code>
@@ -33,62 +47,103 @@ const { counts } = harnessData;
       </div>
     </div>
 
-    <!-- Conduit down -->
-    <div class="arch__conduit" aria-hidden="true">
-      <span class="arch__wire"><i class="arch__signal"></i></span>
+    <!-- Conduit 1: SVG packet stream from Source into SkillPorter Engine -->
+    <div class="arch__bus arch__bus--top" aria-hidden="true">
+      <svg viewBox="0 0 400 26" preserveAspectRatio="none">
+        <line x1="200" y1="0" x2="200" y2="26" class="arch__bus-track" />
+        <line x1="200" y1="0" x2="200" y2="26" class="arch__bus-flow arch__bus-flow--top" />
+        <polygon points="200,1 203,4 200,7 197,4" class="arch__bus-node" />
+        <polygon points="200,19 203,22 200,25 197,22" class="arch__bus-node" />
+      </svg>
     </div>
 
     <!-- Node 2: SkillPorter integrity & sync layer -->
-    <div class="arch__engine">
+    <div class="arch__engine" data-arch-stage="1">
       <div class="arch__engine-head">
         <span class="arch__step arch__step--accent">02 · SKILLPORTER INTEGRITY LAYER</span>
         <code class="arch__cmd">skillporter add · sync</code>
       </div>
       <ul class="arch__gates" aria-label="Pre-install checks">
-        <li>
+        <li class="arch__gate" data-gate="0">
           <span class="arch__gate-dot" aria-hidden="true"></span>
-          <b>Validate</b>
+          <div class="arch__gate-row">
+            <b>Validate</b>
+            <i class="arch__gate-ok" aria-hidden="true">OK</i>
+          </div>
           <span>SKILL.md spec</span>
         </li>
-        <li>
+        <li class="arch__gate" data-gate="1">
           <span class="arch__gate-dot" aria-hidden="true"></span>
-          <b>Static scan</b>
-          <span>risk {locked.risk_score}/100</span>
+          <div class="arch__gate-row">
+            <b>Static scan</b>
+            <i class="arch__gate-ok" aria-hidden="true">{locked.risk_score}/100</i>
+          </div>
+          <span>AST &amp; prompt rules</span>
         </li>
-        <li>
+        <li class="arch__gate" data-gate="2">
           <span class="arch__gate-dot" aria-hidden="true"></span>
-          <b>Pin &amp; journal</b>
+          <div class="arch__gate-row">
+            <b>Pin &amp; journal</b>
+            <i class="arch__gate-ok" aria-hidden="true">LOCK</i>
+          </div>
           <span>skillporter.lock</span>
         </li>
       </ul>
     </div>
 
-    <!-- Conduit down to agents -->
-    <div class="arch__conduit arch__conduit--fan" aria-hidden="true">
-      <span class="arch__wire"><i class="arch__signal arch__signal--delay"></i></span>
+    <!-- Conduit 2: Precision SVG 1-to-2 branching manifold into agent grid -->
+    <div class="arch__bus arch__bus--fan" aria-hidden="true">
+      <svg viewBox="0 0 400 32" preserveAspectRatio="none">
+        <path d="M200 0 L200 14 L100 14 L100 32 M200 14 L300 14 L300 32" class="arch__bus-track" fill="none" />
+        <path
+          d="M200 0 L200 14 L100 14 L100 32"
+          class="arch__bus-flow arch__bus-flow--branch"
+          fill="none"
+        />
+        <path
+          d="M200 0 L200 14 L300 14 L300 32"
+          class="arch__bus-flow arch__bus-flow--branch"
+          fill="none"
+        />
+        <polygon points="200,10 204,14 200,18 196,14" class="arch__bus-hub" />
+      </svg>
     </div>
 
     <!-- Node 3: Supported AI coding agents -->
-    <div class="arch__targets-wrap">
+    <div class="arch__targets-wrap" data-arch-stage="2">
       <div class="arch__targets-head">
         <span class="arch__step">03 · SYNCHRONIZED AGENT ENVIRONMENTS</span>
-        <span class="arch__dedupe">{counts.shared_primary} share .agents/skills</span>
+        <span class="arch__dedupe" data-shared-pill>{counts.shared_primary} share .agents/skills</span>
       </div>
       <ul class="arch__targets">
         {
-          targets.map((h) => (
-            <li class="arch__target">
-              <div class="arch__target-row">
-                <span class="arch__agent">{h.name}</span>
-                <span class="chip" data-tier={h.verification} title={tierLabel(h.verification)}>
-                  {h.verification === 'RUNTIME_VERIFIED' ? 'Runtime' : 'Fixture'}
-                </span>
-              </div>
-              <code class="arch__path">
-                {h.project_primary}/{locked.name}
-              </code>
-            </li>
-          ))
+          targets.map((h, idx) => {
+            const isShared = h.project_primary === '.agents/skills';
+            return (
+              <li
+                class:list={['arch__target', { 'is-shared-path': isShared }]}
+                style={`--target-idx: ${idx}`}
+                data-arch-target
+                data-shared={isShared ? 'true' : undefined}
+              >
+                <div class="arch__target-row">
+                  <span class="arch__agent">
+                    <i class="arch__sync-dot" aria-hidden="true" />
+                    {h.name}
+                  </span>
+                  <span class="chip" data-tier={h.verification} title={tierLabel(h.verification)}>
+                    {h.verification === 'RUNTIME_VERIFIED' ? 'Runtime' : 'Fixture'}
+                  </span>
+                </div>
+                <div class="arch__path-row">
+                  <code class="arch__path">
+                    {h.project_primary}/{locked.name}
+                  </code>
+                  {isShared && <span class="arch__shared-tag">deduped</span>}
+                </div>
+              </li>
+            );
+          })
         }
       </ul>
     </div>
@@ -105,30 +160,58 @@ const { counts } = harnessData;
 
 <style>
   .arch {
+    position: relative;
     margin: 0;
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: var(--radius-l);
     box-shadow: var(--shadow-card-lg);
     overflow: hidden;
+    transition:
+      border-color var(--dur-med) var(--ease),
+      box-shadow var(--dur-med) var(--ease);
+  }
+  .arch::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(
+      26rem circle at var(--card-x, 50%) var(--card-y, 0%),
+      rgb(21 91 232 / 0.08),
+      transparent 65%
+    );
+    opacity: 0;
+    transition: opacity 300ms var(--ease);
+  }
+  .arch:hover::before {
+    opacity: 1;
   }
 
   .arch__chrome {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.75rem;
-    padding: 0.5rem 0.9rem;
+    gap: 0.45rem;
+    padding: 0.52rem 0.85rem;
     background: var(--card-subtle);
     border-bottom: 1px solid var(--border);
     font-family: var(--font-mono);
-    font-size: 0.6875rem;
-    letter-spacing: 0.06em;
+    font-size: 0.65rem;
+    letter-spacing: 0.045em;
     color: var(--text-3);
+  }
+  .arch__chrome-left,
+  .arch__chrome-right {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-width: 0;
   }
   .arch__dots {
     display: inline-flex;
     gap: 5px;
+    flex: none;
   }
   .arch__dots i {
     width: 7px;
@@ -136,14 +219,62 @@ const { counts } = harnessData;
     border-radius: 50%;
     background: var(--border);
   }
+  .arch__live {
+    flex: none;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #16a34a;
+    box-shadow: 0 0 0 0 rgb(22 163 74 / 0.45);
+    animation: live-ping 2.6s ease-out infinite;
+  }
+  @keyframes live-ping {
+    0% {
+      box-shadow: 0 0 0 0 rgb(22 163 74 / 0.5);
+    }
+    70% {
+      box-shadow: 0 0 0 6px rgb(22 163 74 / 0);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgb(22 163 74 / 0);
+    }
+  }
+  .arch__caption {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--ivory);
+    font-weight: 500;
+  }
+  .arch__phase-pill {
+    padding: 0.12rem 0.48rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--electric) 10%, var(--card));
+    border: 1px solid color-mix(in srgb, var(--electric) 36%, var(--border));
+    color: var(--blue-ink);
+    font-size: 0.625rem;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    transition:
+      color 220ms var(--ease),
+      border-color 220ms var(--ease),
+      background-color 220ms var(--ease);
+  }
+  .arch[data-phase='2'] .arch__phase-pill {
+    color: var(--amber-ink);
+    border-color: color-mix(in srgb, var(--amber) 45%, var(--border));
+    background: color-mix(in srgb, var(--amber) 10%, var(--card));
+  }
   .arch__ver {
+    flex: none;
     color: var(--amber-ink);
   }
 
   .arch__body {
+    position: relative;
     padding: 0.75rem 0.9rem 0.8rem;
     background-image: radial-gradient(circle at 1px 1px, var(--border-soft) 1px, transparent 0);
-    background-size: 18px 18px;
+    background-size: 16px 16px;
   }
 
   .arch__step {
@@ -160,11 +291,44 @@ const { counts } = harnessData;
 
   /* Node 1: Source */
   .arch__source {
-    padding: 0.75rem 0.9rem;
+    position: relative;
+    overflow: hidden;
+    padding: 0.68rem 0.85rem;
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: var(--radius-m);
     box-shadow: var(--shadow-card-sm);
+    transition:
+      border-color 260ms var(--ease),
+      box-shadow 260ms var(--ease);
+  }
+  .arch[data-phase='0'] .arch__source {
+    border-color: color-mix(in srgb, var(--electric) 58%, var(--border));
+    box-shadow: 0 0 0 3px rgb(21 91 232 / 0.08);
+  }
+  .arch__scanline {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgb(21 91 232 / 0.07) 45%,
+      rgb(241 138 80 / 0.1) 55%,
+      transparent 100%
+    );
+    transform: translateX(-105%);
+    pointer-events: none;
+  }
+  .arch[data-phase='0'] .arch__scanline {
+    animation: source-sweep 1.5s var(--ease-out) forwards;
+  }
+  @keyframes source-sweep {
+    from {
+      transform: translateX(-105%);
+    }
+    to {
+      transform: translateX(105%);
+    }
   }
   .arch__source-top {
     display: flex;
@@ -174,8 +338,12 @@ const { counts } = harnessData;
   }
   .arch__hash {
     font-family: var(--font-mono);
-    font-size: 0.6875rem;
+    font-size: 0.65rem;
     color: var(--text-3);
+  }
+  .arch__hash b {
+    font-weight: 500;
+    color: var(--ivory);
   }
   .arch__source-main {
     display: flex;
@@ -183,7 +351,7 @@ const { counts } = harnessData;
     align-items: baseline;
     justify-content: space-between;
     gap: 0.25rem 0.75rem;
-    margin-top: 0.4rem;
+    margin-top: 0.35rem;
   }
   .arch__pkg {
     font-size: 0.8125rem;
@@ -196,57 +364,77 @@ const { counts } = harnessData;
     color: var(--text-3);
   }
 
-  /* Conduits */
-  .arch__conduit {
-    display: flex;
-    justify-content: center;
+  /* SVG Conduits & Branching Manifold */
+  .arch__bus {
+    width: 100%;
+    overflow: visible;
+  }
+  .arch__bus--top {
     height: 1.35rem;
   }
-  .arch__wire {
-    position: relative;
-    display: block;
-    width: 1.5px;
+  .arch__bus--fan {
+    height: 1.65rem;
+  }
+  .arch__bus svg {
+    width: 100%;
     height: 100%;
-    background: linear-gradient(180deg, var(--electric), var(--amber));
-    overflow: hidden;
+    display: block;
   }
-  .arch__signal {
-    position: absolute;
-    left: -1px;
-    top: -8px;
-    width: 3.5px;
-    height: 10px;
-    border-radius: 999px;
-    background: var(--amber);
-    animation: arch-drop 2.2s var(--ease-out) infinite;
+  .arch__bus-track {
+    stroke: var(--border);
+    stroke-width: 1.5;
+    vector-effect: non-scaling-stroke;
   }
-  .arch__signal--delay {
-    animation-delay: 0.75s;
+  .arch__bus-flow {
+    stroke: var(--electric);
+    stroke-width: 2;
+    stroke-linecap: round;
+    vector-effect: non-scaling-stroke;
+    stroke-dasharray: 12 44;
+    animation: bus-stream 1.8s linear infinite;
   }
-  @keyframes arch-drop {
-    0% {
-      transform: translateY(-6px);
-      opacity: 0;
+  .arch__bus-flow--branch {
+    stroke: var(--amber);
+    stroke-dasharray: 18 76;
+    animation: bus-branch 2.2s linear infinite;
+  }
+  .arch__bus-node {
+    fill: var(--electric);
+  }
+  .arch__bus-hub {
+    fill: var(--amber);
+  }
+  @keyframes bus-stream {
+    from {
+      stroke-dashoffset: 56;
     }
-    25% {
-      opacity: 1;
+    to {
+      stroke-dashoffset: 0;
     }
-    80% {
-      opacity: 1;
+  }
+  @keyframes bus-branch {
+    from {
+      stroke-dashoffset: 94;
     }
-    100% {
-      transform: translateY(24px);
-      opacity: 0;
+    to {
+      stroke-dashoffset: 0;
     }
   }
 
   /* Node 2: SkillPorter Engine */
   .arch__engine {
-    padding: 0.8rem 0.9rem 0.85rem;
+    padding: 0.72rem 0.85rem 0.78rem;
     background: var(--card);
-    border: 1px solid color-mix(in srgb, var(--electric) 45%, var(--border));
+    border: 1px solid color-mix(in srgb, var(--electric) 40%, var(--border));
     border-radius: var(--radius-m);
     box-shadow: var(--shadow-card-sm);
+    transition:
+      border-color 260ms var(--ease),
+      box-shadow 260ms var(--ease);
+  }
+  .arch[data-phase='1'] .arch__engine {
+    border-color: var(--electric);
+    box-shadow: 0 0 0 3px rgb(21 91 232 / 0.11);
   }
   .arch__engine-head {
     display: flex;
@@ -267,47 +455,89 @@ const { counts } = harnessData;
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 0.45rem;
-    margin: 0.65rem 0 0;
+    margin: 0.58rem 0 0;
     padding: 0;
     list-style: none;
   }
-  .arch__gates li {
+  .arch__gate {
     position: relative;
-    padding: 0.45rem 0.55rem 0.5rem 1.25rem;
+    padding: 0.42rem 0.52rem 0.46rem 1.18rem;
     background: var(--card-subtle);
     border: 1px solid var(--border-soft);
     border-radius: var(--radius-s);
+    transition:
+      border-color 220ms var(--ease),
+      background-color 220ms var(--ease),
+      transform 220ms var(--ease-out);
+  }
+  .arch__gate.is-active {
+    border-color: var(--electric);
+    background: color-mix(in srgb, var(--electric) 9%, var(--card));
+    box-shadow: 0 0 0 2px rgb(21 91 232 / 0.12);
+    transform: translateY(-1px);
   }
   .arch__gate-dot {
     position: absolute;
-    left: 0.5rem;
-    top: 0.72rem;
+    left: 0.46rem;
+    top: 0.68rem;
     width: 5px;
     height: 5px;
     background: var(--amber);
     transform: rotate(45deg);
+    transition:
+      transform 240ms var(--ease-out),
+      background-color 240ms var(--ease);
+  }
+  .arch__gate.is-active .arch__gate-dot {
+    background: var(--electric);
+    box-shadow: 0 0 6px rgb(21 91 232 / 0.55);
+    transform: rotate(45deg) scale(1.25);
+  }
+  .arch__gate-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.3rem;
   }
   .arch__gates b {
-    display: block;
     font-size: 0.75rem;
     font-weight: 500;
     color: var(--ivory);
     line-height: 1.25;
   }
+  .arch__gate-ok {
+    font-style: normal;
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    color: var(--blue-ink);
+    opacity: 0.78;
+    transition: opacity 200ms var(--ease);
+  }
+  .arch__gate.is-active .arch__gate-ok {
+    opacity: 1;
+    font-weight: 500;
+  }
   .arch__gates li > span:last-child {
     display: block;
-    margin-top: 0.12rem;
+    margin-top: 0.1rem;
     font-family: var(--font-mono);
-    font-size: 0.65rem;
+    font-size: 0.64rem;
     color: var(--text-3);
   }
 
   /* Node 3: Agent Targets */
   .arch__targets-wrap {
-    padding: 0.75rem 0.85rem 0.85rem;
+    padding: 0.7rem 0.85rem 0.78rem;
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: var(--radius-m);
+    transition:
+      border-color 260ms var(--ease),
+      box-shadow 260ms var(--ease);
+  }
+  .arch[data-phase='2'] .arch__targets-wrap {
+    border-color: color-mix(in srgb, var(--amber) 55%, var(--border));
+    box-shadow: 0 0 0 3px rgb(241 138 80 / 0.09);
   }
   .arch__targets-head {
     display: flex;
@@ -315,31 +545,67 @@ const { counts } = harnessData;
     align-items: center;
     justify-content: space-between;
     gap: 0.25rem 0.75rem;
-    margin-bottom: 0.6rem;
+    margin-bottom: 0.55rem;
   }
   .arch__dedupe {
     font-family: var(--font-mono);
     font-size: 0.6875rem;
     color: var(--amber-ink);
+    padding: 0.08rem 0.42rem;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    transition:
+      border-color 200ms var(--ease),
+      background-color 200ms var(--ease);
+  }
+  .arch[data-shared-hover='true'] .arch__dedupe {
+    border-color: color-mix(in srgb, var(--amber) 55%, var(--border));
+    background: color-mix(in srgb, var(--amber) 10%, var(--card));
   }
   .arch__targets {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.45rem;
+    gap: 0.42rem;
     margin: 0;
     padding: 0;
     list-style: none;
   }
   .arch__target {
-    padding: 0.48rem 0.6rem;
+    padding: 0.44rem 0.58rem;
     background: var(--card-subtle);
     border: 1px solid var(--border-soft);
     border-radius: var(--radius-s);
     min-width: 0;
-    transition: border-color var(--dur) var(--ease);
+    transition:
+      border-color 200ms var(--ease),
+      background-color 200ms var(--ease),
+      transform 200ms var(--ease-out);
   }
   .arch__target:hover {
-    border-color: var(--text-3);
+    border-color: var(--electric);
+    transform: translateY(-1px);
+  }
+  .arch[data-phase='2'] .arch__target {
+    border-color: color-mix(in srgb, var(--electric) 32%, var(--border-soft));
+    animation: target-sync 540ms var(--ease-out) calc(var(--target-idx, 0) * 65ms);
+  }
+  @keyframes target-sync {
+    0% {
+      border-color: var(--border-soft);
+    }
+    45% {
+      border-color: var(--amber);
+      background: color-mix(in srgb, var(--amber) 9%, var(--card));
+    }
+    100% {
+      border-color: color-mix(in srgb, var(--electric) 32%, var(--border-soft));
+    }
+  }
+  /* Interactive shared-path highlight when hovering Codex / Cursor / Gemini CLI */
+  .arch[data-shared-hover='true'] .arch__target.is-shared-path {
+    border-color: var(--amber) !important;
+    background: color-mix(in srgb, var(--amber) 10%, var(--card)) !important;
+    box-shadow: 0 0 0 2px rgb(241 138 80 / 0.16);
   }
   .arch__target-row {
     display: flex;
@@ -348,6 +614,9 @@ const { counts } = harnessData;
     gap: 0.4rem;
   }
   .arch__agent {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.38rem;
     font-size: 0.78rem;
     font-weight: 500;
     color: var(--ivory);
@@ -355,14 +624,41 @@ const { counts } = harnessData;
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  .arch__sync-dot {
+    flex: none;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--text-3);
+    transition:
+      background-color 220ms var(--ease),
+      box-shadow 220ms var(--ease);
+  }
+  .arch[data-phase='2'] .arch__sync-dot {
+    background: #16a34a;
+    box-shadow: 0 0 6px rgb(22 163 74 / 0.55);
+  }
+  .arch__path-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.35rem;
+    margin-top: 0.16rem;
+  }
   .arch__path {
-    display: block;
-    margin-top: 0.18rem;
     font-size: 0.6875rem;
     color: var(--blue-ink);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .arch__shared-tag {
+    flex: none;
+    font-family: var(--font-mono);
+    font-size: 0.58rem;
+    letter-spacing: 0.03em;
+    color: var(--amber-ink);
+    opacity: 0.85;
   }
 
   .arch__foot {
@@ -371,7 +667,7 @@ const { counts } = harnessData;
     align-items: center;
     justify-content: space-between;
     gap: 0.4rem 1rem;
-    padding: 0.65rem 1rem;
+    padding: 0.58rem 0.95rem;
     background: var(--card-subtle);
     border-top: 1px solid var(--border);
     font-family: var(--font-mono);
@@ -391,12 +687,20 @@ const { counts } = harnessData;
     color: var(--amber-ink);
   }
 
+  @media (max-width: 720px) {
+    .arch__phase-pill {
+      display: none;
+    }
+  }
   @media (max-width: 580px) {
     .arch__gates {
       grid-template-columns: 1fr;
     }
     .arch__targets {
       grid-template-columns: 1fr;
+    }
+    .arch__bus--fan {
+      height: 1.2rem;
     }
   }
 </style>
