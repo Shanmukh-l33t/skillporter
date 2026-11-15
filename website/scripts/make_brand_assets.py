@@ -127,14 +127,11 @@ def scale_to_width(im: Image.Image, width: int) -> Image.Image:
     return im.resize((width, height), Image.Resampling.LANCZOS)
 
 
-def icon(mark: Image.Image, size: int, *, radius_ratio: float = 0.22, fill: float = 0.8) -> Image.Image:
-    """Bridge mark centred on a midnight rounded square."""
+def icon(mark: Image.Image, size: int, *, fill: float = 0.92) -> Image.Image:
+    """Bridge mark centred on a transparent square (no background)."""
     scale = 4
     big = size * scale
     canvas = Image.new("RGBA", (big, big), (0, 0, 0, 0))
-    mask = Image.new("L", (big, big), 0)
-    ImageDraw.Draw(mask).rounded_rectangle((0, 0, big - 1, big - 1), radius=round(big * radius_ratio), fill=255)
-    canvas.paste(Image.new("RGBA", (big, big), (*MIDNIGHT, 255)), (0, 0), mask)
     m = scale_to_width(mark, round(big * fill))
     canvas.alpha_composite(m, ((big - m.width) // 2, (big - m.height) // 2))
     return canvas.resize((size, size), Image.Resampling.LANCZOS)
@@ -189,11 +186,11 @@ def main() -> None:
     scale_to_width(mark, 512).save(BRAND / "skillporter-mark.webp", lossless=True, method=6)
     scale_to_width(mark, 512).save(BRAND / "skillporter-mark.png", optimize=True)
 
-    icon(mark, 512, fill=0.76).save(PUBLIC / "icon-512.png", optimize=True)
-    icon(mark, 192, fill=0.76).save(PUBLIC / "icon-192.png", optimize=True)
-    icon(mark, 180, radius_ratio=0.0, fill=0.74).convert("RGB").save(PUBLIC / "apple-touch-icon.png", optimize=True)
-    icon(mark, 32, fill=0.88).save(PUBLIC / "favicon-32.png", optimize=True)
-    icon(mark, 48, fill=0.88).save(
+    icon(mark, 512, fill=0.92).save(PUBLIC / "icon-512.png", optimize=True)
+    icon(mark, 192, fill=0.92).save(PUBLIC / "icon-192.png", optimize=True)
+    icon(mark, 180, fill=0.92).save(PUBLIC / "apple-touch-icon.png", optimize=True)
+    icon(mark, 32, fill=0.96).save(PUBLIC / "favicon-32.png", optimize=True)
+    icon(mark, 48, fill=0.96).save(
         PUBLIC / "favicon.ico", sizes=[(16, 16), (32, 32), (48, 48)]
     )
 
