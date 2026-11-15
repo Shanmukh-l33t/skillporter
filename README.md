@@ -48,14 +48,6 @@ pipx install skillporter                          # install the CLI globally (PE
 npx @shanmukhdheekonda/skillporter@latest diagnose . # run latest CLI without installing (npm)
 ```
 
-<p align="center">
-  <a href="https://www.skillporter.dev">
-    <img src="https://raw.githubusercontent.com/Shanmukh-l33t/skillporter/main/docs/assets/demo.svg" alt="Skillporter 3.0 CLI and multi-harness bridge fan-out" width="100%" />
-  </a>
-</p>
-
----
-
 ## Why skills need a package manager
 
 Every AI agent harness reads skills from a different directory (`.claude/skills/`, `.agents/skills/`, `.github/skills/`, `.windsurf/skills/`, `$HERMES_HOME/skills/`, `~/.openclaw/skills/`), and each one resolves them differently.
