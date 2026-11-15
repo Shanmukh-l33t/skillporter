@@ -288,7 +288,7 @@ def test_standalone_installer_fresh_install_upgrade_and_tamper_rejection(tmp_pat
     sums_src = REPO_ROOT / "dist" / "SHA256SUMS.txt"
     expected_sha = hashlib.sha256(pyz_src.read_bytes()).hexdigest()
 
-    rel_dir = tmp_path / "releases" / "v3.1.0"
+    rel_dir = tmp_path / "releases" / "v3.2.0"
     rel_dir.mkdir(parents=True)
     shutil.copy2(pyz_src, rel_dir / "skillporter.pyz")
     shutil.copy2(sums_src, rel_dir / "SHA256SUMS.txt")
@@ -310,7 +310,7 @@ def test_standalone_installer_fresh_install_upgrade_and_tamper_rejection(tmp_pat
         env_install = {
             **os.environ,
             "SKILLPORTER_RELEASE_BASE_URL": f"http://127.0.0.1:{port}",
-            "SKILLPORTER_VERSION": "v3.1.0",
+            "SKILLPORTER_VERSION": "v3.2.0",
             "SKILLPORTER_INSTALL_DIR": str(bin_dir),
             "SKILLPORTER_SHA256": expected_sha,
         }
@@ -338,7 +338,7 @@ def test_standalone_installer_fresh_install_upgrade_and_tamper_rejection(tmp_pat
         )
         assert p_bad.returncode != 0
         p_ver = subprocess.run([str(installed_bin), "--version"], capture_output=True, text=True, check=True)
-        assert "3.1.0" in p_ver.stdout
+        assert "3.2.0" in p_ver.stdout
     finally:
         srv.shutdown()
         srv.server_close()

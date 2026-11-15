@@ -48,7 +48,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: Shanmukh-l33t/skillporter@v3.1.0
+      - uses: Shanmukh-l33t/skillporter@v3.2.0
         with:
           command: validate
           lock-check: "true"
@@ -83,7 +83,7 @@ permissions:
 
 steps:
   - uses: actions/checkout@v4
-  - uses: Shanmukh-l33t/skillporter@v3.1.0
+  - uses: Shanmukh-l33t/skillporter@v3.2.0
     with:
       command: scan
       upload-sarif: "true"
@@ -110,9 +110,9 @@ skillporter scan . --format sarif > skillporter.sarif
 To install the standalone binary in a pipeline, pin both the tag and the digest so the build fails if the artifact ever changes:
 
 ```bash
-curl -fsSL https://github.com/Shanmukh-l33t/skillporter/releases/download/v3.1.0/install.sh -o install.sh
-SKILLPORTER_VERSION=v3.1.0 \
-SKILLPORTER_SHA256=34a629b962ca0650c9babfed0d3c84abba39fd31e30f2c3fe6b36fdcee62962a \
+curl -fsSL https://github.com/Shanmukh-l33t/skillporter/releases/download/v3.2.0/install.sh -o install.sh
+SKILLPORTER_VERSION=v3.2.0 \
+SKILLPORTER_SHA256=206fa938914c91dc000c912611ec531b35f7f6063f360ed82c14a54d44362c0f \
 sh install.sh
 ```
 

@@ -1,18 +1,7 @@
 # exit: 0,0
 $ skillporter init
-initialized ~/acme-api/skillporter.yaml (1 skill(s), harnesses: aider, antigravity, claude-code, cline, codex, continue, cursor, gemini-cli, github-copilot, goose, hermes, junie, openclaw, opencode, openhands, replit, roo-code, windsurf, zed)
+initialized ~/acme-api/skillporter.yaml (1 skill(s), harnesses: claude-code, codex, cursor)
 
 $ skillporter sync
 wrote ~/acme-api/skillporter.lock (1 locked skill(s))
-~ Synchronized 1 skill(s) across 19 harness(es) (+11 created, ~0 updated, =8 unchanged)
-  + created   aider            ~/acme-api/.aider-desk/skills/pdf
-  + created   claude-code      ~/acme-api/.claude/skills/pdf
-  + created   cline            ~/acme-api/.cline/skills/pdf
-  + created   continue         ~/acme-api/.continue/skills/pdf
-  + created   github-copilot   ~/acme-api/.github/skills/pdf
-  + created   hermes           ~/acme-api/.hermes/skills/pdf
-  + created   junie            ~/acme-api/.junie/skills/pdf
-  + created   openclaw         ~/acme-api/.openclaw/skills/pdf
-  + created   opencode         ~/acme-api/.opencode/skills/pdf
-  + created   roo-code         ~/acme-api/.roo/skills/pdf
-  + created   windsurf         ~/acme-api/.windsurf/skills/pdf
+~ Synchronized 1 skill(s) across 3 harness(es) (+0 created, ~0 updated, =3 unchanged)

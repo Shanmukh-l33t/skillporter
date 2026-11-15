@@ -15,7 +15,7 @@ html[data-theme='light'] {
   --card-subtle: #fafbfd;
   --code-bg: #eff2f8;
   --alt-code-bg: #f5f7fb;
-  --header-bg: rgb(245 246 250 / 0.84);
+  --header-bg: rgb(245 246 250 / 0.94);
   --electric: #155be8;
   --bridge: #1461ed;
   --amber: #f18a50;
@@ -81,7 +81,7 @@ html[data-theme='dark'] {
   --card-subtle: #0b1425;
   --code-bg: #0b1425;
   --alt-code-bg: #070d19;
-  --header-bg: rgb(7 13 25 / 0.84);
+  --header-bg: rgb(7 13 25 / 0.94);
   --electric: #155be8;
   --bridge: #1461ed;
   --amber: #f18a50;

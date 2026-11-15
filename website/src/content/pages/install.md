@@ -42,8 +42,8 @@ skillporter --version
 Linux and macOS only. On Windows, use `uv`, `pipx` or `npx`. Download the installer from the immutable release tag into a file, read it, then run it:
 
 ```bash
-curl -fsSL https://github.com/Shanmukh-l33t/skillporter/releases/download/v3.1.0/install.sh -o install.sh
-SKILLPORTER_VERSION=v3.1.0 sh install.sh
+curl -fsSL https://github.com/Shanmukh-l33t/skillporter/releases/download/v3.2.0/install.sh -o install.sh
+SKILLPORTER_VERSION=v3.2.0 sh install.sh
 ```
 
 The installer is deliberately not a one-line pipe into a shell: saving it to a file lets you read it first. It also stops unless it can prove where the download came from, which is the next section.
@@ -62,7 +62,7 @@ Default when the GitHub CLI is installed and signed in: the installer runs `gh a
 
 ```bash
 gh auth status
-SKILLPORTER_VERSION=v3.1.0 sh install.sh
+SKILLPORTER_VERSION=v3.2.0 sh install.sh
 ```
 
 The same check against the downloaded asset:
@@ -76,19 +76,19 @@ gh attestation verify skillporter.pyz --repo Shanmukh-l33t/skillporter
 Best for Dockerfiles and CI, where the digest lives in your own repository.
 
 ```bash
-SKILLPORTER_VERSION=v3.1.0 \
-SKILLPORTER_SHA256=34a629b962ca0650c9babfed0d3c84abba39fd31e30f2c3fe6b36fdcee62962a \
+SKILLPORTER_VERSION=v3.2.0 \
+SKILLPORTER_SHA256=206fa938914c91dc000c912611ec531b35f7f6063f360ed82c14a54d44362c0f \
 sh install.sh
 ```
 
-That digest is `skillporter.pyz` from v3.1.0; replace it when you move to a later tag.
+That digest is `skillporter.pyz` from v3.2.0; replace it when you move to a later tag.
 
 ### A detached signature
 
-`SKILLPORTER_PUBLIC_KEY_FILE` points at a PEM public key that verifies `SHA256SUMS.txt.sig`. This path is for mirrors and internal builds that sign their own checksum file; the official v3.1.0 release does not publish one, so use attestation or a pinned digest.
+`SKILLPORTER_PUBLIC_KEY_FILE` points at a PEM public key that verifies `SHA256SUMS.txt.sig`. This path is for mirrors and internal builds that sign their own checksum file; the official v3.2.0 release does not publish one, so use attestation or a pinned digest.
 
 ```bash
-SKILLPORTER_VERSION=v3.1.0 SKILLPORTER_PUBLIC_KEY_FILE=/path/to/pub.pem sh install.sh
+SKILLPORTER_VERSION=v3.2.0 SKILLPORTER_PUBLIC_KEY_FILE=/path/to/pub.pem sh install.sh
 ```
 
 ## Register it as an MCP server
@@ -142,7 +142,7 @@ skillporter uninstall pdf --harness cursor
 Any pipeline can run the three checks that decide a skill change:
 
 ```bash
-pipx install skillporter==3.1.0
+pipx install skillporter==3.2.0
 skillporter validate .
 skillporter scan . --max-risk-score 30
 skillporter lock --check
@@ -152,7 +152,7 @@ Exit code `1` means a finding, `2` means the command could not run. The reposito
 
 ```yaml
 - uses: actions/checkout@v4
-- uses: Shanmukh-l33t/skillporter@v3.1.0
+- uses: Shanmukh-l33t/skillporter@v3.2.0
   with:
     command: validate
     lock-check: "true"
@@ -164,7 +164,7 @@ Exit code `1` means a finding, `2` means the command could not run. The reposito
 ## Troubleshooting a failed install
 
 - `error: refusing to install unattested artifact`: no authenticity check was available. Sign in to `gh`, or pass `SKILLPORTER_SHA256`.
-- `error: invalid SKILLPORTER_VERSION`: the value is not an immutable tag. Use something like `v3.1.0`, never `main` or `latest`.
+- `error: invalid SKILLPORTER_VERSION`: the value is not an immutable tag. Use something like `v3.2.0`, never `main` or `latest`.
 - The npm launcher exits immediately: no Python 3.9+ interpreter and no `uvx` on `PATH`. Install Python 3.9 or newer, or use `uv`.
 - `externally-managed-environment` from pip: install with `uv tool install` or `pipx install` instead of the system interpreter.
 

@@ -1,3 +1,4 @@
-# exit: 0
+# exit: 1
 $ skillporter lock --check
-skillporter.lock is up to date and verified (0 drift).
+skillporter.lock check FAILED (1 issue(s)):
+  - lockfile source mismatch on 'pdf': skillporter.yaml has './.agents/skills/pdf' != locked 'https://github.com/anthropics/skills.git'

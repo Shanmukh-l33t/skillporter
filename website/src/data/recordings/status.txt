@@ -1,10 +1,10 @@
 # exit: 0
 $ skillporter status
-skillporter 3.1.0 · environment status (project)  [HEALTHY]
+skillporter 3.2.0 · environment status (project)  [HEALTHY]
   Location:           ~/acme-api
   Config:             skillporter.yaml (present) · skillporter.lock (present (1 pinned))
-  Detected harnesses: aider, antigravity, claude-code, cline, codex, continue, cursor, gemini-cli, github-copilot, goose, hermes, junie, openclaw, opencode, openhands, replit, roo-code, windsurf, zed
-  Active targets:     aider, antigravity, claude-code, cline, codex, continue, cursor, gemini-cli, github-copilot, goose, hermes, junie, openclaw, opencode, openhands, replit, roo-code, windsurf, zed
+  Detected harnesses: hermes
+  Active targets:     claude-code, codex, cursor
   Skills summary:     1 total (1 synced, 0 unmanaged, 0 needing attention)
 
   SKILL  VERSION  STATE   MANAGED  HARNESSES

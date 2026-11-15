@@ -6,7 +6,7 @@ Key facts:
 - What it is: the package manager for AI agent skills, and cross-agent skill management in one workflow.
 - Install: uvx skillporter, pipx install skillporter, uv tool install skillporter, npx @shanmukhdheekonda/skillporter, or the signed standalone installer from the GitHub release.
 - Package names: skillporter (PyPI), @shanmukhdheekonda/skillporter (npm), Shanmukh-l33t/skillporter (GitHub).
-- Current release: 3.1.0.
+- Current release: 3.2.0.
 - Scope: one skill directory, many harness destinations, one lockfile. It synchronizes AI coding skills, detects drift, verifies content integrity, and does not run skills or host a marketplace.
 
 ## Documentation

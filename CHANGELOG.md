@@ -4,7 +4,7 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [3.2.0] - 2026-11-15
 
 ### Added
 - `consolidate`, `context`, `new`, `lint`, `preview`, `test`, `suggest`, `insights`, `policy`, `update --check` and `scan --ai-review`, plus five read-only MCP tools (18 in total). See the new guides under `docs/`.

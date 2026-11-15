@@ -1,10 +1,11 @@
-# exit: 0
+# exit: 1
 $ skillporter audit .
-skillporter 3.1.0 — supply-chain security audit for ~/acme-api
+skillporter 3.2.0 — supply-chain security audit for ~/acme-api
 
 Installed/discovered skills: 1
 Recorded audit log events:   3 (0 explicit risk override(s))
-Lockfile integrity issues:   0
-  - pdf                NO_DETECTED_FINDINGS   (risk: 0/100 · origin: ./.agents/skills/pdf@1780c5e5a552)
+Lockfile integrity issues:   1
+  - pdf                NO_DETECTED_FINDINGS   (risk: 0/100 · origin: https://github.com/anthropics/skills.git@1780c5e5a552)
+  [lockfile] lockfile source mismatch on 'pdf': skillporter.yaml has './.agents/skills/pdf' != locked 'https://github.com/anthropics/skills.git'
 
-Verdict: HEALTHY
+Verdict: ACTION REQUIRED

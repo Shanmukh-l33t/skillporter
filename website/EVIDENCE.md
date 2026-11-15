@@ -49,7 +49,8 @@ Every product claim on skillporter.dev, where it comes from, and how it is kept 
 | MCP is read-only by default; refuses paths outside the workspace | Exercised against the real server on 2026-11-14 | Manual check at release |
 | MCP protocol version `2024-11-05`, 13 tools | `skillporter/mcp_server.py`, `tools/list` response | Manual check at release |
 | "A clean scan does not prove a skill is safe at runtime" and the four limitations | `SECURITY.md` 2.3 | Automated: the sentence and the four limitation headings must be present |
-| Pinned digest `34a629b9...ee62962a` for `skillporter.pyz` | `SHA256SUMS.txt` of the v3.1.0 release, confirmed with `gh attestation verify` on 2026-11-14 | Automated for 3.1.0: the docs digest must equal the release asset hash |
+| Pinned digest `206fa938...44362c0f` for `skillporter.pyz` | `SHA256SUMS.txt` of the v3.2.0 release | Automated for 3.2.0: the docs digest must equal the release asset hash |
+| Pinned digest `34a629b9...ee62962a` for the v3.1.0 asset | `SHA256SUMS.txt` of the v3.1.0 release, confirmed with `gh attestation verify` on 2026-11-14 | Historic, superseded by 3.2.0 |
 | Pinned digest `8bd7125b...f127179c` for the v3.0.1 asset | `SHA256SUMS.txt` of the v3.0.1 release | Historic, superseded by 3.1.0 |
 | Pinned digest `5468ffad...a53c3` for the v3.0.0 asset | `SHA256SUMS.txt` of the v3.0.0 release, confirmed with `gh attestation verify` | Historic, superseded by 3.0.1 |
 | The v3.0.0 release has no `SHA256SUMS.txt.sig` | Release asset list on 2026-11-14 | Manual check at release |

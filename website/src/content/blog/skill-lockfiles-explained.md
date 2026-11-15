@@ -87,7 +87,7 @@ steps:
 The composite GitHub Action wraps the same check behind an input, so a pull request that edits an installed skill copy fails instead of passing review:
 
 ```yaml
-- uses: Shanmukh-l33t/skillporter@v3.1.0
+- uses: Shanmukh-l33t/skillporter@v3.2.0
   with:
     command: validate
     lock-check: "true"
