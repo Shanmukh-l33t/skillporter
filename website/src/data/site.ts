@@ -12,7 +12,7 @@ export const SITE = {
   /** Google Search Console ownership token (HTML tag method). */
   googleSiteVerification: '7MaV_R-_DNfdwuCESjBxJWG5E92LodXtJZ8p7OGK89k',
   tagline: 'One skill. Every agent.',
-  positioning: 'Skill Porter is the package manager for AI agent skills.',
+  positioning: 'Skillporter is the package manager for AI agent skills.',
   description:
     'Install, synchronize, secure, and reproduce AI agent skills across your development environments. Manage your skills once and keep every supported agent in sync.',
   socialImage: '/brand/skillporter-social.png',

@@ -17,7 +17,7 @@ const { counts } = harnessData;
   class="arch"
   data-arch
   data-phase="0"
-  aria-label="SkillPorter architecture: one source skill validated, scanned, locked, and synchronized across supported AI coding agents"
+  aria-label="Skillporter architecture: one source skill validated, scanned, locked, and synchronized across supported AI coding agents"
 >
   <div class="arch__chrome">
     <div class="arch__chrome-left">
@@ -32,8 +32,16 @@ const { counts } = harnessData;
   </div>
 
   <div class="arch__body">
-    <!-- Node 1: One canonical source -->
-    <div class="arch__source" data-arch-stage="0">
+    <!-- Step 0: Command prompt bar showing the real CLI invocation -->
+    <div class="arch__runbar is-shown" data-seq-step="0">
+      <code class="arch__runcmd">
+        <span class="arch__prompt" aria-hidden="true">$</span> skillporter add {sourceRepo} --skill {locked.name}
+      </code>
+      <span class="arch__runstate" data-arch-runstate aria-hidden="true">running</span>
+    </div>
+
+    <!-- Step 1: Canonical source materializes -->
+    <div class="arch__source arch-seq is-shown" data-arch-stage="0" data-seq-step="1">
       <span class="arch__scanline" aria-hidden="true"></span>
       <div class="arch__source-top">
         <span class="arch__step">01 · CANONICAL SOURCE</span>
@@ -47,24 +55,24 @@ const { counts } = harnessData;
       </div>
     </div>
 
-    <!-- Conduit 1: SVG packet stream from Source into SkillPorter Engine -->
-    <div class="arch__bus arch__bus--top" aria-hidden="true">
-      <svg viewBox="0 0 400 26" preserveAspectRatio="none">
-        <line x1="200" y1="0" x2="200" y2="26" class="arch__bus-track" />
-        <line x1="200" y1="0" x2="200" y2="26" class="arch__bus-flow arch__bus-flow--top" />
+    <!-- Conduit 1: SVG packet stream from Source into Skillporter Engine -->
+    <div class="arch__bus arch__bus--top arch-seq is-shown" data-seq-step="2" aria-hidden="true">
+      <svg viewBox="0 0 400 22" preserveAspectRatio="none">
+        <line x1="200" y1="0" x2="200" y2="22" class="arch__bus-track" />
+        <line x1="200" y1="0" x2="200" y2="22" class="arch__bus-flow arch__bus-flow--top" />
         <polygon points="200,1 203,4 200,7 197,4" class="arch__bus-node" />
-        <polygon points="200,19 203,22 200,25 197,22" class="arch__bus-node" />
+        <polygon points="200,15 203,18 200,21 197,18" class="arch__bus-node" />
       </svg>
     </div>
 
-    <!-- Node 2: SkillPorter integrity & sync layer -->
-    <div class="arch__engine" data-arch-stage="1">
+    <!-- Steps 2..4: Skillporter integrity layer & 3 sequential gates -->
+    <div class="arch__engine arch-seq is-shown" data-arch-stage="1" data-seq-step="2">
       <div class="arch__engine-head">
         <span class="arch__step arch__step--accent">02 · SKILLPORTER INTEGRITY LAYER</span>
-        <code class="arch__cmd">skillporter add · sync</code>
+        <code class="arch__cmd">validate · scan · lock</code>
       </div>
       <ul class="arch__gates" aria-label="Pre-install checks">
-        <li class="arch__gate" data-gate="0">
+        <li class="arch__gate arch-seq is-shown" data-gate="0" data-seq-step="2">
           <span class="arch__gate-dot" aria-hidden="true"></span>
           <div class="arch__gate-row">
             <b>Validate</b>
@@ -72,7 +80,7 @@ const { counts } = harnessData;
           </div>
           <span>SKILL.md spec</span>
         </li>
-        <li class="arch__gate" data-gate="1">
+        <li class="arch__gate arch-seq is-shown" data-gate="1" data-seq-step="3">
           <span class="arch__gate-dot" aria-hidden="true"></span>
           <div class="arch__gate-row">
             <b>Static scan</b>
@@ -80,7 +88,7 @@ const { counts } = harnessData;
           </div>
           <span>AST &amp; prompt rules</span>
         </li>
-        <li class="arch__gate" data-gate="2">
+        <li class="arch__gate arch-seq is-shown" data-gate="2" data-seq-step="4">
           <span class="arch__gate-dot" aria-hidden="true"></span>
           <div class="arch__gate-row">
             <b>Pin &amp; journal</b>
@@ -92,25 +100,17 @@ const { counts } = harnessData;
     </div>
 
     <!-- Conduit 2: Precision SVG 1-to-2 branching manifold into agent grid -->
-    <div class="arch__bus arch__bus--fan" aria-hidden="true">
-      <svg viewBox="0 0 400 32" preserveAspectRatio="none">
-        <path d="M200 0 L200 14 L100 14 L100 32 M200 14 L300 14 L300 32" class="arch__bus-track" fill="none" />
-        <path
-          d="M200 0 L200 14 L100 14 L100 32"
-          class="arch__bus-flow arch__bus-flow--branch"
-          fill="none"
-        />
-        <path
-          d="M200 0 L200 14 L300 14 L300 32"
-          class="arch__bus-flow arch__bus-flow--branch"
-          fill="none"
-        />
-        <polygon points="200,10 204,14 200,18 196,14" class="arch__bus-hub" />
+    <div class="arch__bus arch__bus--fan arch-seq is-shown" data-seq-step="5" aria-hidden="true">
+      <svg viewBox="0 0 400 28" preserveAspectRatio="none">
+        <path d="M200 0 L200 12 L100 12 L100 28 M200 12 L300 12 L300 28" class="arch__bus-track" fill="none" />
+        <path d="M200 0 L200 12 L100 12 L100 28" class="arch__bus-flow arch__bus-flow--branch" fill="none" />
+        <path d="M200 0 L200 12 L300 12 L300 28" class="arch__bus-flow arch__bus-flow--branch" fill="none" />
+        <polygon points="200,8 204,12 200,16 196,12" class="arch__bus-hub" />
       </svg>
     </div>
 
-    <!-- Node 3: Supported AI coding agents -->
-    <div class="arch__targets-wrap" data-arch-stage="2">
+    <!-- Steps 5..10: Synchronized AI coding agents appear one after another -->
+    <div class="arch__targets-wrap arch-seq is-shown" data-arch-stage="2" data-seq-step="5">
       <div class="arch__targets-head">
         <span class="arch__step">03 · SYNCHRONIZED AGENT ENVIRONMENTS</span>
         <span class="arch__dedupe" data-shared-pill>{counts.shared_primary} share .agents/skills</span>
@@ -119,11 +119,13 @@ const { counts } = harnessData;
         {
           targets.map((h, idx) => {
             const isShared = h.project_primary === '.agents/skills';
+            const stepNum = 5 + idx;
             return (
               <li
-                class:list={['arch__target', { 'is-shared-path': isShared }]}
+                class:list={['arch__target', 'arch-seq', 'is-shown', { 'is-shared-path': isShared }]}
                 style={`--target-idx: ${idx}`}
                 data-arch-target
+                data-seq-step={String(stepNum)}
                 data-shared={isShared ? 'true' : undefined}
               >
                 <div class="arch__target-row">
@@ -188,12 +190,29 @@ const { counts } = harnessData;
     opacity: 1;
   }
 
+  /* Sequential one-after-another reveal inside fixed layout geometry (zero CLS) */
+  .arch-seq {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    transition:
+      opacity 320ms cubic-bezier(0.16, 1, 0.3, 1),
+      transform 340ms cubic-bezier(0.16, 1, 0.3, 1),
+      border-color 240ms var(--ease),
+      background-color 240ms var(--ease),
+      box-shadow 240ms var(--ease);
+  }
+  .arch[data-seq-ready='true'] .arch-seq:not(.is-shown) {
+    opacity: 0;
+    transform: translateY(7px) scale(0.985);
+    pointer-events: none;
+  }
+
   .arch__chrome {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 0.45rem;
-    padding: 0.52rem 0.85rem;
+    padding: 0.5rem 0.85rem;
     background: var(--card-subtle);
     border-bottom: 1px solid var(--border);
     font-family: var(--font-mono);
@@ -253,7 +272,7 @@ const { counts } = harnessData;
     border: 1px solid color-mix(in srgb, var(--electric) 36%, var(--border));
     color: var(--blue-ink);
     font-size: 0.625rem;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.05em;
     white-space: nowrap;
     transition:
       color 220ms var(--ease),
@@ -272,14 +291,54 @@ const { counts } = harnessData;
 
   .arch__body {
     position: relative;
-    padding: 0.75rem 0.9rem 0.8rem;
+    padding: 0.65rem 0.85rem 0.72rem;
     background-image: radial-gradient(circle at 1px 1px, var(--border-soft) 1px, transparent 0);
     background-size: 16px 16px;
   }
 
+  /* Step 0: Command execution bar */
+  .arch__runbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.52rem;
+    padding: 0.38rem 0.65rem;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-s);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+  }
+  .arch__runcmd {
+    color: var(--ivory);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .arch__prompt {
+    color: var(--amber-ink);
+    margin-right: 0.25rem;
+  }
+  .arch__runstate {
+    flex: none;
+    font-size: 0.625rem;
+    letter-spacing: 0.04em;
+    color: var(--blue-ink);
+    padding: 0.06rem 0.38rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--electric) 10%, var(--card));
+    border: 1px solid color-mix(in srgb, var(--electric) 30%, var(--border));
+  }
+  .arch[data-phase='2'] .arch__runstate {
+    color: #16a34a;
+    border-color: rgb(22 163 74 / 0.35);
+    background: rgb(22 163 74 / 0.08);
+  }
+
   .arch__step {
     font-family: var(--font-mono);
-    font-size: 0.6875rem;
+    font-size: 0.66rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--text-3);
@@ -293,16 +352,13 @@ const { counts } = harnessData;
   .arch__source {
     position: relative;
     overflow: hidden;
-    padding: 0.68rem 0.85rem;
+    padding: 0.6rem 0.8rem;
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: var(--radius-m);
     box-shadow: var(--shadow-card-sm);
-    transition:
-      border-color 260ms var(--ease),
-      box-shadow 260ms var(--ease);
   }
-  .arch[data-phase='0'] .arch__source {
+  .arch[data-phase='0'] .arch__source.is-shown {
     border-color: color-mix(in srgb, var(--electric) 58%, var(--border));
     box-shadow: 0 0 0 3px rgb(21 91 232 / 0.08);
   }
@@ -320,7 +376,7 @@ const { counts } = harnessData;
     pointer-events: none;
   }
   .arch[data-phase='0'] .arch__scanline {
-    animation: source-sweep 1.5s var(--ease-out) forwards;
+    animation: source-sweep 1.1s var(--ease-out) forwards;
   }
   @keyframes source-sweep {
     from {
@@ -338,7 +394,7 @@ const { counts } = harnessData;
   }
   .arch__hash {
     font-family: var(--font-mono);
-    font-size: 0.65rem;
+    font-size: 0.64rem;
     color: var(--text-3);
   }
   .arch__hash b {
@@ -350,17 +406,17 @@ const { counts } = harnessData;
     flex-wrap: wrap;
     align-items: baseline;
     justify-content: space-between;
-    gap: 0.25rem 0.75rem;
-    margin-top: 0.35rem;
+    gap: 0.2rem 0.75rem;
+    margin-top: 0.3rem;
   }
   .arch__pkg {
-    font-size: 0.8125rem;
+    font-size: 0.79rem;
     font-weight: 500;
     color: var(--ivory);
   }
   .arch__files {
     font-family: var(--font-mono);
-    font-size: 0.6875rem;
+    font-size: 0.66rem;
     color: var(--text-3);
   }
 
@@ -370,10 +426,10 @@ const { counts } = harnessData;
     overflow: visible;
   }
   .arch__bus--top {
-    height: 1.35rem;
+    height: 1.1rem;
   }
   .arch__bus--fan {
-    height: 1.65rem;
+    height: 1.35rem;
   }
   .arch__bus svg {
     width: 100%;
@@ -421,16 +477,13 @@ const { counts } = harnessData;
     }
   }
 
-  /* Node 2: SkillPorter Engine */
+  /* Node 2: Skillporter Engine */
   .arch__engine {
-    padding: 0.72rem 0.85rem 0.78rem;
+    padding: 0.65rem 0.8rem 0.7rem;
     background: var(--card);
     border: 1px solid color-mix(in srgb, var(--electric) 40%, var(--border));
     border-radius: var(--radius-m);
     box-shadow: var(--shadow-card-sm);
-    transition:
-      border-color 260ms var(--ease),
-      box-shadow 260ms var(--ease);
   }
   .arch[data-phase='1'] .arch__engine {
     border-color: var(--electric);
@@ -444,42 +497,37 @@ const { counts } = harnessData;
     gap: 0.35rem 0.75rem;
   }
   .arch__cmd {
-    font-size: 0.72rem;
+    font-size: 0.68rem;
     color: var(--ivory);
     background: var(--code-bg);
     border: 1px solid var(--border-soft);
     border-radius: var(--radius-s);
-    padding: 0.1rem 0.45rem;
+    padding: 0.08rem 0.42rem;
   }
   .arch__gates {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.45rem;
-    margin: 0.58rem 0 0;
+    gap: 0.42rem;
+    margin: 0.5rem 0 0;
     padding: 0;
     list-style: none;
   }
   .arch__gate {
     position: relative;
-    padding: 0.42rem 0.52rem 0.46rem 1.18rem;
+    padding: 0.38rem 0.48rem 0.42rem 1.12rem;
     background: var(--card-subtle);
     border: 1px solid var(--border-soft);
     border-radius: var(--radius-s);
-    transition:
-      border-color 220ms var(--ease),
-      background-color 220ms var(--ease),
-      transform 220ms var(--ease-out);
   }
   .arch__gate.is-active {
     border-color: var(--electric);
     background: color-mix(in srgb, var(--electric) 9%, var(--card));
     box-shadow: 0 0 0 2px rgb(21 91 232 / 0.12);
-    transform: translateY(-1px);
   }
   .arch__gate-dot {
     position: absolute;
-    left: 0.46rem;
-    top: 0.68rem;
+    left: 0.44rem;
+    top: 0.64rem;
     width: 5px;
     height: 5px;
     background: var(--amber);
@@ -500,7 +548,7 @@ const { counts } = harnessData;
     gap: 0.3rem;
   }
   .arch__gates b {
-    font-size: 0.75rem;
+    font-size: 0.74rem;
     font-weight: 500;
     color: var(--ivory);
     line-height: 1.25;
@@ -510,30 +558,22 @@ const { counts } = harnessData;
     font-family: var(--font-mono);
     font-size: 0.6rem;
     color: var(--blue-ink);
-    opacity: 0.78;
-    transition: opacity 200ms var(--ease);
-  }
-  .arch__gate.is-active .arch__gate-ok {
-    opacity: 1;
     font-weight: 500;
   }
   .arch__gates li > span:last-child {
     display: block;
-    margin-top: 0.1rem;
+    margin-top: 0.08rem;
     font-family: var(--font-mono);
-    font-size: 0.64rem;
+    font-size: 0.63rem;
     color: var(--text-3);
   }
 
   /* Node 3: Agent Targets */
   .arch__targets-wrap {
-    padding: 0.7rem 0.85rem 0.78rem;
+    padding: 0.62rem 0.8rem 0.7rem;
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: var(--radius-m);
-    transition:
-      border-color 260ms var(--ease),
-      box-shadow 260ms var(--ease);
   }
   .arch[data-phase='2'] .arch__targets-wrap {
     border-color: color-mix(in srgb, var(--amber) 55%, var(--border));
@@ -545,13 +585,13 @@ const { counts } = harnessData;
     align-items: center;
     justify-content: space-between;
     gap: 0.25rem 0.75rem;
-    margin-bottom: 0.55rem;
+    margin-bottom: 0.48rem;
   }
   .arch__dedupe {
     font-family: var(--font-mono);
-    font-size: 0.6875rem;
+    font-size: 0.66rem;
     color: var(--amber-ink);
-    padding: 0.08rem 0.42rem;
+    padding: 0.06rem 0.42rem;
     border-radius: 999px;
     border: 1px solid transparent;
     transition:
@@ -565,43 +605,26 @@ const { counts } = harnessData;
   .arch__targets {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.42rem;
+    gap: 0.38rem;
     margin: 0;
     padding: 0;
     list-style: none;
   }
   .arch__target {
-    padding: 0.44rem 0.58rem;
+    padding: 0.4rem 0.55rem;
     background: var(--card-subtle);
     border: 1px solid var(--border-soft);
     border-radius: var(--radius-s);
     min-width: 0;
-    transition:
-      border-color 200ms var(--ease),
-      background-color 200ms var(--ease),
-      transform 200ms var(--ease-out);
+  }
+  .arch__target.is-shown {
+    border-color: color-mix(in srgb, var(--electric) 32%, var(--border-soft));
   }
   .arch__target:hover {
     border-color: var(--electric);
     transform: translateY(-1px);
   }
-  .arch[data-phase='2'] .arch__target {
-    border-color: color-mix(in srgb, var(--electric) 32%, var(--border-soft));
-    animation: target-sync 540ms var(--ease-out) calc(var(--target-idx, 0) * 65ms);
-  }
-  @keyframes target-sync {
-    0% {
-      border-color: var(--border-soft);
-    }
-    45% {
-      border-color: var(--amber);
-      background: color-mix(in srgb, var(--amber) 9%, var(--card));
-    }
-    100% {
-      border-color: color-mix(in srgb, var(--electric) 32%, var(--border-soft));
-    }
-  }
-  /* Interactive shared-path highlight when hovering Codex / Cursor / Gemini CLI */
+  /* Interactive shared-path highlight when hovering Codex / Cursor / Gemini CLI or at cycle completion */
   .arch[data-shared-hover='true'] .arch__target.is-shared-path {
     border-color: var(--amber) !important;
     background: color-mix(in srgb, var(--amber) 10%, var(--card)) !important;
@@ -616,8 +639,8 @@ const { counts } = harnessData;
   .arch__agent {
     display: inline-flex;
     align-items: center;
-    gap: 0.38rem;
-    font-size: 0.78rem;
+    gap: 0.36rem;
+    font-size: 0.76rem;
     font-weight: 500;
     color: var(--ivory);
     white-space: nowrap;
@@ -634,7 +657,7 @@ const { counts } = harnessData;
       background-color 220ms var(--ease),
       box-shadow 220ms var(--ease);
   }
-  .arch[data-phase='2'] .arch__sync-dot {
+  .arch__target.is-shown .arch__sync-dot {
     background: #16a34a;
     box-shadow: 0 0 6px rgb(22 163 74 / 0.55);
   }
@@ -643,10 +666,10 @@ const { counts } = harnessData;
     align-items: center;
     justify-content: space-between;
     gap: 0.35rem;
-    margin-top: 0.16rem;
+    margin-top: 0.14rem;
   }
   .arch__path {
-    font-size: 0.6875rem;
+    font-size: 0.675rem;
     color: var(--blue-ink);
     white-space: nowrap;
     overflow: hidden;
@@ -658,7 +681,7 @@ const { counts } = harnessData;
     font-size: 0.58rem;
     letter-spacing: 0.03em;
     color: var(--amber-ink);
-    opacity: 0.85;
+    font-weight: 500;
   }
 
   .arch__foot {
@@ -667,7 +690,7 @@ const { counts } = harnessData;
     align-items: center;
     justify-content: space-between;
     gap: 0.4rem 1rem;
-    padding: 0.58rem 0.95rem;
+    padding: 0.54rem 0.9rem;
     background: var(--card-subtle);
     border-top: 1px solid var(--border);
     font-family: var(--font-mono);
@@ -700,7 +723,7 @@ const { counts } = harnessData;
       grid-template-columns: 1fr;
     }
     .arch__bus--fan {
-      height: 1.2rem;
+      height: 1.15rem;
     }
   }
 </style>

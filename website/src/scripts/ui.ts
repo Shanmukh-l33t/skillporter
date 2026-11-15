@@ -616,11 +616,12 @@ function initHeroArchitecture(): void {
   if (!arch) return;
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const status = $<HTMLElement>('[data-arch-status]', arch);
+  const runstate = $<HTMLElement>('[data-arch-runstate]', arch);
   const gates = $$<HTMLElement>('[data-gate]', arch);
+  const seqNodes = $$<HTMLElement>('[data-seq-step]', arch);
   const sharedTargets = $$<HTMLElement>('[data-shared="true"]', arch);
   const sharedPill = $<HTMLElement>('[data-shared-pill]', arch);
 
-  // Interactive shared-path highlight: hovering Codex, Cursor, or Gemini CLI illuminates all shared .agents/skills readers
   const setSharedHover = (on: boolean) => {
     if (on) arch.dataset.sharedHover = 'true';
     else delete arch.dataset.sharedHover;
@@ -634,42 +635,61 @@ function initHeroArchitecture(): void {
     sharedPill.addEventListener('pointerleave', () => setSharedHover(false));
   }
 
+  const applyStep = (step: number, phase: string, pillText: string, runText: string, sharedGlow = false) => {
+    arch.dataset.phase = phase;
+    arch.dataset.step = String(step);
+    if (status) status.textContent = pillText;
+    if (runstate) runstate.textContent = runText;
+    for (const node of seqNodes) {
+      const req = Number(node.dataset.seqStep ?? '0');
+      node.classList.toggle('is-shown', req <= step);
+    }
+    gates.forEach((g, idx) => {
+      g.classList.toggle('is-active', step >= idx + 2);
+    });
+    if (sharedGlow) arch.dataset.sharedHover = 'true';
+    else delete arch.dataset.sharedHover;
+  };
+
   if (reduced) {
-    arch.dataset.phase = '2';
-    if (status) status.textContent = '03 · SYNCED';
-    for (const g of gates) g.classList.add('is-active');
+    applyStep(10, '2', '03 · SYNCED', '✓ 6 synced', false);
     return;
   }
 
-  const phases: { phase: string; label: string; gateIdx: number; ms: number }[] = [
-    { phase: '0', label: '01 · SOURCE', gateIdx: -1, ms: 1500 },
-    { phase: '1', label: '02 · VALIDATE', gateIdx: 0, ms: 850 },
-    { phase: '1', label: '02 · SCAN 0/100', gateIdx: 1, ms: 900 },
-    { phase: '1', label: '02 · LOCKFILE', gateIdx: 2, ms: 900 },
-    { phase: '2', label: '03 · SYNCED', gateIdx: 3, ms: 2400 },
+  arch.dataset.seqReady = 'true';
+
+  const timeline: { step: number; phase: string; label: string; run: string; shared?: boolean; ms: number }[] = [
+    { step: 0, phase: '0', label: '00 · RUN ADD', run: 'resolving...', ms: 520 },
+    { step: 1, phase: '0', label: '01 · SOURCE', run: 'fetched', ms: 620 },
+    { step: 2, phase: '1', label: '02 · VALIDATE', run: 'spec ok', ms: 560 },
+    { step: 3, phase: '1', label: '02 · SCAN 0/100', run: '0/100 pass', ms: 560 },
+    { step: 4, phase: '1', label: '02 · LOCKFILE', run: 'pinned', ms: 560 },
+    { step: 5, phase: '2', label: '03 · SYNC 1/6', run: 'writing 1/6', ms: 340 },
+    { step: 6, phase: '2', label: '03 · SYNC 2/6', run: 'writing 2/6', ms: 340 },
+    { step: 7, phase: '2', label: '03 · SYNC 3/6', run: 'writing 3/6', ms: 340 },
+    { step: 8, phase: '2', label: '03 · SYNC 4/6', run: 'writing 4/6', ms: 340 },
+    { step: 9, phase: '2', label: '03 · SYNC 5/6', run: 'writing 5/6', ms: 340 },
+    { step: 10, phase: '2', label: '03 · SYNCED', run: '✓ 6 synced', shared: true, ms: 2600 },
   ];
 
-  let stepIdx = 0;
+  let idx = 0;
   let paused = false;
   let timer = 0;
 
   const tick = () => {
     if (paused) {
-      timer = window.setTimeout(tick, 600);
+      timer = window.setTimeout(tick, 500);
       return;
     }
-    const cur = phases[stepIdx]!;
-    arch.dataset.phase = cur.phase;
-    if (status) status.textContent = cur.label;
-    gates.forEach((g, idx) => {
-      g.classList.toggle('is-active', cur.gateIdx >= idx && cur.gateIdx >= 0);
-    });
-    stepIdx = (stepIdx + 1) % phases.length;
+    const cur = timeline[idx]!;
+    applyStep(cur.step, cur.phase, cur.label, cur.run, Boolean(cur.shared));
+    idx = (idx + 1) % timeline.length;
     timer = window.setTimeout(tick, cur.ms);
   };
 
   arch.addEventListener('pointerenter', () => {
     paused = true;
+    applyStep(10, '2', '03 · SYNCED', '✓ 6 synced', false);
   });
   arch.addEventListener('pointerleave', () => {
     paused = false;

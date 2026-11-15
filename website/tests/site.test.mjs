@@ -335,11 +335,14 @@ test('every page in the pages collection is a substantial page, not a stub', () 
 });
 
 test('the two-word brand name is present on the pages that must rank for it', () => {
-  for (const route of ['index.html', 'skill-porter.html', 'faq.html']) {
+  for (const route of ['skill-porter.html', 'faq.html']) {
     const html = pages.get(route);
     assert.ok(html, `${route} missing`);
     assert.ok((stripTags(html).match(/Skill Porter/g) ?? []).length >= 3, `${route} does not use the two-word brand name`);
   }
+  const homeText = stripTags(pages.get('index.html'));
+  assert.ok((homeText.match(/Skillporter/g) ?? []).length >= 3, 'index.html does not use Skillporter');
+  assert.doesNotMatch(homeText, /Skill Porter \(Skillporter\)/, 'index.html must use single Skillporter brand');
   for (const file of pages.keys()) {
     assert.doesNotMatch(stripTags(pages.get(file)), /skill-porter/i, `${file} uses the hyphenated brand spelling in prose`);
   }
