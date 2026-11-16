@@ -1,5 +1,6 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
+import vercel from '@astrojs/vercel';
 import { skillporterLightTheme, skillporterTheme } from './src/lib/shiki-theme.mjs';
 
 // Static, host-agnostic build. Pages are emitted as `/docs/cli.html` (and
@@ -7,6 +8,9 @@ import { skillporterLightTheme, skillporterTheme } from './src/lib/shiki-theme.m
 export default defineConfig({
   site: 'https://skillporter.dev',
   output: 'static',
+  adapter: vercel({
+    webAnalytics: { enabled: true },
+  }),
   trailingSlash: 'never',
   build: {
     format: 'preserve',
