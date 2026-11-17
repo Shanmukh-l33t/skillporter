@@ -8,6 +8,7 @@ import Footer from '../components/Footer.astro';
 import Header from '../components/Header.astro';
 import Search from '../components/Search.astro';
 import { SITE } from '../data/site';
+import { inject } from '@vercel/analytics';
 
 interface Props {
   title: string;
@@ -24,6 +25,9 @@ const { title, description, path, ogType = 'website', noindex = false, structure
 const canonical = new URL(path === '/' ? '/' : path.replace(/\/$/, ''), SITE.url).href;
 const socialImage = new URL(SITE.socialImage, SITE.url).href;
 const fullTitle = path === '/' ? title : `${title} | ${SITE.name}`;
+
+// Initialize Vercel Web Analytics
+inject();
 ---
 
 <!doctype html>
