@@ -48,8 +48,15 @@ Skillporter removes the Cursor-only copy and preserves `.agents/skills/<skill>` 
 The link's target no longer exists. This is common after `git worktree`, a Docker build or a Windows clone.
 
 ```bash
+skillporter doctor --fix --dry-run
 skillporter doctor --fix
 ```
+
+`--dry-run` and `--fix` print the same `Repair plan`: one line per path, with the action, the source copy, the
+harnesses it covers and the impact (a backup under `.skillporter/backups/`, a state update, or the reason the repair
+is refused). `--dry-run` writes nothing. Repairs are limited to harnesses Skillporter recorded for the skill (state
+record, lockfile, manifest) or that you name with `--harness`. A conflicting unmanaged copy, a policy-blocked harness
+or a broken link with no planned replacement is refused, not overwritten or deleted.
 
 Prefer `--strategy copy`, the default, in environments that do not preserve symlinks.
 

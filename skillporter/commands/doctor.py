@@ -21,7 +21,7 @@ from ..policy import load_policy, split_by_allowed_harnesses
 from ..security import compute_tree_hash, scan_skill
 from ..state import ManagedSkillRecord, load_state, state_dir
 from ..ui import badge, render_table
-from .common import EXIT_ERROR, EXIT_OK, EXIT_PROBLEM, fmt_mode, get_harness, is_verbose, latest_tree_mtime_ns
+from .common import EXIT_ERROR, EXIT_OK, EXIT_PROBLEM, fmt_mode, get_harness, is_verbose
 
 STALE_TMP_AGE_SECONDS = 600
 
@@ -276,31 +276,28 @@ def _find_verified_snapshot(root: Path, scope: str, sname: str, expected_hash: s
     return None
 
 
-def _remove_stale_state_tmp_files(root: Path, scope: str) -> int:
-    """Delete orphan ``.state.json.*.tmp`` files left by a killed writer; return how many were removed.
-
-    Only direct children of the state directory older than ten minutes are touched, so a concurrent
-    writer's in-flight temp file is never deleted.
-    """
-    sdir = state_dir(root, scope=scope)
-    if not sdir.is_dir():
-        return 0
-    cutoff = time.time() - STALE_TMP_AGE_SECONDS
-    removed = 0
-    for cand in sdir.glob(".state.json.*.tmp"):
-        try:
-            if cand.is_symlink() or not cand.is_file() or cand.stat().st_mtime > cutoff:
-                continue
-            cand.unlink()
-        except OSError:
-            continue
-        removed += 1
-    return removed
-
-
 def cmd_doctor(args: argparse.Namespace) -> int:
+    from ..atomic import workspace_lock
+    from ..diagnose import Diagnosis
+    from ..install import (
+        _verify_harness_base_within_scope,
+        _verify_no_escaping_symlinks,
+        plan_install,
+        validate_skill_name_segment,
+    )
+    from ..manifest import Lockfile
+    from ..policy import POLICY_FILENAME, PolicyError, evaluate_policy
+
     root = Path(args.path).expanduser().resolve()
-    manifest = load_manifest(root) if args.scope == "project" else None
+    scope = args.scope
+    dry_run = bool(getattr(args, "dry_run", False))
+    manifest = load_manifest(root) if scope == "project" else None
+    sdir = state_dir(root, scope=scope)
+    repair_plan: list[dict[str, str]] = []
+
+    def step(action: str, path: Path, impact: str, **details: str) -> None:
+        repair_plan.append({"action": action, "path": str(path), "impact": impact, **details})
+
     try:
         # Validate every harness name up front so a typo is a clean error, not a traceback.
         if args.harness:
@@ -313,128 +310,242 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_ERROR
     manifest_skill_map = {s.name: s for s in manifest.skills} if (manifest and manifest.skills) else {}
-    records = load_state(root, scope=args.scope)
-
-    diag = run_diagnose(root, only=args.harness or None, scope=args.scope)
-    detected = [d for d in harnesses.detect_harnesses(root) if d.installed]
-    dry_run = bool(getattr(args, "dry_run", False))
+    records = load_state(root, scope=scope)
+    blocked = []
+    if args.fix or dry_run:
+        for base in dict.fromkeys((sdir, state_dir(root))):
+            if base.resolve() != base.parent.resolve() / base.name:
+                blocked.append((base, "state directory redirects through a link"))
+        # diagnose() can recover transactions as a side effect. Don't do that inside a repair preview.
+        txn_dir = sdir / "tmp"
+        if any(p.is_dir() and not p.is_symlink() for p in txn_dir.glob("txn-*")):
+            blocked.append((txn_dir, "pending install transaction; run plain `skillporter doctor` to recover first"))
     try:
         lock = load_lockfile(root)
     except LockfileError as exc:
-        lock = load_lockfile(root / ".nonexistent")
-        diag.findings.append(f"lockfile error: {exc}")
+        lock = Lockfile()
+        blocked.append((root / LOCKFILE_FILENAME, f"lockfile error: {exc}"))
+    if args.fix and not blocked:
+        try:
+            policy = load_policy(root)
+        except PolicyError as exc:
+            blocked.append((root / POLICY_FILENAME, f"policy error: {exc}"))
+    if blocked and (args.fix or dry_run):
+        diag = Diagnosis(root=root)
+    else:
+        diag = run_diagnose(root, only=args.harness or None, scope=scope)
+    detected = [d for d in harnesses.detect_harnesses(root) if d.installed]
+    for path, reason in blocked:
+        diag.findings.append(f"{path}: {reason}")
+        if args.fix:
+            step("refuse", path, reason)
+    lock.skills = {name: entry for name, entry in lock.skills.items() if entry.scope == scope}
 
     if args.harness:
         default_targets = [get_harness(h).name for h in args.harness]
     elif manifest and manifest.harnesses:
         default_targets = [get_harness(h).name for h in manifest.harnesses]
     else:
-        # No manifest scope: mirror exactly what diagnose() requires of an unscoped skill, so that
-        # `doctor` and `doctor --fix` judge against the same harness set.
+        # These are report defaults, not authorization to install an unmanaged skill.
         active_proj = {d.harness.name for d in detected if d.project_active}
         existing = {n for n, rep in diag.reports.items() if any(loc.exists for loc in rep.locations)}
         default_targets = sorted({"claude-code", "codex", "cursor"} | active_proj | existing)
 
     drift_before_fix = _collect_unified_drift(diag, lock, records, root)
     repaired: list[str] = []
-
     stale_tmp_removed = 0
-    if args.fix and not dry_run:
-        stale_tmp_removed = _remove_stale_state_tmp_files(root, args.scope)
+    if args.fix and not blocked:
+        cutoff = time.time() - STALE_TMP_AGE_SECONDS
 
-    has_broken = any(loc.broken_links for r in diag.reports.values() for loc in r.locations)
-    if args.fix and not dry_run and (diag.skills or has_broken):
-        for rep in diag.reports.values():
-            for loc in rep.locations:
-                for blink in loc.broken_links:
-                    bp = Path(blink)
-                    if bp.is_symlink():
-                        bp.unlink(missing_ok=True)
-                        repaired.append(f"removed broken symlink {bp}")
+        def is_stale(path: Path) -> bool:
+            return not path.is_symlink() and path.is_file() and path.stat().st_mtime <= cutoff
 
-        for skill_md in diag.skills:
-            sname = skill_md.parent.name
-            copies = diag.skill_copies.get(sname, [skill_md.parent])
+        stale_paths = []
+        for path in sorted(sdir.glob(".state.json.*.tmp")):
+            with contextlib.suppress(OSError):
+                if is_stale(path):
+                    stale_paths.append(path)
+                    step("remove-stale-temp", path, "abandoned write from a killed process; state.json is untouched")
+
+        manifest_targets = []
+        if manifest and manifest.harnesses:
+            # The manifest parser supplies core defaults even when no harnesses were declared.
+            raw_manifest = (root / MANIFEST_FILENAME).read_text(encoding="utf-8").lstrip()
+            if raw_manifest.startswith("{"):
+                declared = bool(json.loads(raw_manifest).get("harnesses"))
+            else:
+                declared = any(
+                    line.partition(":")[0].rstrip() == "harnesses" and line.partition(":")[2].strip() != "[]"
+                    for line in (line.split("#", 1)[0] for line in raw_manifest.splitlines())
+                )
+            if declared:
+                manifest_targets = manifest.harnesses
+
+        installs: list[tuple[str, Path, str, list[str], dict[Path, bool]]] = []
+        replacement_paths: set[Path] = set()
+        for sname in sorted(set(diag.skill_copies) | set(records) | set(lock.skills)):
+            copies = diag.skill_copies.get(sname, [])
+            try:
+                validate_skill_name_segment(sname)
+            except InstallError as exc:
+                step("refuse", copies[0] if copies else sdir, str(exc), skill=sname)
+                continue
             locked_entry = lock.skills.get(sname)
             rec = records.get(sname)
-
-            if args.harness:
-                skill_targets = default_targets
-            elif sname in manifest_skill_map and manifest_skill_map[sname].harnesses:
-                skill_targets = [get_harness(h).name for h in manifest_skill_map[sname].harnesses]
-            elif rec and rec.harnesses:
-                # Same precedence as diagnose(): a state record (where the skill was installed) outranks the
-                # manifest-wide harness list, so `--fix` repairs exactly what `doctor` reports as missing.
-                skill_targets = []
-                for rh in rec.harnesses:
-                    with contextlib.suppress(KeyError):
-                        skill_targets.append(harnesses.get(rh).name)
-                if not skill_targets:
-                    skill_targets = default_targets
-            else:
-                skill_targets = default_targets
-
+            spec = manifest_skill_map.get(sname)
+            raw_targets = (args.harness or (spec and spec.harnesses) or (rec and rec.harnesses)
+                           or (locked_entry and locked_entry.installed_targets) or manifest_targets)
+            targets = []
+            for name in raw_targets:
+                with contextlib.suppress(KeyError):
+                    targets.append(get_harness(name).name)
+            targets = list(dict.fromkeys(targets))
+            missing = {t for t in targets if t in diag.reports and not diag.reports[t].loads(sname)}
+            drifted = sname in drift_before_fix
+            if not drifted and not missing and (targets or not copies or scope == "user"):
+                continue
             expected_hash = (
                 locked_entry.tree_hash
                 if (locked_entry and locked_entry.tree_hash)
                 else (rec.tree_hash if rec and rec.tree_hash else "")
             )
+            if drifted and not expected_hash:
+                for path in copies:
+                    step("refuse", path, "conflicting copies; choose the authoritative copy explicitly")
+                continue
+            if not targets:
+                for path in copies:
+                    if drifted or any(t in diag.reports and not diag.reports[t].loads(sname) for t in default_targets):
+                        step("refuse", path, "no explicit repair targets; use --harness or configure the manifest")
+                continue
 
-            clean_copies: list[Path] = []
-            any_security_passed_on_disk = False
-            for cdir in copies:
-                srep = scan_skill(cdir)
-                if not srep.passed or srep.has_structural_escape:
+            clean = {}
+            for path in sorted(copies):
+                try:
+                    _verify_harness_base_within_scope(path, scope, root)
+                    _verify_no_escaping_symlinks(path)
+                except (InstallError, OSError, RuntimeError):
                     continue
-                any_security_passed_on_disk = True
-                if expected_hash:
-                    chash, _ = compute_tree_hash(cdir)
-                    if chash != expected_hash:
-                        continue
-                clean_copies.append(cdir)
-
-            # Restore single-copy benign drift from verified baseline snapshot,
-            # while refusing to auto-mask if ALL on-disk copies failed security scan.
-            if not clean_copies and expected_hash and any_security_passed_on_disk:
-                snap_dir = _find_verified_snapshot(root, args.scope, sname, expected_hash)
-                if snap_dir is not None:
-                    clean_copies.append(snap_dir)
-
-            if not clean_copies:
-                continue
-
-            needs_repair = (
-                sname in drift_before_fix
-                or any(t in diag.reports and not diag.reports[t].loads(sname) for t in skill_targets)
-            )
-            if not needs_repair:
-                continue
-
-            best_dir = max(clean_copies, key=latest_tree_mtime_ns)
-            repair_targets, _policy_blocked = split_by_allowed_harnesses(load_policy(root), list(skill_targets))
-            if not repair_targets:
-                continue
-            with contextlib.suppress(InstallError):
-                res = run_install(
-                    root,
-                    best_dir,
-                    repair_targets,
-                    strategy="copy",
-                    scope=args.scope,
-                    force=True,
-                    record_state=True,
-                    skill_name_override=sname,
+                report = scan_skill(path, offline=True)
+                if report.passed and report.scan_complete and not report.has_structural_escape:
+                    clean[path] = compute_tree_hash(path)[0]
+            source = next((p for p, h in clean.items() if h and (not expected_hash or h == expected_hash)), None)
+            if source is None and expected_hash and (clean or not copies):
+                source = _find_verified_snapshot(root, scope, sname, expected_hash)
+            source_error = ""
+            if source is None:
+                source_error = (
+                    "no safe local source matching the lock/state pin" if expected_hash else "no safe local source"
                 )
-                for r in res:
-                    if r.action in ("created", "updated"):
-                        verified_h, _ = compute_tree_hash(r.dest)
-                        rel_dest = r.dest.relative_to(root) if r.dest.is_relative_to(root) else r.dest
-                        repaired.append(f"{sname} -> {r.harness} ({rel_dest}, sha256:{verified_h[:12]})")
+            else:
+                try:
+                    _verify_harness_base_within_scope(source, scope, root)
+                    _verify_no_escaping_symlinks(source)
+                    report = scan_skill(source, offline=True)
+                    violations = evaluate_policy(
+                        policy, skill_dirs=[source], require_source=True,
+                        source_candidates=[
+                            (locked_entry and locked_entry.source) or (rec and rec.source)
+                            or (spec and spec.source) or "",
+                        ],
+                        resolved_commit=(locked_entry and locked_entry.resolved_commit)
+                        or (rec and rec.resolved_commit) or "",
+                        ref=spec.ref if spec else "", sec_reports={source.name: report},
+                    )
+                    if not report.passed or not report.scan_complete or report.has_structural_escape:
+                        violations.append("source failed the static security scan")
+                    if manifest and report.fails_policy(manifest.security_policy, manifest.max_risk_score):
+                        violations.append("source failed manifest security thresholds")
+                    source_error = "; ".join(violations)
+                except (InstallError, OSError, RuntimeError) as exc:
+                    source_error = str(exc)
 
-        records = load_state(root, scope=args.scope)
-        # Re-diagnose with the same arguments as the first pass so the post-repair verdict is judged by the
-        # same per-skill harness rules as plain `doctor` (never by a wider or narrower harness list).
-        diag = run_diagnose(root, only=args.harness or None, scope=args.scope)
+            # A placeholder supplies the name for destination resolution even when no source is safe.
+            plan_source = source or (root / sname)
+            try:
+                destinations = plan_install(root, [plan_source], targets, scope=scope, allow_managed_update=True)
+            except (InstallError, OSError, RuntimeError) as exc:
+                step("refuse", copies[0] if copies else sdir, str(exc), skill=sname)
+                continue
+            source_hash = compute_tree_hash(source)[0] if source else ""
+            repair_targets = []
+            writes = {}
+            planned_harnesses = set()
+            for dest in destinations.destinations:
+                path = dest.resolved_dest
+                target_names = [dest.harness, *dest.shared_with]
+                planned_harnesses.update(target_names)
+                if path.is_dir() and source_hash and compute_tree_hash(path)[0] == source_hash:
+                    continue
+                if not missing.intersection(target_names) and (not drifted or not dest.exists):
+                    continue
+                _, denied = split_by_allowed_harnesses(policy, target_names)
+                reason = source_error
+                if denied:
+                    reason = f"policy allowed_harnesses excludes {', '.join(denied)}"
+                elif dest.conflict or (dest.exists and not (path.is_dir() or path.is_symlink())):
+                    reason = "existing unmanaged copy or non-directory would be overwritten"
+                elif ".git" in path.parts or path == root or (source and source.resolve().is_relative_to(path)):
+                    reason = "destination overlaps protected files or the repair source"
+                details = {"skill": sname, "harnesses": ", ".join(target_names)}
+                if source:
+                    details["source"] = str(source)
+                if reason:
+                    step("refuse", path, reason, **details)
+                    continue
+                impact = f"copy sha256:{source_hash[:12]}; update {sdir / 'state.json'}"
+                if dest.exists:
+                    if path.is_symlink():
+                        impact += "; replace the link itself, leaving its target untouched"
+                    else:
+                        impact += f"; back up current content under {sdir / 'backups' / sname}"
+                    replacement_paths.add(path)
+                step("replace" if dest.exists else "create", path, impact, **details)
+                writes[path] = dest.exists
+                repair_targets.extend(target_names)
+            for name in sorted(missing - planned_harnesses):
+                step("refuse", copies[0] if copies else sdir, f"{name} has no {scope} install path", skill=sname)
+            if writes and source is not None:
+                installs.append((sname, source, source_hash, list(dict.fromkeys(repair_targets)), writes))
+
+        broken_links = {Path(p) for r in diag.reports.values() for loc in r.locations for p in loc.broken_links}
+        for path in sorted(broken_links - replacement_paths):
+            if not any(item["path"] == str(path) for item in repair_plan):
+                step("refuse", path, "broken link left in place; no authorized replacement was planned")
+
+        failures = []
+        if not dry_run and (stale_paths or installs):
+            with workspace_lock(root):
+                for path in stale_paths:
+                    try:
+                        if is_stale(path):
+                            path.unlink()
+                            stale_tmp_removed += 1
+                    except OSError as exc:
+                        failures.append(f"repair failed at {path}: {exc}")
+                for sname, source, source_hash, targets, writes in installs:
+                    try:
+                        live = plan_install(root, [source], targets, scope=scope, allow_managed_update=True)
+                        if (
+                            any(d.conflict for d in live.destinations if d.resolved_dest in writes)
+                            or {d.resolved_dest: d.exists for d in live.destinations if d.resolved_dest in writes}
+                            != writes
+                            or compute_tree_hash(source)[0] != source_hash
+                        ):
+                            raise InstallError("source or destination changed since planning; rerun doctor")
+                        res = run_install(
+                            root, source, targets, scope=scope, force=any(writes.values()), record_state=True
+                        )
+                        for r in res:
+                            if r.action in ("created", "updated"):
+                                verified_h, _ = compute_tree_hash(r.dest)
+                                rel_dest = r.dest.relative_to(root) if r.dest.is_relative_to(root) else r.dest
+                                repaired.append(f"{sname} -> {r.harness} ({rel_dest}, sha256:{verified_h[:12]})")
+                    except (InstallError, OSError) as exc:
+                        failures.append(f"repair failed at {', '.join(map(str, writes))}: {exc}")
+            records = load_state(root, scope=scope)
+            diag = run_diagnose(root, only=args.harness or None, scope=scope)
+            diag.findings.extend(failures)
 
     remaining_drift = _collect_unified_drift(diag, lock, records, root)
 
@@ -507,9 +618,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             "skillporter doctor --fix   # restore verified snapshot (or `skillporter lock` if intentional)"
         )
     if remaining_drift:
-        remediations.append("skillporter sync --force   # reconcile drifted copies (snapshots backup first)")
+        remediations.append("skillporter sync --prefer <path>   # choose the authoritative copy before reconciling")
     if any("not visible to:" in f or "broken symlink" in f for f in diag.findings):
-        remediations.append("skillporter doctor --fix   # install missing skills and remove broken symlinks")
+        remediations.append("skillporter doctor --fix --dry-run   # inspect authorized repairs and blocked paths")
     if any(not diag.is_skill_valid(s) for s in diag.skill_names):
         remediations.append("skillporter validate .     # inspect and fix SKILL.md specification errors")
 
@@ -524,6 +635,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
                     "skills": diag.skill_names,
                     "skill_states": skill_summaries,
                     "drift_before_fix": drift_before_fix,
+                    **({"repair_plan": repair_plan} if args.fix else {}),
                     "repaired": repaired,
                     "stale_tmp_removed": stale_tmp_removed,
                     "drifted": remaining_drift,
@@ -553,6 +665,20 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         print("\nRepairs applied:")
         for item in repaired:
             print(f"  ~ {item}")
+    if args.fix:
+        print("\nRepair preview (nothing written):" if dry_run else "\nRepair plan:")
+        labels = {"create": "create", "replace": "replace", "remove-stale-temp": "delete"}
+        for item in repair_plan:
+            action = item["action"]
+            source = f" from {item['source']}" if "source" in item else ""
+            targets = f" [{item['harnesses']}]" if "harnesses" in item else ""
+            if action == "refuse":
+                print(f"  ! refused {item['path']}: {item['impact']}")
+            else:
+                prefix = "Would" if dry_run else "Planned"
+                print(f"  - {prefix} {labels.get(action, action)} {item['path']}{source}{targets}: {item['impact']}")
+        if not repair_plan:
+            print("  No changes planned.")
     if stale_tmp_removed:
         print(f"\nCleanup: removed {stale_tmp_removed} stale temp file(s) from {state_dir(root, scope=args.scope)}")
 
