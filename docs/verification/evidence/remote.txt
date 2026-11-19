@@ -1,0 +1,22 @@
+
+=== remote ===
+
+[project] $ skillporter add anthropics/skills --ref e4bb5d960d87126ff3b3a8af1a104b7db67560ba --skill pdf --harness claude-code --harness codex --offline
+exit=0
++ Installed pdf across 2 harness(es) (+2 created, ~0 updated, =0 deduplicated/unchanged)
+  + Claude Code          created    (copy via .claude/skills)
+  + OpenAI Codex         created    (copy via .agents/skills)
+
+Installation verified.
+Next steps:
+  skillporter status                # inspect installed state across harnesses
+PASS add exit/content
+PASS GitHub skill files installed without executing scripts
+
+[project] $ skillporter lock
+exit=0
+wrote $TMP\project\skillporter.lock (1 locked skill(s))
+PASS lock exit/content
+PASS lock records requested Git commit and content digest
+
+Anomalies: []

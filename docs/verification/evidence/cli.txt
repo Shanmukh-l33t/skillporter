@@ -1,0 +1,1196 @@
+
+=== lifecycle ===
+
+[project] $ skillporter add '$TMP\src\release-notes' --harness claude-code --harness codex --harness cursor --dry-run --offline
+exit=0
+SKILLPORTER
+
+Source: local:$TMP\src\release-notes
+
+Found skills:
+  release-notes  (risk: 0/100 · APPROVE)
+
+Target harnesses:
+  Claude Code (claude-code)
+  OpenAI Codex (codex)
+  Cursor (cursor)
+
+Installation plan:
+  2 destination(s) across 3 harness(es)
+  1 shared destination(s) deduplicated (.agents/skills)
+
+Validation: PASSED
+
+Security assessment:
+  0 informational/medium finding(s)
+  0 critical/high finding(s)
+
+Dry run complete (no files modified).
+PASS add exit/content
+PASS dry-run left workspace empty
+
+[project] $ skillporter add '$TMP\src\release-notes' --harness claude-code --harness codex --harness cursor --offline
+exit=0
++ Installed release-notes across 3 harness(es) (+2 created, ~0 updated, =1 deduplicated/unchanged)
+  + Claude Code          created    (copy via .claude/skills)
+  + OpenAI Codex         created    (copy via .agents/skills)
+
+Installation verified.
+Next steps:
+  skillporter status                # inspect installed state across harnesses
+PASS add exit/content
+PASS native and shared paths match source, no duplicate Cursor path
+
+[project] $ skillporter list
+exit=0
+SKILL          VERSION  MANAGED  HASH          HARNESSES
+-------------  -------  -------  ------------  --------------------------
+release-notes  1.0.0    yes      9cce307b8574  claude-code, codex, cursor
+PASS list exit/content
+
+[project] $ skillporter status
+exit=0
+skillporter 3.2.0 · environment status (project)  [HEALTHY]
+  Location:           $TMP\project
+  Config:             skillporter.yaml (not initialized) · skillporter.lock (not generated)
+  Detected harnesses: github-copilot, hermes
+  Active targets:     claude-code, codex, cursor, hermes, openclaw
+  Skills summary:     1 total (1 synced, 0 unmanaged, 0 needing attention)
+
+  SKILL          VERSION  STATE   MANAGED  HARNESSES
+  -------------  -------  ------  -------  --------------------------------------------
+  release-notes  1.0.0    SYNCED  yes      antigravity, claude-code, cline, codex (+11)
+
+Next steps:
+  skillporter init                  # create skillporter.yaml for reproducible team sync
+PASS status exit/content
+
+[project] $ skillporter diagnose --harness claude-code --harness codex --harness cursor
+exit=0
+skillporter 3.2.0 — diagnosing $TMP\project (scope: project)
+
+skills found: release-notes
+
+SKILL          claude-code     codex           cursor        
+-------------------------------------------------------------
+release-notes  yes             yes             yes           
+
+no findings — every skill is reachable and synchronized across checked harnesses.
+PASS diagnose exit/content
+
+[project] $ skillporter init
+exit=0
+initialized $TMP\project\skillporter.yaml (1 skill(s), harnesses: claude-code, codex, cursor)
+PASS init exit/content
+
+[project] $ skillporter sync
+exit=0
+wrote $TMP\project\skillporter.lock (1 locked skill(s))
+~ Synchronized 1 skill(s) across 3 harness(es) (+0 created, ~0 updated, =3 unchanged)
+PASS sync exit/content
+
+[project] $ skillporter lock
+exit=0
+wrote $TMP\project\skillporter.lock (1 locked skill(s))
+PASS lock exit/content
+
+[project] $ skillporter lock --check
+exit=1
+skillporter.lock check FAILED (1 issue(s)):
+  - lockfile source mismatch on 'release-notes': skillporter.yaml has './.agents/skills/release-notes' != locked '$TMP\\src\\release-notes'
+FAIL lock exit/content
+PASS lock check made no file changes
+PASS local content pin and per-file hash
+
+[project] $ skillporter audit --limit 2
+exit=1
+skillporter 3.2.0 — supply-chain security audit for $TMP\project
+
+Installed/discovered skills: 1
+Recorded audit log events:   2 (0 explicit risk override(s))
+Lockfile integrity issues:   1
+  - release-notes      NO_DETECTED_FINDINGS   (risk: 0/100 · origin: $TMP\src\release-notes)
+  [lockfile] lockfile source mismatch on 'release-notes': skillporter.yaml has './.agents/skills/release-notes' != locked '$TMP\\src\\release-notes'
+
+Verdict: ACTION REQUIRED
+FAIL audit exit/content
+
+[project] $ skillporter profile save release
+exit=0
++ Saved profile release (1 skill(s), harnesses: claude-code, codex, cursor)
+PASS profile exit/content
+
+[project] $ skillporter profile list
+exit=0
+PROFILE    SKILLS  HARNESSES
+---------  ------  --------------------------
+  release  1       claude-code, codex, cursor
+PASS profile exit/content
+
+[project] $ skillporter profile show release
+exit=0
+schema_version: 2
+project: project
+scope: project
+strategy: copy
+security_policy: HIGH
+profile: release
+harnesses:
+  - claude-code
+  - codex
+  - cursor
+skills:
+  - name: release-notes
+    source: ./.skillporter/store/release-notes/9cce307b8574/release-notes
+    version: 1.0.0
+    strategy: copy
+    harnesses: [antigravity, claude-code, cline, codex, cursor, gemini-cli, github-copilot, goose, junie, openclaw, opencode, openhands, replit, roo-code, zed]
+PASS profile exit/content
+
+[project] $ skillporter export '$TMP\release.skillpack' --managed-only
+exit=0
++ Exported release.skillpack (993 B, self-contained offline hybrid)
+  Path:      $TMP\release.skillpack
+  SHA-256:   f8d0f7a677d3037f...
+  Skills:    1 (release-notes)
+  Harnesses: claude-code, codex, cursor
+  Profiles:  release
+
+Next steps:
+  skillporter diff release.skillpack             # compare any workspace with this package
+  skillporter import release.skillpack --dry-run # preview restore on another machine
+PASS export exit/content
+
+[project] $ skillporter diff '$TMP\release.skillpack'
+exit=0
+Comparing project:$TMP\project  vs  skillpack:release.skillpack
+
+IDENTICAL · 1 skill(s) match across content, version, and harnesses.
+PASS diff exit/content
+
+[target] $ skillporter import '$TMP\release.skillpack' --dry-run
+exit=0
+Import preview for release.skillpack -> $TMP\target (project)  [READY]
+  ! release-notes@1.0.0 (9cce307b8574) -> claude-code, codex, cursor
+      writes $TMP\target\.agents\skills\release-notes
+      writes $TMP\target\.claude\skills\release-notes
+
+Note: 3 harness(es) in package are not detected on this machine: claude-code, codex, cursor (pass --only-detected to skip them)
+PASS import exit/content
+PASS import dry-run left target empty
+
+[target] $ skillporter import '$TMP\release.skillpack'
+exit=0
++ Restored 1 skill(s) across 3 harness(es) from release.skillpack
+  + release-notes -> claude-code ($TMP\target\.claude\skills\release-notes)
+  + release-notes -> codex ($TMP\target\.agents\skills\release-notes)
+  Note: harness(es) not detected on this host: claude-code, codex, cursor
+
+Next steps:
+  skillporter status                # verify restored environment state
+PASS import exit/content
+PASS import restored identical files to recorded paths
+PASS default import did not add other dedicated harness paths
+
+[target] $ skillporter diff '$TMP\release.skillpack'
+exit=0
+Comparing project:$TMP\target  vs  skillpack:release.skillpack
+
+IDENTICAL · 1 skill(s) match across content, version, and harnesses.
+PASS diff exit/content
+
+[target] $ skillporter profile list
+exit=0
+PROFILE    SKILLS  HARNESSES
+---------  ------  --------------------------
+  release  1       claude-code, codex, cursor
+PASS profile exit/content
+
+[target] $ skillporter profile use release
+exit=0
+~ Activated profile release (1 skill(s) synchronized across claude-code, codex, cursor)
+PASS profile exit/content
+FAIL activating imported profile respects saved selected harnesses
+
+[target] $ skillporter profile delete release
+exit=0
+- Deleted profile 'release'
+PASS profile exit/content
+
+[conflict] $ skillporter import '$TMP\release.skillpack'
+exit=1
+error: destination conflict(s) detected (use --force / --on-conflict overwrite, or --on-conflict skip): codex: $TMP\conflict\.agents\skills\release-notes already exists
+PASS import exit/content
+PASS conflicting import preserved existing file and created no install
+
+[conflict] $ skillporter import '$TMP\release.skillpack' --on-conflict overwrite
+exit=0
++ Restored 1 skill(s) across 3 harness(es) from release.skillpack
+  + release-notes -> claude-code ($TMP\conflict\.claude\skills\release-notes)
+  + release-notes -> codex ($TMP\conflict\.agents\skills\release-notes)
+  Note: harness(es) not detected on this host: claude-code, codex, cursor
+
+Next steps:
+  skillporter status                # verify restored environment state
+PASS import exit/content
+PASS retry restored package bytes
+
+[project] $ skillporter lock --check
+exit=1
+skillporter.lock check FAILED (2 issue(s)):
+  - lockfile source mismatch on 'release-notes': skillporter.yaml has './.agents/skills/release-notes' != locked '$TMP\\src\\release-notes'
+  - lockfile drift on 'release-notes' (.claude/skills/release-notes): locked 9cce307b8574 != disk af263d14e1ce
+PASS lock exit/content
+
+[project] $ skillporter sync
+exit=1
+error: on-disk skill content differs from skillporter.lock; refusing to re-lock without --force:
+  - release-notes ($TMP\project\.claude\skills\release-notes): locked 9cce307b != disk af263d14
+PASS sync exit/content
+PASS refused sync preserved local edit
+
+[project] $ skillporter doctor --fix --dry-run
+exit=1
+skillporter 3.2.0 — doctor report for $TMP\project
+
+Detected harnesses: github-copilot, hermes
+Checked harnesses:  claude-code, codex, cursor
+Discovered skills:  1
+Content drift:      1 skill(s)
+
+  SKILL          STATE    SHA-256       COPIES  REACHABLE HARNESSES
+  -------------  -------  ------------  ------  --------------------------
+  release-notes  DRIFTED  9cce307b8574  2       claude-code, codex, cursor
+
+Issues found:
+  - skill 'release-notes' has content drift across copies: .agents/skills/release-notes (9cce307b), .claude/skills/release-notes (af263d14)
+  - lockfile drift: 'release-notes' at .claude/skills/release-notes (af263d14) differs from skillporter.lock (9cce307b)
+
+Recommended fixes:
+  $ skillporter doctor --fix   # restore verified snapshot (or `skillporter lock` if intentional)
+  $ skillporter sync --force   # reconcile drifted copies (snapshots backup first)
+
+Status: UNHEALTHY (2 issue(s) found).
+PASS doctor exit/content
+PASS doctor dry-run preserved drift
+
+[project] $ skillporter doctor --fix
+exit=0
+skillporter 3.2.0 — doctor report for $TMP\project
+
+Detected harnesses: github-copilot, hermes
+Checked harnesses:  claude-code, codex, cursor
+Discovered skills:  1
+Content drift:      0 remaining (found before repair: 1, repaired: 1)
+
+Repairs applied:
+  ~ release-notes -> claude-code (.claude\skills\release-notes, sha256:9cce307b8574)
+
+  SKILL          STATE  SHA-256       COPIES  REACHABLE HARNESSES
+  -------------  -----  ------------  ------  --------------------------
+  release-notes  VALID  9cce307b8574  2       claude-code, codex, cursor
+
+Status: HEALTHY (all checked skills reachable, valid, and hash-verified).
+PASS doctor exit/content
+
+[project] $ skillporter lock --check
+exit=1
+skillporter.lock check FAILED (1 issue(s)):
+  - lockfile source mismatch on 'release-notes': skillporter.yaml has './.agents/skills/release-notes' != locked '$TMP\\src\\release-notes'
+FAIL lock exit/content
+PASS doctor restored locked bytes
+
+[project] $ skillporter remove release-notes --harness cursor
+exit=0
+- Removed 'release-notes' from 0 destination(s) (source preserved)
+  = cursor         preserved-shared $TMP\project\.agents\skills\release-notes
+  Note: shared .agents/skills directory retained for active sibling harness(es)
+PASS remove exit/content
+PASS shared copy kept for Codex
+
+[project] $ skillporter remove release-notes --dry-run
+exit=0
+would-remove   claude-code    $TMP\project\.claude\skills\release-notes
+would-remove   codex          $TMP\project\.agents\skills\release-notes
+would-remove   cursor         $TMP\project\.agents\skills\release-notes
+would-remove   gemini-cli     $TMP\project\.agents\skills\release-notes
+would-remove   antigravity    $TMP\project\.agents\skills\release-notes
+would-remove   zed            $TMP\project\.agents\skills\release-notes
+would-remove   replit         $TMP\project\.agents\skills\release-notes
+would-remove   openhands      $TMP\project\.agents\skills\release-notes
+would-remove   goose          $TMP\project\.agents\skills\release-notes
+PASS remove exit/content
+
+[project] $ skillporter remove release-notes
+exit=2
+would-remove   claude-code    $TMP\project\.claude\skills\release-notes
+would-remove   codex,cursor,gemini-cli,antigravity,zed,replit,openhands,goose $TMP\project\.agents\skills\release-notes
+error: refusing to remove 'release-notes' from 2 destination(s) without confirmation; pass -y/--yes to confirm, use --harness to target specific harnesses, or --dry-run to preview
+PASS remove exit/content
+PASS unconfirmed full removal preserved installed copy
+
+[project] $ skillporter uninstall release-notes -y
+exit=0
+would-remove   claude-code    $TMP\project\.claude\skills\release-notes
+would-remove   codex,cursor,gemini-cli,antigravity,zed,replit,openhands,goose $TMP\project\.agents\skills\release-notes
+- Removed 'release-notes' from 2 destination(s) (source preserved)
+  - claude-code    removed          $TMP\project\.claude\skills\release-notes
+  - codex          removed          $TMP\project\.agents\skills\release-notes
+PASS uninstall exit/content
+PASS uninstall preserved source and removed copies
+
+[project] $ skillporter adopt handwritten
+exit=0
++ Adopted 1 skill(s) into Skillporter management:
+  + handwritten@1.0.0 (90fc266c1bcb)  [claude-code, cline, cursor, github-copilot, opencode, replit]
+PASS adopt exit/content
+
+[project] $ skillporter move handwritten --from claude-code --to cursor --isolated
+exit=0
+~ Moved handwritten: claude-code -> cursor
+  + cursor         created          ($TMP\project\.cursor\skills\handwritten)
+  - claude-code    removed          ($TMP\project\.claude\skills\handwritten)
+PASS move exit/content
+PASS move replaced adopted source location with isolated Cursor copy
+
+[project] $ skillporter outdated handwritten
+exit=0
+SKILL        CURRENT  UPSTREAM     CONTENT HASH  STATUS  SOURCE
+-----------  -------  -----------  ------------  ------  ----------------------------
+handwritten  1.0.0    unreachable  90fc266c1bcb  ERROR   ./.claude/skills/handwritten
+FAIL outdated exit/content
+
+=== versions ===
+
+[project] $ skillporter add '$TMP\src\release-notes' --harness claude-code --harness codex --offline
+exit=0
++ Installed release-notes across 2 harness(es) (+2 created, ~0 updated, =0 deduplicated/unchanged)
+  + Claude Code          created    (copy via .claude/skills)
+  + OpenAI Codex         created    (copy via .agents/skills)
+
+Installation verified.
+Next steps:
+  skillporter status                # inspect installed state across harnesses
+PASS add exit/content
+
+[project] $ skillporter outdated release-notes
+exit=0
+SKILL          CURRENT  UPSTREAM  CONTENT HASH                  STATUS    SOURCE
+-------------  -------  --------  ----------------------------  --------  ----------------------------------------------------------------------------------------------------------------
+release-notes  1.0.0    1.1.0     9cce307b8574 -> e39d2946a8c7  OUTDATED  $TMP\src\release-notes
+
+Next steps:
+  skillporter update --dry-run      # preview security scan and update plan
+  skillporter update                # update outdated skills (snapshots backup first)
+PASS outdated exit/content
+
+[project] $ skillporter update release-notes --check
+exit=0
+Update review: 1 skill(s) have upstream changes:
+
+  release-notes  v1.0.0 (9cce307b8574) -> v1.1.0 (e39d2946a8c7)
+    - MODIFIED instructions: SKILL.md
+
+Next steps:
+  skillporter update                # apply reviewed updates
+PASS update exit/content
+PASS version checks did not write files
+
+[project] $ skillporter update release-notes
+exit=0
+updated   claude-code      $TMP\project\.claude\skills\release-notes
+updated   codex            $TMP\project\.agents\skills\release-notes
+PASS update exit/content
+PASS update installed v2 across both paths
+
+[project] $ skillporter rollback release-notes --dry-run
+exit=0
+would-rollback release-notes -> backup 20261119T091459Z-9cce307b8574 (v1.0.0)
+PASS rollback exit/content
+PASS rollback dry-run left v2
+
+[project] $ skillporter rollback release-notes
+exit=0
+rolled-back  claude-code      $TMP\project\.claude\skills\release-notes  (restored backup 20261119T091459Z-9cce307b8574)
+rolled-back  codex            $TMP\project\.agents\skills\release-notes  (restored backup 20261119T091459Z-9cce307b8574)
+PASS rollback exit/content
+PASS rollback restored both v1 copies
+
+=== authoring ===
+
+[project] $ skillporter new draft-notes --with-references --with-tests
+exit=0
++ Created skill draft-notes at $TMP\project\draft-notes
+  + SKILL.md
+  + references/guide.md
+  + skill.test.yaml
+
+Next steps:
+  skillporter lint $TMP\project\draft-notes                         # validate metadata, links, and security
+  skillporter preview $TMP\project\draft-notes --harness cursor     # preview native and adapted formats
+  skillporter install $TMP\project\draft-notes --harness detected   # install into active harnesses
+PASS new exit/content
+
+[project] $ skillporter lint '$TMP\project\draft-notes' --strict
+exit=0
+draft-notes: PASSED  (~145 body tokens · risk 0/100 · 0 error(s), 0 warning(s))
+PASS lint exit/content
+
+[project] $ skillporter test '$TMP\project\draft-notes'
+exit=0
+Skill test run [PASSED]  (mode: deterministic_lexical)
+  draft-notes: PASSED  (triggers: 2/2 matched · non-triggers: 2/2 rejected)
+
+Note: Sample activation tests evaluate description trigger coverage and structural invariants; passing sample tests does not guarantee activation in every live LLM conversation.
+PASS test exit/content
+
+[project] $ skillporter preview '$TMP\project\draft-notes' --harness cursor --adapt-format cursor-mdc
+exit=0
+Cursor (cursor) · NATIVE · FIXTURE_TESTED
+  Native path:  .agents/skills/draft-notes/SKILL.md
+  Body tokens:  ~145 estimated tokens
+
+  Adapted output (cursor-mdc -> .cursor/rules/draft-notes.mdc):
+    ---
+    description: "Execute draft notes workflows consistently and safely across coding agents. Use when the user asks about draft notes tasks or workflows."
+    globs:
+    alwaysApply: false
+    ---
+    
+    <!-- Generated by skillporter from draft-notes/SKILL.md -->
+    <!-- Adaptation notes:
+      - cursor-mdc: progressive-disclosure references/ remain in draft-notes/references/
+    -->
+    
+    # Draft Notes
+    
+    ## When to Use
+    
+    - Activate this skill for draft notes workflows.
+    - Prefer deterministic checks and verify outp
+… excerpt …
+d [Reference Guide](references/guide.md) when handling edge cases.
+    
+    ## Constraints
+    
+    ... (2 more lines; pass --verbose for full output)
+PASS preview exit/content
+
+[project] $ skillporter inspect '$TMP\project\draft-notes' --preview-adapt cursor-mdc
+exit=0
+Source: $TMP\project\draft-notes (local)
+
+Skill: draft-notes
+  Description: Execute draft notes workflows consistently and safely across coding agents. Use when the user asks about draft notes tasks or workflows.
+  Formats:     agent-skills-v1 (SKILL.md)
+  Structure:   0 script(s), 1 reference(s), 0 asset(s)
+  Security:    PASSED (risk: 0/100 · APPROVE · engine: skillporter-static v3.2.0 · sha256: f4f323e49765)
+
+  Adapted preview (cursor-mdc -> .cursor/rules/draft-notes.mdc):
+    ---
+    description: "Execute draft notes workflows consistently and safely across coding agents. Use when the user asks about draft notes tasks or workflows."
+    globs:
+    alwaysApply: false
+    ---
+    
+    <!-- Generated by skillporter from draft-notes/SKILL.md -->
+    <!-- Adaptation notes:
+      - cursor-mdc: progressive-disclosure references/ remain in draft-notes/references/
+    -->
+    
+    # Draft Notes
+    
+    ## When to Use
+PASS inspect exit/content
+
+[project] $ skillporter install '$TMP\project\draft-notes' --harness claude-code
+exit=0
++ created   claude-code    $TMP\project\.claude\skills\draft-notes  (copy via .claude/skills)
+PASS install exit/content
+
+[project] $ skillporter validate '$TMP\project\draft-notes' --offline
+exit=0
+draft-notes: OK  (risk: 0/100 · APPROVE · engine: skillporter-static v3.2.0)
+PASS validate exit/content
+
+[project] $ skillporter scan '$TMP\project\draft-notes' --offline --format json
+exit=0
+{
+  "passed": true,
+  "risk_score": 0,
+  "engine": "skillporter-static",
+  "engine_version": "3.2.0",
+  "reports": {
+    "draft-notes": {
+      "root": "$TMP\\project\\draft-notes",
+      "assessment_type": "STATIC_SECURITY_ASSESSMENT",
+      "engine": "skillporter-static",
+      "engine_version": "3.2.0",
+      "posture": "NO_DETECTED_FINDINGS",
+      "scan_complete": true,
+      "external_scanner_status": "offline_skipped",
+      "risk_score": 0,
+      "risk_level": "LOW",
+      "recommendation": "APPROVE",
+      "category_breakdown": {
+        "secrets": 0,
+        "prompt_injection": 0,
+        "code_execution": 0,
+        "data_exfiltration": 0,
+        "filesystem_escape": 0,
+        "supply_chain": 0
+      },
+      "capabilities": {
+
+… excerpt …
+f298dc978322",
+        "skill.test.yaml": "2c617717d2b3f28e6fcca698a473385296d13f4dcaf17fed702916c0b154ac34"
+      },
+      "findings": []
+    }
+  }
+}
+PASS scan exit/content
+PASS valid json output
+
+[project] $ skillporter scan '$TMP\project\draft-notes' --offline --format sarif
+exit=0
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "skillporter",
+          "version": "3.2.0",
+          "informationUri": "https://github.com/Shanmukh-l33t/skillporter",
+          "rules": []
+        }
+      },
+      "results": []
+    }
+  ]
+}
+PASS scan exit/content
+PASS valid sarif output
+
+[project] $ skillporter validate '$TMP\project\bad-doc' --offline
+exit=1
+bad-doc: (risk: 0/100 · APPROVE · engine: skillporter-static v3.2.0)
+  [error] no-frontmatter: SKILL.md must start with YAML frontmatter delimited by '---'
+PASS validate exit/content
+
+[project] $ skillporter sandbox run '$TMP\project\draft-notes'
+exit=0
+skillporter 3.2.0 — [EXPERIMENTAL] Dry-Run Sandbox Report
+Skill:              draft-notes ($TMP\project\draft-notes)
+Runtime:            dry-run-tracer (requested: auto)
+Filesystem mutated: NO (verified by SHA-256 tree hash)
+Network mutated:    NO (outbound sockets disabled)
+Risk Score:         0/100 · APPROVE
+
+Proposed file writes:      0
+Proposed sensitive reads:  0
+Proposed network calls:    0
+Proposed tool invocations: 0
+Proposed env accesses:     0
+
+Disclaimer: Experimental dry-run sandbox traces proposed operations without touching host state; it reduces but does not eliminate runtime risk.
+PASS sandbox exit/content
+
+[project] $ skillporter policy init
+exit=0
++ Initialized $TMP\project\skillporter.policy.yaml
+PASS policy exit/content
+
+[project] $ skillporter policy show
+exit=0
+# Skillporter Project Security Policy
+block_severity: HIGH
+max_risk_score: 50
+require_declared_capabilities: false
+require_pinned_refs: false
+approved_sources: []
+restricted_sources: []
+banned_capabilities: []
+allowed_harnesses: []
+PASS policy exit/content
+
+[project] $ skillporter policy check
+exit=0
+Policy check (skillporter.policy.yaml) [PASSED] · 2 skill(s) checked
+PASS policy exit/content
+
+[project] $ skillporter pack '$TMP\project\draft-notes' --out '$TMP\pack1'
+exit=0
+packed draft-notes@0.1.0:
+  archive:    $TMP\pack1\draft-notes-0.1.0.tar.gz (sha256: 62b5b96a2f49820f...)
+  provenance: $TMP\pack1\draft-notes-0.1.0.provenance.json
+PASS pack exit/content
+
+[project] $ skillporter pack '$TMP\project\draft-notes' --out '$TMP\pack2'
+exit=0
+packed draft-notes@0.1.0:
+  archive:    $TMP\pack2\draft-notes-0.1.0.tar.gz (sha256: 6f0a417845171877...)
+  provenance: $TMP\pack2\draft-notes-0.1.0.provenance.json
+PASS pack exit/content
+gzip mtime: 1795079717 vs 1795079718
+PASS pack tar payloads are equal
+FAIL pack archives are byte-identical
+
+[project] $ skillporter add '$TMP\pack1\draft-notes-0.1.0.tar.gz' --harness cursor --isolated --offline
+exit=0
++ Installed draft-notes across 1 harness(es) (+1 created, ~0 updated, =0 deduplicated/unchanged)
+  + Cursor               created    (copy via .cursor/skills)
+
+Installation verified.
+Next steps:
+  skillporter status                # inspect installed state across harnesses
+PASS add exit/content
+PASS local archive add installed scaffold bytes
+
+[project] $ skillporter publish '$TMP\project\draft-notes' --registry '$TMP\registry.json' --dry-run
+exit=0
+Published developer/draft-notes@0.1.0 (contract v1.0.0)
+  Archive:    $TMP\project\draft-notes\.skillporter\dist\draft-notes-0.1.0.tar.gz (sha256: da357752ca8f1139...)
+  Provenance: $TMP\project\draft-notes\.skillporter\dist\draft-notes-0.1.0.provenance.json
+  Risk score: 0/100
+  Target:     dry-run (client contract verified)
+PASS publish exit/content
+PASS publish dry-run did not create registry
+
+[project] $ skillporter search pdf
+exit=0
+PACKAGE            CATEGORY            DESCRIPTION
+-----------------  ------------------  --------------------------------------------
+anthropics/skills  official-collections  Official Anthropic reference collection of Agent Skills (document processing, web testing, MCP builder).
+PASS search exit/content
+
+[project] $ skillporter info hermes
+exit=0
+Harness:       Hermes Agent (hermes)
+Category:      autonomous
+Support:       NATIVE (RUNTIME_VERIFIED, verified 2026-11-11)
+Evidence:      Live runtime discovery verified + conformance fixture (https://hermes-agent.nousresearch.com/docs)
+Docs:          https://hermes-agent.nousresearch.com/docs
+Project paths: .hermes/skills
+User paths:    $HERMES_HOME/skills
+Note:          Profile-scoped: resolves against $HERMES_HOME, never a hardcoded path.
+Note:          Walks nested category directories ($HERMES_HOME/skills/<category>/<name>/SKILL.md).
+PASS info exit/content
+
+[project] $ skillporter explain DRIFT
+exit=0
+DRIFT — SHA-256 Content Drift Across Installed Skill Copies (diagnostics)
+
+Cause:
+  Two or more harness directories (for example `.claude/skills/<skill>` and `.agents/skills/<skill>`) contain different file contents for the same skill.
+
+Why it matters:
+  Claude Code and Codex/Cursor will execute different versions of the same skill, causing inconsistent agent behavior across teammates.
+
+Suggested fix:
+  Synchronize all harness copies from your preferred authoritative copy (existing copies are backed up to `.skillporter/backups/` automatically).
+
+Run:
+  $ skillporter sync --force
+  $ skillporter sync --prefer .claude/skills/<skill>
+PASS explain exit/content
+
+[project] $ skillporter self-skill show
+exit=0
+---
+name: skillporter
+description: Official control-center skill for managing, consolidating, securing, testing, optimizing, synchronizing, comparing, and moving AI agent skills and instructions across 19 harnesses (Claude Code, Codex, Cursor, GitHub Copilot, Gemini CLI, Windsurf, Cline, Roo Code, OpenCode, Zed, Replit, Junie, Antigravity, Hermes, OpenClaw, OpenHands, Goose, Continue, Aider). Use when the user asks to inspect installed skills, consolidate duplicate agent instruction files, recommend skills for a repository, measure context token overhead, preview native harness formats, review updates, check security policies, switch profiles, or export and restore portable .skillpack environments.
+license: MIT
+compatibility: Requires Pytho
+… excerpt …
+on
+  skillporter profile list --json
+  skillporter profile use security-review --dry-run --json
+  skillporter profile use security-review --json
+  ```
+PASS self-skill exit/content
+
+[project] $ skillporter self-skill path
+exit=0
+$TMP\home\tmp\skillporter-self-skill-o5mojvnw\skillporter\SKILL.md
+PASS self-skill exit/content
+
+[project] $ skillporter self-skill install --harness hermes
+exit=0
++ Installed official skillporter AI skill across 1 harness(es) (project scope):
+  + hermes         $TMP\project\.hermes\skills\skillporter
+PASS self-skill exit/content
+
+[project] $ skillporter harness list
+exit=0
+skillporter 3.2.0 · 19 supported harness(es) (2 detected, 7 configured in project scope)
+
+HARNESS         SUPPORT     DETECTED  SELECTED  CONFIGURED  INSTALL PATH
+--------------  ----------  --------  --------  ----------  ------------------
+aider           ADAPTED     -         -         -           .aider-desk/skills
+antigravity     NATIVE      -         -         -           .agents/skills
+claude-code     NATIVE      -         -         yes (1)     .claude/skills
+cline           NATIVE      -         -         yes (1)     .cline/skills
+codex           NATIVE      -         -         -           .agents/skills
+continue        COMPATIBLE  -         -         -           .continue/skills
+cursor          NATIVE      -         -         yes (
+… excerpt …
+indsurf        NATIVE      -         -         -           .windsurf/skills
+zed             NATIVE      -         -         -           .agents/skills
+PASS harness exit/content
+
+[project] $ skillporter harness inspect cursor
+exit=0
+Cursor (cursor)
+  Support:        NATIVE (FIXTURE_TESTED, verified 2026-11-14)
+  Category:       coding
+  Detected:       NO (not detected on this machine)
+  Install path:   .agents/skills (scope: project)
+  Isolated path:  .cursor/skills (via --isolated)
+  Shared peers:   antigravity, codex, gemini-cli, goose, openhands, replit, zed (also read .agents/skills)
+  Capabilities:   allowed_tools, recursive_discovery, scripts_dir, references_dir, adapt:cursor-mdc
+  Loaded skills:  draft-notes
+  Docs:           https://cursor.com/docs/context/skills
+  Note:           Walks skill roots recursively, so nested category folders resolve.
+  Note:           Local user skills are not copied to Cloud Agents or remote workers.
+  Limitation:     Installing into both .agents/skills and .cursor/skills causes Cursor to list the skill twice.
+PASS harness exit/content
+
+[project] $ skillporter harness status
+exit=0
+skillporter 3.2.0 · harness status for $TMP\project (scope: project)
+
+HARNESS         STATE       SKILLS  PATH              REACHABLE SKILLS
+--------------  ----------  ------  ----------------  ----------------
+claude-code     CONFIGURED  1       .claude/skills    draft-notes
+cline           CONFIGURED  1       .cline/skills     draft-notes
+cursor          CONFIGURED  1       .agents/skills    draft-notes
+github-copilot  CONFIGURED  1       .github/skills    draft-notes
+hermes          CONFIGURED  1       .hermes/skills    skillporter
+opencode        CONFIGURED  1       .opencode/skills  draft-notes
+replit          CONFIGURED  1       .agents/skills    draft-notes
+PASS harness exit/content
+
+[project] $ skillporter detect --all --versions
+exit=0
+skillporter 3.2.0 — detected harnesses in $TMP\project
+
+HARNESS         DETECTED  WORKSPACE  SUPPORT     EVIDENCE
+--------------  --------  ---------  ----------  ------------------------------
+aider           no        -          ADAPTED     -
+antigravity     no        -          NATIVE      -
+claude-code     no        -          NATIVE      -
+cline           no        -          NATIVE      -
+codex           no        -          NATIVE      -
+continue        no        -          COMPATIBLE  -
+cursor          no        -          NATIVE      -
+gemini-cli      no        -          NATIVE      -
+github-copilot  yes       -          NATIVE      binary:copilot (GitHub Copilot CLI was not found. Run copilot in a terminal to install it, or se)
+goose           no        -          NATIVE      -
+hermes          yes       -          NATIVE      binary:hermes, env:HERMES_HOME (hermes: no dependency environment is committed for this install; run `hermes pm )
+junie           no        -          NATIVE      -
+openclaw        no        -          NATIVE      -
+opencode        no        -          NATIVE      -
+openhands       no        -          NATIVE      -
+replit          no        -          NATIVE      -
+roo-code        no        -          NATIVE      -
+windsurf        no        -          NATIVE      -
+zed             no        -          NATIVE      -
+PASS detect exit/content
+
+[project] $ skillporter matrix
+exit=0
+skillporter 3.2.0 — universal harness compatibility matrix (19 harnesses)
+
+HARNESS         SUPPORT     VERIFICATION            PRIMARY PROJECT PATH
+--------------  ----------  ----------------------  ------------------------------------
+aider           ADAPTED     FIXTURE_TESTED          .aider-desk/skills
+antigravity     NATIVE      FIXTURE_TESTED          .agents/skills (+1 compat)
+claude-code     NATIVE      RUNTIME_VERIFIED        .claude/skills
+cline           NATIVE      RUNTIME_VERIFIED        .cline/skills (+3 compat)
+codex           NATIVE      RUNTIME_VERIFIED        .agents/skills
+continue        COMPATIBLE  RUNTIME_VERIFIED        .continue/skills
+cursor          NATIVE      FIXTURE_TESTED          .agents/skills (+3 compat)
+gem
+… excerpt …
+d             NATIVE      FIXTURE_TESTED          .agents/skills
+
+Tip: pass --verbose or run `skillporter harness inspect <id>` for per-harness notes.
+PASS matrix exit/content
+
+[project] $ skillporter ci-report --format json --output '$TMP\report.md'
+exit=1
+{
+  "healthy": false,
+  "verdict": "FAILED (Action Required)",
+  "skills": [
+    "draft-notes",
+    "skillporter",
+    "bad-doc"
+  ],
+  "harnesses": [
+    "claude-code",
+    "codex",
+    "cursor",
+    "hermes",
+    "openclaw"
+  ],
+  "diagnostic_findings": [
+    "skill 'bad-doc' is not visible to: claude-code, cline, codex, cursor, github-copilot, hermes, opencode, replit (visible to no harness)",
+    "bad-doc: [error] no-frontmatter: SKILL.md must start with YAML frontmatter delimited by '---'"
+  ],
+  "drifted": {},
+  "duplicates": {},
+  "lockfile_issues": [],
+  "security": {
+    "bad-doc": {
+      "risk_score": 0,
+      "risk_level": "LOW",
+      "recommendation": "APPROVE",
+      "passed": true,
+      "engine": "skillporter-static",
+     
+… excerpt …
+ntmatter delimited by '---'\n\n### 3. Suggested Remediation\n\n```bash\nskillporter doctor --fix\nskillporter sync --force\nskillporter lock\n```\n"
+}
+PASS ci-report exit/content
+PASS CI reports bad-doc as a finding, stdout JSON and file Markdown
+
+[project] $ skillporter demo
+exit=0
+skillporter 3.2.0 — interactive multi-harness demo (isolated temp workspace)
+
+1. BEFORE (Diagnosing fragmented workspace with broken worktree symlink & SHA-256 drift):
+   - skill 'api-reviewer' has content drift across copies: .agents/skills/api-reviewer (e6f06f61), .claude/skills/api-reviewer (cfa652f8)
+   - skill 'sql-optimizer' is not visible to: codex (visible to: claude-code, cursor)
+
+2. EXECUTING: skillporter doctor --fix && skillporter sync --force && skillporter lock
+
+3. BEFORE vs. AFTER DIFF:
+   --- before (broken symlink + SHA-256 drift + missing reachability)
+   +++ after  (skillporter sync --force && skillporter doctor --fix)
+   @@ -1,4 +1,3 @@
+   - .claude/skills/legacy-helper -> ../missing-worktree/legacy-helper [BROKEN SYMLIN
+… excerpt …
+es, cursor=yes
+   sql-optimizer    claude-code=yes, codex=yes, cursor=yes
+
+Temporary workspace cleaned up (0 files written to your current directory).
+PASS demo exit/content
+PASS demo did not write into project
+
+=== instructions ===
+
+[project] $ skillporter consolidate
+exit=0
+Discovered 2 instruction file(s) across 8 agent(s) (claude-code, codex, cursor, gemini-cli, goose, opencode, openhands, zed)
+  Overlapping content:          100.0%
+  Shared directives:            1
+  Agent-specific groups:        0
+  Potential conflicts:          0
+  Potentially outdated refs:    0
+
+  FILE       TARGET AGENTS                 DIRECTIVES  TOKENS  MANAGED
+  ---------  ----------------------------  ----------  ------  -------
+  AGENTS.md  codex, cursor, opencode (+4)  1           ~11     no
+  CLAUDE.md  claude-code                   1           ~11     no
+
+Next steps:
+  skillporter consolidate --verbose       # preview generated native files
+  skillporter consolidate --apply         # back up originals and write canonical.md + targets
+PASS consolidate exit/content
+PASS consolidate preview did not change input
+
+[project] $ skillporter consolidate --apply
+exit=0
+~ Consolidated 1 shared instruction(s) across 2 native file(s)
+  Canonical source: $TMP\project\.skillporter\instructions\canonical.md
+  Backup snapshot:  $TMP\project\.skillporter\backups\instructions\20261119T091533Z-d2f1d695
+  ~ AGENTS.md
+  ~ CLAUDE.md
+PASS consolidate exit/content
+
+[project] $ skillporter consolidate --status
+exit=0
+Instruction status: SYNCED (0 manual modifications detected).
+PASS consolidate exit/content
+
+[project] $ skillporter context --harness claude-code
+exit=0
+Claude Code (claude-code) · startup ~45 tokens (+0 skill body tokens on activation)
+  + instruction: CLAUDE.md (~45 tokens, project-root)
+  ! ignored in claude-code: AGENTS.md
+  - skills: (none)
+PASS context exit/content
+
+[project] $ skillporter consolidate --reconcile
+exit=0
+~ Instructions already up to date (1 shared instruction(s)); nothing written, no new backup snapshot
+  Canonical source: $TMP\project\.skillporter\instructions\canonical.md
+PASS consolidate exit/content
+
+[project] $ skillporter consolidate --rollback
+exit=0
+~ Restored 2 original instruction file(s) from $TMP\project\.skillporter\backups\instructions\20261119T091533Z-d2f1d695
+  Pre-rollback snapshot of current files: $TMP\project\.skillporter\backups\instructions\20261119T091535Z-pre-rollback-8ea6b72d
+PASS consolidate exit/content
+PASS rollback restored both guides
+
+[project] $ skillporter suggest
+exit=0
+Local project analysis for $TMP\project (100% local, zero uploads):
+  Detected stack: Python (pyproject.toml), Multi-Agent Instructions (2 instruction files found)
+
+Recommended skills (1):
+
+  + Official Skillporter skill (Shanmukh-l33t/skillporter)
+      Why relevant:   Detected Multi-Agent Instructions (2 instruction files found)
+      Solves:         Lets an AI coding agent run Skillporter commands such as status, scan and consolidate preview on your behalf.
+      Harnesses:      claude-code, codex, github-copilot, hermes
+      Security:       bundled
+      Limitations:    Bundled with this Skillporter release. Write operations still need explicit flags.
+      Install:        skillporter self-skill install --harness detected
+PASS suggest exit/content
+
+[project] $ skillporter install '$TMP\src\release-notes' --harness claude-code
+exit=0
++ created   claude-code    $TMP\project\.claude\skills\release-notes  (copy via .claude/skills)
+PASS install exit/content
+
+[project] $ skillporter insights --record-usage release-notes --harness-used claude-code
+exit=0
++ Recorded local usage event for 'release-notes' in $TMP\project\.skillporter\usage.jsonl
+PASS insights exit/content
+
+[project] $ skillporter insights
+exit=0
+Context & Usage Insights for $TMP\project (project scope)
+  Skill index overhead (always loaded): ~11 estimated tokens
+  Total skill body overhead:            ~23 estimated tokens
+  Agent instruction files overhead:     ~22 estimated tokens (overlap: 100.0%)
+  Usage tracking:                       active (local opt-in usage.jsonl)
+
+  SKILL          EST. TOKENS  USES  STATUS  HARNESSES
+  -------------  -----------  ----  ------  -------------------------------
+  release-notes  ~37          1     ok      claude-code, cline, cursor (+3)
+
+Optimization opportunities:
+  ! Instruction files have 100.0% duplicated directives across 2 files; run `skillporter consolidate` to maintain a single canonical source.
+
+Next steps:
+  skillporter consolidate  
+… excerpt …
+ counts are deterministic 4-char/token estimates; usage counts reflect only opt-in local events in .skillporter/usage.jsonl (zero external telemetry).
+PASS insights exit/content
+
+=== dependencies ===
+
+[project] $ skillporter graph --json
+exit=0
+{
+  "root_skills": [
+    "top-app"
+  ],
+  "install_order": [
+    "base-utils",
+    "mid-layer",
+    "top-app"
+  ],
+  "nodes": {
+    "base-utils": {
+      "name": "base-utils",
+      "version": "1.4.0",
+      "source": "./catalog/base-utils",
+      "ref": "",
+      "resolved_commit": "",
+      "tree_hash": "a9169a5b615d7aeb7a1222319d8292b7ca941a3ff3e1d90144f23c3e5a0c0ede",
+      "risk_score": 0,
+      "direct": false,
+      "dependencies": {}
+    },
+    "mid-layer": {
+      "name": "mid-layer",
+      "version": "1.1.0",
+      "source": "$TMP/project/catalog/mid-layer",
+      "ref": "",
+      "resolved_commit": "",
+      "tree_hash": "22e4e28ff3e775d30900aa860ad4a06ebf71c44ccc9325bd54a54f1c5b03d964",
+      "risk_score": 0,
+      "direct": false,
+      "dependencies": {
+        "base-utils": "^1.0.0"
+      }
+    },
+    "top-app": {
+      "name": "top-app",
+      "version": "2.0.0",
+      "source": "$TMP/project/catalog/top-app",
+      "ref": "",
+      "resolved_commit": "",
+      "tree_hash": "838adb08d88f694c74e7c5943be1c158ab4fe3a7526258534d1f31055c6e6d21",
+      "risk_score": 0,
+      "direct": true,
+      "dependencies": {
+        "mid-layer": "^1.0.0"
+      }
+    }
+  },
+  "edges": [
+    {
+      "from": "mid-layer",
+      "to": "base-utils",
+      "constraint": "^1.0.0"
+    },
+    {
+      "from": "top-app",
+      "to": "mid-layer",
+      "constraint": "^1.0.0"
+    }
+  ],
+  "valid": true
+}
+PASS graph exit/content
+PASS transitive topological order
+
+[project] $ skillporter sync --dry-run
+exit=0
+dry-run: would synchronize 3 skill(s) across ['claude-code', 'codex']
+PASS sync exit/content
+PASS sync dry-run created no installs or lock
+
+[project] $ skillporter sync
+exit=0
+wrote $TMP\project\skillporter.lock (3 locked skill(s))
+~ Synchronized 3 skill(s) across 2 harness(es) (+6 created, ~0 updated, =0 unchanged)
+  + created   claude-code      $TMP\project\.claude\skills\base-utils
+  + created   codex            $TMP\project\.agents\skills\base-utils
+  + created   claude-code      $TMP\project\.claude\skills\mid-layer
+  + created   codex            $TMP\project\.agents\skills\mid-layer
+  + created   claude-code      $TMP\project\.claude\skills\top-app
+  + created   codex            $TMP\project\.agents\skills\top-app
+PASS sync exit/content
+PASS all three nodes installed in both harnesses
+
+[project] $ skillporter lock --check
+exit=0
+skillporter.lock is up to date and verified (0 drift).
+PASS lock exit/content
+
+[version-conflict] $ skillporter sync
+exit=1
+error: version conflict for skill 'mid-layer': top-app requires '^9.0.0', but resolved version is '1.1.0'
+PASS sync exit/content
+PASS unsatisfied constraint created no installs or lock
+
+=== sources ===
+
+[project] $ skillporter add file:///$TMP/repo --skill git-notes --harness claude-code --offline
+exit=0
++ Installed git-notes across 1 harness(es) (+1 created, ~0 updated, =0 deduplicated/unchanged)
+  + Claude Code          created    (copy via .claude/skills)
+
+Installation verified.
+Next steps:
+  skillporter status                # inspect installed state across harnesses
+PASS add exit/content
+
+[project] $ skillporter lock
+exit=0
+wrote $TMP\project\skillporter.lock (1 locked skill(s))
+PASS lock exit/content
+PASS file:// Git source pinned the fetched commit
+
+[project] $ skillporter add '$TMP\bare.git' --skill git-notes --harness codex --on-conflict overwrite --offline
+exit=0
++ Installed git-notes across 1 harness(es) (+1 created, ~0 updated, =0 deduplicated/unchanged)
+  + OpenAI Codex         created    (copy via .agents/skills)
+
+Installation verified.
+Next steps:
+  skillporter status                # inspect installed state across harnesses
+PASS add exit/content
+
+[project] $ skillporter outdated git-notes
+exit=0
+SKILL      CURRENT  UPSTREAM  CONTENT HASH  STATUS      SOURCE
+---------  -------  --------  ------------  ----------  -------------------------------------------------------------------------------------------------------
+git-notes  1.0.0    1.0.0     a3bf90603e56  UP-TO-DATE  $TMP\bare.git
+PASS outdated exit/content
+
+[project] $ skillporter add '$TMP\zipped.zip' --skill git-notes --harness cursor --isolated --offline
+exit=0
++ Installed git-notes across 1 harness(es) (+1 created, ~0 updated, =0 deduplicated/unchanged)
+  + Cursor               created    (copy via .cursor/skills)
+
+Installation verified.
+Next steps:
+  skillporter status                # inspect installed state across harnesses
+PASS add exit/content
+PASS ZIP archive installed Cursor-isolated copy
+
+[linkws] $ skillporter add '$TMP\link-src\link-notes' --harness claude-code --strategy symlink --offline
+exit=2
+error: claude-code: symlink strategy is not reliable on Windows; use --strategy copy (pass --force or --on-conflict skip)
+PASS symlink strategy or explicit platform error
+
+=== mcp ===
+$ skillporter mcp --root .
+exit=0; response ids=[1, 3, 4, 5, 6, 7]
+PASS MCP clean stdio and no reply to notification
+{'protocolVersion': '2024-11-05', 'capabilities': {'tools': {}}, 'serverInfo': {'name': 'skillporter', 'version': '3.2.0', 'writesEnabled': False}} ['skillporter_diagnose', 'skillporter_detect', 'skillporter_scan', 'skillporter_inspect', 'skillporter_matrix', 'skillporter_add', 'skillporter_install', 'skillporter_sync', 'skillporter_remove', 'skillporter_status', 'skillporter_diff', 'skillporter_export', 'skillporter_import', 'skillporter_consolidate_preview', 'skillporter_suggest', 'skillporter_insights', 'skillporter_context', 'skillporter_preview']
+PASS MCP negotiation, ping and 18-tool inventory
+skillporter_inspect: isError=False; {
+  "operation": "skillporter_inspect",
+  "source": "$TMP\\project\\mcp-notes",
+  "kind": "local",
+  "resolved_commit": "",
+  "skills": [
+    {
+      "name": "mcp-notes",
+
+PASS MCP call outcome
+skillporter_install: isError=True; error: MCP write operation 'skillporter_install' is disabled by default; launch with `skillporter mcp --allow-writes` or set SKILLPORTER_MCP_ALLOW_WRITES=1 to authorize writes
+PASS MCP call outcome
+skillporter_status: isError=False; {
+  "label": "project:$TMP\\project",
+  "root": "$TMP\\project",
+  "scop
+PASS MCP call outcome
+PASS MCP write gate reflected on disk
+$ skillporter mcp --root . --allow-writes
+exit=0; response ids=[1, 3, 4, 5, 6, 7]
+PASS MCP clean stdio and no reply to notification
+{'protocolVersion': '2024-11-05', 'capabilities': {'tools': {}}, 'serverInfo': {'name': 'skillporter', 'version': '3.2.0', 'writesEnabled': True}} ['skillporter_diagnose', 'skillporter_detect', 'skillporter_scan', 'skillporter_inspect', 'skillporter_matrix', 'skillporter_add', 'skillporter_install', 'skillporter_sync', 'skillporter_remove', 'skillporter_status', 'skillporter_diff', 'skillporter_export', 'skillporter_import', 'skillporter_consolidate_preview', 'skillporter_suggest', 'skillporter_insights', 'skillporter_context', 'skillporter_preview']
+PASS MCP negotiation, ping and 18-tool inventory
+skillporter_inspect: isError=False; {
+  "operation": "skillporter_inspect",
+  "source": "$TMP\\project\\mcp-notes",
+  "kind": "local",
+  "resolved_commit": "",
+  "skills": [
+    {
+      "name": "mcp-notes",
+
+PASS MCP call outcome
+skillporter_install: isError=False; {
+  "operation": "skillporter_install",
+  "source": "$TMP\\project\\mcp-notes",
+  "harnesses": [
+    "claude-code"
+  ],
+  "installed": [
+    {
+      "skill": "mcp-notes",
+
+PASS MCP call outcome
+skillporter_status: isError=False; {
+  "label": "project:$TMP\\project",
+  "root": "$TMP\\project",
+  "scop
+PASS MCP call outcome
+PASS MCP write gate reflected on disk
+
+Anomalies: ['lifecycle: lock exit/content', 'lifecycle: audit exit/content', 'lifecycle: activating imported profile respects saved selected harnesses', 'lifecycle: lock exit/content', 'lifecycle: outdated exit/content', 'authoring: pack archives are byte-identical']

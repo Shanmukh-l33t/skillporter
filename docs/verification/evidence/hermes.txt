@@ -1,0 +1,101 @@
+
+[project] $ python -I -c 'from hermes_cli.main import main; raise SystemExit(main())' --version
+exit=0
+Hermes Agent vunknown (2026.9.24)
+Install directory: C:\Users\ImMandatory\AppData\Local\hermes\installs\0f66c8f5c5aedc7c\environments\89e173cd6c7e4858b4c8613c7df6eb61\workspace
+Install method: unknown
+Python: 3.14.9
+OpenAI SDK: 2.54.0
+PASS -I exit/content
+
+[project] $ skillporter add '$TMP\src\sp-hermes-project' --harness hermes --scope project --offline
+exit=0
++ Installed sp-hermes-project across 1 harness(es) (+1 created, ~0 updated, =0 deduplicated/unchanged)
+  + Hermes Agent         created    (copy via .hermes/skills)
+
+Installation verified.
+Next steps:
+  skillporter status                # inspect installed state across harnesses
+PASS add exit/content
+PASS project installation copied fixture
+
+[project] $ python -I -c 'import json, sys
+from tools.skills_tool import skill_view
+r = json.loads(skill_view(sys.argv[1], preprocess=False))
+print(json.dumps({k: r[k] for k in ('"'"'success'"'"', '"'"'name'"'"', '"'"'skill_dir'"'"', '"'"'content'"'"', '"'"'error'"'"') if k in r}))
+' sp-hermes-project
+exit=0
+{"success": false, "error": "Skill 'sp-hermes-project' not found."}
+PASS -I exit/content
+PASS untrusted project skill not loaded
+
+[project] $ python -I -c 'from hermes_cli.main import main; raise SystemExit(main())' skills trust
+exit=0
+Trusted: $TMP\project
+1 project skill(s) will load in sessions started inside this repo (they take precedence over same-named profile skills).
+PASS -I exit/content
+
+[project] $ python -I -c 'import json, sys
+from tools.skills_tool import skill_view
+r = json.loads(skill_view(sys.argv[1], preprocess=False))
+print(json.dumps({k: r[k] for k in ('"'"'success'"'"', '"'"'name'"'"', '"'"'skill_dir'"'"', '"'"'content'"'"', '"'"'error'"'"') if k in r}))
+' sp-hermes-project
+exit=0
+{"success": true, "name": "sp-hermes-project", "skill_dir": "$TMP\\project\\.hermes\\skills\\sp-hermes-project", "content": "---\nname: sp-hermes-project\ndescription: Use when writing release notes.\nmetadata:\n  version: \"1.0.0\"\n---\n\n# Release notes\n\nRender a short release summary. Marker: project-release-notes.\n"}
+PASS -I exit/content
+PASS Hermes runtime resolved project skill and exact body
+
+[project] $ skillporter add '$TMP\src\sp-hermes-user' --harness hermes --scope user --offline
+exit=0
++ Installed sp-hermes-user across 1 harness(es) (+1 created, ~0 updated, =0 deduplicated/unchanged)
+  + Hermes Agent         created    (copy via $TMP\home\hermes\skills)
+
+Installation verified.
+Next steps:
+  skillporter status                # inspect installed state across harnesses
+PASS add exit/content
+PASS user installation copied fixture
+
+[project] $ python -I -c 'import json, sys
+from tools.skills_tool import skill_view
+r = json.loads(skill_view(sys.argv[1], preprocess=False))
+print(json.dumps({k: r[k] for k in ('"'"'success'"'"', '"'"'name'"'"', '"'"'skill_dir'"'"', '"'"'content'"'"', '"'"'error'"'"') if k in r}))
+' sp-hermes-user
+exit=0
+{"success": true, "name": "sp-hermes-user", "skill_dir": "$TMP\\home\\hermes\\skills\\sp-hermes-user", "content": "---\nname: sp-hermes-user\ndescription: Use when writing release notes.\nmetadata:\n  version: \"1.0.0\"\n---\n\n# Release notes\n\nRender a short release summary. Marker: user-release-notes.\n"}
+PASS -I exit/content
+PASS Hermes runtime resolved user skill and exact body
+
+[project] $ python -I -c 'from hermes_cli.main import main; raise SystemExit(main())' skills list --source local
+exit=0
+Installed Skills                      
+┌───────────────────┬──────────┬─────────┬───────┬─────────┐
+│ Name              │ Category │ Source  │ Trust │ Status  │
+├───────────────────┼──────────┼─────────┼───────┼─────────┤
+│ sp-hermes-project │          │ project │ local │ enabled │
+│ sp-hermes-user    │          │ local   │ local │ enabled │
+└───────────────────┴──────────┴─────────┴───────┴─────────┘
+0 hub-installed, 0 builtin, 2 local — 2 enabled, 0 disabled
+PASS -I exit/content
+
+[project] $ python -I -c 'from hermes_cli.main import main; raise SystemExit(main())' mcp test skillporter
+exit=0
+Testing 'skillporter'...
+  Transport: stdio → $SKILLPORTER
+  Auth: none
+  ✓ Connected (5064ms)
+  ✓ Tools discovered: 18
+
+    skillporter_diagnose                 [READ] Diagnose Agent Skill reachability, broken symlin...
+    skillporter_detect                   [READ] Detect which AI coding and autonomous agent harn...
+    skillporter_scan                     [READ] Run static security and supply-chain checks on a...
+    skillporter_inspect                  [READ] Inspect a workspace or remote skill package stru...
+    skillporter_matrix                   [READ] Return the compatibility matrix of all 19 suppor...
+    skillporter_add                      [WRITE] Install skills from a workspace directory, arch...
+    skillporter_install      
+… excerpt …
+nspect exact active instruction files, ignored ...
+    skillporter_preview                  [READ] Preview the exact native or adapted rule content...
+PASS -I exit/content
+
+Anomalies: []

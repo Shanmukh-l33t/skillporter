@@ -1,0 +1,28 @@
+$ node --version
+v26.12.1
+$ npm --version
+12.2.2
+$ sha512 of published tarball
+GXVfZ5/5ogsOW+FQzn+yC0cN97+ttnVoDliGhWHym4mqxFfRWGAuzPuYXJz0Z26w/DhKStBP5hSeYRUhaUxUOg==
+$ npm install --offline --ignore-scripts ./skillporter-3.2.0.tgz
+
+up to date in 5s
+$ node_modules/.bin/skillporter --version
+skillporter 3.2.0
+$ node_modules/.bin/skillporter new npm-notes
+error: destination C:\Users\ImMandatory\AppData\Local\hermes\cache\scratch\sp-product-npm-20261119\project\npm-notes already exists (pass --force to overwrite)
+$ node_modules/.bin/skillporter scan npm-notes --offline
+skillporter 3.2.0 — security assessment
+
+npm-notes: PASSED  (risk: 0/100 · APPROVE · posture: NO_DETECTED_FINDINGS · engine: skillporter-static v3.2.0 · sha256: 0103dcb477f4)
+  0 findings across all scanned files.
+
+Note: Static scanning inspects patterns and symlinks; a clean scan does not prove runtime safety.
+$ npx --package=@shanmukhdheekonda/skillporter@3.2.0 -- skillporter --version
+npm notice run npx
+npm notice run ^"skillporter^" --version
+skillporter 3.2.0
+$ sha256 of release skillporter.pyz
+206fa938914c91dc000c912611ec531b35f7f6063f360ed82c14a54d44362c0f
+$ python skillporter.pyz --version
+skillporter 3.2.0

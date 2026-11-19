@@ -1,0 +1,38 @@
+$ skillporter 3.2.0 · lock --check directly after add -> init -> sync
+
+### add  --harness claude-code --harness codex
++ Installed notes across 2 harness(es) (+2 created, ~0 updated, =0 deduplicated/unchanged)
+  + Claude Code          created    (copy via .claude/skills)
+initialized C:\Users\ImMandatory\AppData\Local\hermes\cache\scratch\sp-repro-final\claude-code-codex\skillporter.yaml (1 skill(s), harnesses: claude-code, codex, cursor)
+wrote C:\Users\ImMandatory\AppData\Local\hermes\cache\scratch\sp-repro-final\claude-code-codex\skillporter.lock (1 locked skill(s))
+~ Synchronized 1 skill(s) across 3 harness(es) (+0 created, ~0 updated, =3 unchanged)
+skillporter.lock is up to date and verified (0 drift).
+lock --check exit=0
+
+### add  --harness claude-code --harness codex --harness cursor
++ Installed notes across 3 harness(es) (+2 created, ~0 updated, =1 deduplicated/unchanged)
+  + Claude Code          created    (copy via .claude/skills)
+initialized C:\Users\ImMandatory\AppData\Local\hermes\cache\scratch\sp-repro-final\claude-code-codex-cursor\skillporter.yaml (1 skill(s), harnesses: claude-code, codex, cursor)
+wrote C:\Users\ImMandatory\AppData\Local\hermes\cache\scratch\sp-repro-final\claude-code-codex-cursor\skillporter.lock (1 locked skill(s))
+~ Synchronized 1 skill(s) across 3 harness(es) (+0 created, ~0 updated, =3 unchanged)
+skillporter.lock check FAILED (1 issue(s)):
+  - lockfile source mismatch on 'notes': skillporter.yaml has './.agents/skills/notes' != locked 'C:\\Users\\ImMandatory\\AppData\\Local\\hermes\\cache\\scratch\\sp-repro-final\\src\\notes'
+lock --check exit=1
+
+### add  --harness claude-code --harness codex --harness gemini-cli
++ Installed notes across 3 harness(es) (+2 created, ~0 updated, =1 deduplicated/unchanged)
+  + Claude Code          created    (copy via .claude/skills)
+initialized C:\Users\ImMandatory\AppData\Local\hermes\cache\scratch\sp-repro-final\claude-code-codex-gemini-cli\skillporter.yaml (1 skill(s), harnesses: claude-code, codex, cursor)
+wrote C:\Users\ImMandatory\AppData\Local\hermes\cache\scratch\sp-repro-final\claude-code-codex-gemini-cli\skillporter.lock (1 locked skill(s))
+~ Synchronized 1 skill(s) across 3 harness(es) (+0 created, ~0 updated, =3 unchanged)
+skillporter.lock is up to date and verified (0 drift).
+lock --check exit=0
+
+### add  --harness claude-code --harness codex --harness hermes
++ Installed notes across 3 harness(es) (+3 created, ~0 updated, =0 deduplicated/unchanged)
+  + Claude Code          created    (copy via .claude/skills)
+initialized C:\Users\ImMandatory\AppData\Local\hermes\cache\scratch\sp-repro-final\claude-code-codex-hermes\skillporter.yaml (1 skill(s), harnesses: claude-code, codex, cursor)
+wrote C:\Users\ImMandatory\AppData\Local\hermes\cache\scratch\sp-repro-final\claude-code-codex-hermes\skillporter.lock (1 locked skill(s))
+~ Synchronized 1 skill(s) across 3 harness(es) (+0 created, ~0 updated, =3 unchanged)
+skillporter.lock is up to date and verified (0 drift).
+lock --check exit=0
