@@ -1,6 +1,6 @@
 # Testing & Quality Assurance Guide
 
-Skillporter 3.0 is verified by **198 automated tests** across **16 test modules** in `tests/`, exercising real temporary workspaces, real Git repositories, real ZIP/TAR archives, real subprocess `SIGKILL` crashes, real `flock` contention, and real local HTTP installer servers without substituting mocks for integration paths.
+The suite in `tests/` covers temporary workspaces, Git repositories, ZIP/TAR archives, interrupted transactions, lock contention, and local HTTP installer servers. Run `python -m pytest --collect-only -q` on your checkout for the current test count. Some tests require OS-specific capabilities, such as permission to create symlinks on Windows.
 
 ## Running the Test Suite & Linting
 
