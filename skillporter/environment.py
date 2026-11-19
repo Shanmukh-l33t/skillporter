@@ -296,7 +296,7 @@ def capture_environment(
         installed_in = sorted(h for h, rep in diag.reports.items() if rep.loads(sname))
         dup_in = sorted(h for h, dmap in diag.duplicates.items() if sname in dmap)
 
-        if mspec and mspec.harnesses:
+        if mspec and mspec.harnesses is not None:
             desired = [harnesses.get(h).name for h in mspec.harnesses if _known_harness(h)]
         elif mspec and manifest and manifest.harnesses:
             desired = list(selected_harnesses)

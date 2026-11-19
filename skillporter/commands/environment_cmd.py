@@ -39,6 +39,7 @@ from .common import (
     parse_custom_path_args,
     resolve_target_harnesses,
 )
+from .sync import run_install as reconcile_install
 
 
 def cmd_status(args: argparse.Namespace) -> int:
@@ -561,7 +562,7 @@ def cmd_profile(args: argparse.Namespace) -> int:
             policy_prof = load_policy(root)
             # Validate all profile skills against security and policy BEFORE mutating manifest or disk!
             for spec_chk in prof.skills:
-                targets_chk = spec_chk.harnesses or prof.harnesses
+                targets_chk = prof.harnesses if spec_chk.harnesses is None else spec_chk.harnesses
                 res_chk = resolve_source(spec_chk.source, base_dir=root, ref_override=spec_chk.ref)
                 try:
                     matches_chk = [d for d in res_chk.skill_dirs if d.name == spec_chk.name] or res_chk.skill_dirs
@@ -586,9 +587,11 @@ def cmd_profile(args: argparse.Namespace) -> int:
                     res_chk.cleanup()
 
             activate_profile_manifest(root, pname, scope=scope)
-            installed_count = 0
+            synced = []
             for spec in prof.skills:
-                targets = spec.harnesses or prof.harnesses
+                targets = prof.harnesses if spec.harnesses is None else spec.harnesses
+                if not targets:
+                    continue
                 resolved = resolve_source(spec.source, base_dir=root, ref_override=spec.ref)
                 try:
                     matches = [d for d in resolved.skill_dirs if d.name == spec.name] or resolved.skill_dirs
@@ -596,20 +599,21 @@ def cmd_profile(args: argparse.Namespace) -> int:
                         srep = scan_skill(sdir, offline=True)
                         if srep.has_structural_escape or not srep.passed:
                             raise ProfileError(f"skill {sdir.name!r} in profile {pname!r} failed security scan")
-                        run_install(
-                            root,
-                            sdir,
-                            targets,
-                            strategy=spec.strategy or prof.strategy,
-                            scope=scope,
-                            force=True,
-                            source=spec.source,
-                            resolved_commit=resolved.resolved_commit,
-                            version=spec.version,
-                            record_state=True,
-                            skill_name_override=spec.name,
+                        synced.extend(
+                            reconcile_install(
+                                root,
+                                sdir,
+                                targets,
+                                strategy=spec.strategy or prof.strategy,
+                                scope=scope,
+                                force=True,
+                                source=spec.source,
+                                resolved_commit=resolved.resolved_commit,
+                                version=spec.version,
+                                record_state=True,
+                                skill_name_override=spec.name,
+                            )
                         )
-                        installed_count += 1
                 finally:
                     resolved.cleanup()
 
@@ -622,13 +626,19 @@ def cmd_profile(args: argparse.Namespace) -> int:
                     uninstall(root, ps, targets_rm, scope=scope, record_state=True)
                     pruned_list.append(ps)
 
+            synced_skills = len({r.skill for r in synced})
+            synced_harnesses = sorted({r.harness for r in synced})
+            harness_targets = len({(r.skill, r.harness) for r in synced})
+            destinations_written = len({r.dest for r in synced if r.action in {"created", "updated"}})
             if fmt_mode(args) == "json":
                 print(
                     json.dumps(
                         {
                             "active_profile": prof.profile,
-                            "harnesses": prof.harnesses,
-                            "synced_skills": installed_count,
+                            "harnesses": synced_harnesses,
+                            "synced_skills": synced_skills,
+                            "harness_targets": harness_targets,
+                            "destinations_written": destinations_written,
                             "pruned_skills": pruned_list,
                         },
                         indent=2,
@@ -637,7 +647,8 @@ def cmd_profile(args: argparse.Namespace) -> int:
             elif not is_quiet(args):
                 print(
                     f"{action_symbol('synced')} Activated profile {style(prof.profile, BOLD)} "
-                    f"({installed_count} skill(s) synchronized across {', '.join(prof.harnesses)})"
+                    f"({synced_skills} skill(s), {harness_targets} harness target(s), "
+                    f"{destinations_written} destination(s) written; {', '.join(synced_harnesses) or 'no harnesses'})"
                 )
                 if pruned_list:
                     print(f"  {action_symbol('pruned')} Pruned previous profile skill(s): {', '.join(pruned_list)}")

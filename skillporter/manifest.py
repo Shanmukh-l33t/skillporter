@@ -66,7 +66,7 @@ class ManifestSkillSpec:
     ref: str = ""
     version: str = ""
     strategy: str = ""
-    harnesses: list[str] = field(default_factory=list)
+    harnesses: list[str] | None = None
     dependencies: list[SkillDependency] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, object]:
@@ -77,7 +77,7 @@ class ManifestSkillSpec:
             d["version"] = self.version
         if self.strategy:
             d["strategy"] = self.strategy
-        if self.harnesses:
+        if self.harnesses is not None:
             d["harnesses"] = list(self.harnesses)
         if self.dependencies:
             d["dependencies"] = [dep.to_dict() for dep in self.dependencies]
@@ -136,7 +136,7 @@ class ProjectManifest:
             lines.append("harness_paths:")
             for hk, hp in sorted(self.harness_paths.items()):
                 lines.append(f"  {hk}: {hp}")
-        lines.append("harnesses:")
+        lines.append("harnesses:" if self.harnesses else "harnesses: []")
         for h in self.harnesses:
             lines.append(f"  - {h}")
         if not self.skills:
@@ -152,7 +152,7 @@ class ProjectManifest:
                     lines.append(f"    version: {s.version}")
                 if s.strategy:
                     lines.append(f"    strategy: {s.strategy}")
-                if s.harnesses:
+                if s.harnesses is not None:
                     lines.append(f"    harnesses: [{', '.join(s.harnesses)}]")
                 if s.dependencies:
                     dep_tokens = [
@@ -299,13 +299,14 @@ def _build_skill_spec(current_skill: dict[str, object]) -> ManifestSkillSpec:
     elif isinstance(raw_deps, dict):
         for k, v in raw_deps.items():
             deps.append(SkillDependency(name=str(k), version=str(v)))
+    raw_harnesses = current_skill.get("harnesses")
     return ManifestSkillSpec(
         name=str(current_skill["name"]),
         source=str(current_skill["source"]),
         ref=str(current_skill.get("ref", "")),
         version=str(current_skill.get("version", "")),
         strategy=str(current_skill.get("strategy", "")),
-        harnesses=list(current_skill.get("harnesses", [])),  # type: ignore[arg-type]
+        harnesses=[str(h) for h in raw_harnesses] if isinstance(raw_harnesses, list) else None,
         dependencies=deps,
     )
 
@@ -360,6 +361,7 @@ def parse_manifest(text: str) -> ProjectManifest:
             raise ValueError(f"line {lineno} is not a 'key: value' entry: {bare[:40]!r}")
 
     manifest = ProjectManifest(harnesses=[], skills=[])
+    explicit_empty_harnesses = False
     section: str | None = None
     current_skill: dict[str, object] | None = None
     current_dep: dict[str, str] | None = None
@@ -425,6 +427,7 @@ def parse_manifest(text: str) -> ProjectManifest:
             elif k == "harnesses":
                 if v:
                     manifest.harnesses = _parse_inline_list(v, lineno, k)
+                    explicit_empty_harnesses = not manifest.harnesses
                     section = None
                 else:
                     section = "harnesses"
@@ -516,7 +519,7 @@ def parse_manifest(text: str) -> ProjectManifest:
 
     _flush_skill()
 
-    if not manifest.harnesses:
+    if not manifest.harnesses and not explicit_empty_harnesses:
         manifest.harnesses = ["claude-code", "codex", "cursor"]
     return manifest
 

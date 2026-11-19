@@ -15,7 +15,13 @@ from ..ci_report import check_lockfile_staleness
 from ..diagnose import diagnose as run_diagnose
 from ..diagnose import load_custom_harness_paths, resolve_path, select_harness_install_raw_path
 from ..frontmatter import discover
-from ..install import InstallError, InstallResult, _resolve_harness_skill_dest, plan_install
+from ..install import (
+    InstallError,
+    InstallResult,
+    _resolve_harness_skill_dest,
+    _verify_harness_base_within_scope,
+    plan_install,
+)
 from ..install import install as _core_install
 from ..manifest import (
     LOCKFILE_FILENAME,
@@ -56,13 +62,26 @@ def cmd_init(args: argparse.Namespace) -> int:
         print(f"error: {mpath} already exists (use --force to overwrite)", file=sys.stderr)
         return EXIT_ERROR
 
-    detected = [d.harness.name for d in harnesses.detect_harnesses(root) if d.project_active]
-    default_harnesses = detected if detected else ["claude-code", "codex", "cursor"]
+    detected = [d.harness.name for d in harnesses.detect_harnesses(root, check_skill_paths=False) if d.project_active]
+    primary_paths: dict[Path, list[str]] = {}
+    for name in harnesses.names():
+        primary = harnesses.get(name).primary_project_path
+        if primary:
+            primary_paths.setdefault(root / primary.path, []).append(name)
 
     existing_skills: list[ManifestSkillSpec] = []
     seen: set[str] = set()
     records = load_state(root)
-    for skill_md in discover(root):
+    discovered = discover(root)
+    on_disk: dict[str, set[str]] = {}
+    for skill_md in discovered:
+        for base, owners in primary_paths.items():
+            if skill_md.parent.is_relative_to(base):
+                # A shared directory proves reachability, not which of its readers was selected.
+                on_disk.setdefault(skill_md.parent.name, set()).update(
+                    owners if len(owners) == 1 else set(owners).intersection(detected)
+                )
+    for skill_md in discovered:
         sname = skill_md.parent.name
         if sname in seen:
             continue
@@ -78,7 +97,10 @@ def cmd_init(args: argparse.Namespace) -> int:
             except ValueError:
                 rel = str(skill_md.parent)
             source = f"./{rel}"
-        existing_skills.append(ManifestSkillSpec(name=sname, source=source))
+        skill_targets = rec.harnesses if rec and rec.harnesses else sorted(on_disk.get(sname, set(detected)))
+        existing_skills.append(ManifestSkillSpec(name=sname, source=source, harnesses=skill_targets))
+
+    default_harnesses = sorted({h for spec in existing_skills for h in spec.harnesses or []}) or detected
 
     manifest = ProjectManifest(
         project=root.name or "my-project",
@@ -100,7 +122,10 @@ def cmd_init(args: argparse.Namespace) -> int:
             )
         )
     else:
-        print(f"initialized {mpath} ({len(existing_skills)} skill(s), harnesses: {', '.join(default_harnesses)})")
+        print(
+            f"initialized {mpath} ({len(existing_skills)} skill(s), "
+            f"harnesses: {', '.join(default_harnesses) or '(none)'})"
+        )
     return EXIT_OK
 
 
@@ -153,6 +178,7 @@ def cmd_lock(args: argparse.Namespace) -> int:
 
         m_schema = manifest.schema_version if manifest else MANIFEST_SCHEMA_VERSION
         m_scope = manifest.scope if manifest else "project"
+        spec_targets = {s.name: s.harnesses for s in manifest.skills if s.harnesses is not None} if manifest else {}
         lock.manifest_schema_version = m_schema
 
         graph = None
@@ -205,7 +231,7 @@ def cmd_lock(args: argparse.Namespace) -> int:
                             version=gnode.version,
                             tree_hash=gnode.tree_hash,
                             strategy="copy",
-                            installed_targets=manifest.harnesses if manifest else [],
+                            installed_targets=spec_targets.get(sname, manifest.harnesses if manifest else []) or [],
                             dependencies=dict(gnode.dependencies),
                             risk_score=gnode.risk_score,
                             direct=gnode.direct,
@@ -284,15 +310,14 @@ def run_install(  # noqa: PLR0913 - mirrors install.install() keyword surface
         try:
             h = harnesses.get(target)
             raw = select_harness_install_raw_path(h, scope, custom_paths=eff_custom)
-            dest = (
-                _resolve_harness_skill_dest(
-                    resolve_path(raw, scope, root.resolve()), sname, src=skill_dir, recursive=h.recursive
-                )
-                if raw
-                else None
-            )
-        except (InstallError, KeyError, OSError):
             dest = None
+            if raw:
+                base = resolve_path(raw, scope, root.resolve())
+                _verify_harness_base_within_scope(base, scope, root.resolve())
+                dest = _resolve_harness_skill_dest(base, sname, src=skill_dir, recursive=h.recursive)
+        except (InstallError, KeyError, OSError):
+            changed.append(target)
+            continue
         if dest is None:
             changed.append(target)
             continue
@@ -319,17 +344,24 @@ def run_install(  # noqa: PLR0913 - mirrors install.install() keyword surface
         )
 
     unrecorded = [hn for hn in unchanged if rec is None or hn not in rec.harnesses]
+    source_override = kwargs.get("source")
+    commit_override = kwargs.get("resolved_commit")
+    if not changed and rec and (
+        (source_override and source_override != rec.source)
+        or (commit_override and commit_override != rec.resolved_commit)
+    ):
+        unrecorded = list(unchanged)
     if unrecorded and kwargs.get("record_state"):
         record_installation(
             root,
             skill_name=sname,
-            source=kwargs.get("source") or ("" if rec is not None and rec.source else str(skill_dir)),
+            source=source_override or ("" if rec is not None and rec.source else str(skill_dir)),
             skill_dir=unchanged[unrecorded[0]],
             harnesses=unrecorded,
             destinations=[unchanged[hn] for hn in unrecorded],
             strategy=strategy,
             scope=scope,
-            resolved_commit=kwargs.get("resolved_commit", ""),
+            resolved_commit=commit_override or "",
             version=kwargs.get("version", ""),
         )
 
@@ -353,13 +385,15 @@ def cmd_sync(args: argparse.Namespace) -> int:
             return EXIT_PROBLEM
         has_existing_lock = (root / LOCKFILE_FILENAME).is_file()
         try:
-            targets = resolve_target_harnesses(
-                args.harness,
-                root,
-                scope=args.scope,
-                default_detected=True,
-                exclude_harnesses=getattr(args, "exclude_harness", None),
-            )
+            targets = []
+            if not manifest or manifest.harnesses or args.harness:
+                targets = resolve_target_harnesses(
+                    args.harness,
+                    root,
+                    scope=args.scope,
+                    default_detected=True,
+                    exclude_harnesses=getattr(args, "exclude_harness", None),
+                )
         except KeyError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return EXIT_ERROR
@@ -461,37 +495,43 @@ def cmd_sync(args: argparse.Namespace) -> int:
                                 )
                                 return EXIT_PROBLEM
 
+                spec_by_name = {s.name: s for s in manifest.skills}
+                skill_targets_by_name = {s.name: s.harnesses for s in manifest.skills if s.harnesses is not None}
+                default_targets = targets if not manifest.harnesses else manifest.harnesses
                 if dry_run:
-                    planned_dirs: list[Path] = []
+                    planned = []
+                    planned_targets: set[str] = set()
                     for s in graph.install_order:
                         s_dir = graph.nodes[s].skill_dir
-                        if s_dir is not None:
-                            planned_dirs.append(s_dir)
-                    plan = plan_install(
-                        root, planned_dirs, targets, strategy=args.strategy, scope=args.scope, force=True
-                    )
+                        skill_targets = skill_targets_by_name.get(s, default_targets)
+                        if s_dir is not None and skill_targets:
+                            plan = plan_install(
+                                root, [s_dir], skill_targets, strategy=args.strategy, scope=args.scope, force=True,
+                            )
+                            planned.extend(str(d.resolved_dest) for d in plan.destinations)
+                            planned_targets.update(skill_targets)
                     if is_json:
                         print(
                             json.dumps(
                                 {
                                     "dry_run": True,
                                     "skills": graph.install_order,
-                                    "harnesses": targets,
-                                    "destinations": [str(d.resolved_dest) for d in plan.destinations],
+                                    "harnesses": sorted(planned_targets),
+                                    "destinations": planned,
                                 },
                                 indent=2,
                             )
                         )
                     else:
-                        print(f"dry-run: would synchronize {len(graph.install_order)} skill(s) across {targets}")
+                        print(f"dry-run: would synchronize across {sorted(planned_targets)}")
                     return EXIT_OK
 
-                spec_by_name = {s.name: s for s in manifest.skills}
                 for sname in graph.install_order:
                     node = graph.nodes[sname]
                     spec = spec_by_name.get(sname)
-                    spec_h = spec.harnesses if spec and spec.harnesses else None
-                    skill_targets = spec_h or manifest.harnesses or targets
+                    skill_targets = skill_targets_by_name.get(sname, default_targets)
+                    if not skill_targets:
+                        continue
                     strategy = (spec.strategy if spec and spec.strategy else None) or manifest.strategy or args.strategy
 
                     if node.skill_dir and node.skill_dir.exists():
@@ -693,8 +733,8 @@ def cmd_sync(args: argparse.Namespace) -> int:
             for sname_fb, sdir in sorted(canonical_by_name.items()):
                 if args.harness:
                     eff_targets = targets
-                elif sname_fb in spec_by_name_fallback and spec_by_name_fallback[sname_fb].harnesses:
-                    eff_targets = [harnesses.get(h).name for h in spec_by_name_fallback[sname_fb].harnesses]
+                elif sname_fb in spec_by_name_fallback and spec_by_name_fallback[sname_fb].harnesses is not None:
+                    eff_targets = [harnesses.get(h).name for h in spec_by_name_fallback[sname_fb].harnesses or []]
                 elif manifest and manifest.harnesses:
                     eff_targets = [harnesses.get(h).name for h in manifest.harnesses]
                 elif sname_fb in records_fallback and records_fallback[sname_fb].harnesses:
@@ -713,6 +753,8 @@ def cmd_sync(args: argparse.Namespace) -> int:
                             seen_prim_paths.add(prim.path)
                             on_disk_primary.append(hname)
                     eff_targets = on_disk_primary if on_disk_primary else targets
+                if not eff_targets:
+                    continue
                 res = run_install(
                     root,
                     sdir,

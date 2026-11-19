@@ -109,14 +109,7 @@ def save_profile_from_environment(
     snap = capture_environment(root, scope=scope, home=home)
     wanted_skills = set(explicit_skills) if explicit_skills else None
 
-    if explicit_harnesses:
-        harnesses_list = [harnesses.get(h).name for h in explicit_harnesses]
-    elif snap.manifest and snap.manifest.harnesses:
-        harnesses_list = list(snap.manifest.harnesses)
-    elif snap.selected_harnesses:
-        harnesses_list = list(snap.selected_harnesses)
-    else:
-        harnesses_list = ["claude-code", "codex", "cursor"]
+    explicit_targets = [harnesses.get(h).name for h in explicit_harnesses or []]
 
     from .diagnose import diagnose as run_diagnose
 
@@ -156,7 +149,7 @@ def save_profile_from_environment(
                 ref=entry.resolved_commit[:12] if entry.resolved_commit else "",
                 version=entry.version,
                 strategy=entry.strategy,
-                harnesses=list(entry.installed_harnesses or entry.desired_harnesses or harnesses_list),
+                harnesses=explicit_targets or entry.desired_harnesses,
             )
         )
 
@@ -164,7 +157,7 @@ def save_profile_from_environment(
         project=snap.manifest.project if snap.manifest else (root.resolve().name or "my-project"),
         scope=scope,
         strategy=snap.manifest.strategy if snap.manifest else "copy",
-        harnesses=harnesses_list,
+        harnesses=sorted({h for spec in specs for h in spec.harnesses or []}) or explicit_targets,
         security_policy=snap.manifest.security_policy if snap.manifest else "HIGH",
         max_risk_score=snap.manifest.max_risk_score if snap.manifest else None,
         harness_paths=dict(snap.manifest.harness_paths) if snap.manifest else {},
@@ -196,7 +189,7 @@ def load_profile_snapshot(
     prof = load_profile(root, name, scope=scope, home=home)
     entries: dict[str, SkillEnvironmentEntry] = {}
     for s in prof.skills:
-        eff_h = list(s.harnesses) if s.harnesses else list(prof.harnesses)
+        eff_h = list(prof.harnesses if s.harnesses is None else s.harnesses)
         entries[s.name] = SkillEnvironmentEntry(
             name=s.name,
             version=s.version or "1.0.0",

@@ -32,6 +32,7 @@ from .atomic import atomic_write_text, workspace_lock
 from .diagnose import load_custom_harness_paths, resolve_path, select_harness_install_raw_path
 from .formats import render_adapted_skill
 from .frontmatter import discover, parse_skill
+from .manifest import LockfileError, load_lockfile, load_manifest, save_lockfile, save_manifest
 from .security import compute_tree_hash, copy_ignore
 from .state import (
     BackupEntry,
@@ -1071,6 +1072,19 @@ def move_skill(
                 f"skill {skill_name!r} is not installed in {', '.join(from_canonical)} (scope: {scope})"
             )
 
+        source = rec.source if rec else str(src_dir)
+        source_path = Path(source).expanduser()
+        local_origin = None
+        if source_path.is_absolute() or source.startswith(("./", "../")):
+            local_origin = (root / source_path).resolve()
+        manifest = lock = None
+        if scope == "project" and rec and local_origin in {Path(d) for d in rec.destinations}:
+            try:
+                manifest = load_manifest(root)
+                lock = load_lockfile(root, warn_migration=False)
+            except (ValueError, LockfileError) as exc:
+                raise InstallError(str(exc)) from exc
+
         with tempfile_staging_copy(src_dir, skill_name, root, scope=scope, home=home) as staged_src:
             inst_results = install(
                 root,
@@ -1081,7 +1095,7 @@ def move_skill(
                 force=force,
                 on_conflict=on_conflict,
                 home=home,
-                source=rec.source if rec else str(src_dir),
+                source=source,
                 resolved_commit=rec.resolved_commit if rec else "",
                 version=rec.version if rec else "",
                 record_state=True,
@@ -1089,12 +1103,34 @@ def move_skill(
                 custom_paths=eff_custom,
                 isolated=isolated,
             )
+            moved = [r for r in inst_results if r.action != "skipped"]
+            if not moved:
+                return inst_results
             rem_targets = [fh for fh in from_canonical if fh not in to_canonical]
             rem_results = (
                 uninstall(root, skill_name, rem_targets, scope=scope, home=home, record_state=True)
                 if rem_targets
                 else []
             )
+            if any(r.action == "removed" and r.dest == local_origin for r in rem_results):
+                dest = moved[0].dest
+                new_source = f"./{dest.relative_to(root).as_posix()}" if dest.is_relative_to(root) else str(dest)
+                records = load_state(root, scope=scope, home=home)
+                current = records[skill_name]
+                current.source = new_source
+                save_state(root, records, scope=scope, home=home)
+                if manifest:
+                    for spec in manifest.skills:
+                        if spec.name == skill_name and spec.source == source:
+                            spec.source = new_source
+                            spec.harnesses = current.harnesses
+                            save_manifest(root, manifest)
+                            break
+                locked = lock.skills.get(skill_name) if lock else None
+                if lock and locked and locked.source == source:
+                    locked.source = new_source
+                    locked.installed_targets = current.harnesses
+                    save_lockfile(root, lock)
         return [*inst_results, *rem_results]
 
 
@@ -1132,7 +1168,7 @@ def adopt_skills(
     """Adopt existing unmanaged on-disk skills into Skillporter state (and manifest if present)."""
     from .diagnose import diagnose as run_diagnose
     from .frontmatter import validate
-    from .manifest import ManifestSkillSpec, load_manifest, save_manifest
+    from .manifest import ManifestSkillSpec
     from .security import scan_skill
 
     root = root.resolve()
@@ -1140,6 +1176,7 @@ def adopt_skills(
         diag = run_diagnose(root, scope=scope, home=home)
         records = load_state(root, scope=scope, home=home)
         wanted = set(skill_names) if skill_names else None
+        custom = load_custom_harness_paths(root, scope=scope)
 
         adopted: list[dict[str, object]] = []
         for sname, copies in sorted(diag.skill_copies.items()):
@@ -1164,6 +1201,15 @@ def adopt_skills(
                 )
 
             loaded_harnesses = sorted(h for h, rep in diag.reports.items() if rep.loads(sname))
+            primary_harnesses = [
+                h for h in loaded_harnesses
+                if any(
+                    loc.raw_path == select_harness_install_raw_path(harnesses.get(h), scope, custom_paths=custom)
+                    and sname in loc.skill_dirs
+                    for loc in diag.reports[h].locations
+                )
+            ]
+            loaded_harnesses = primary_harnesses or loaded_harnesses
             meta = doc.frontmatter.get("metadata")
             ver = str(meta.get("version", "1.0.0")) if isinstance(meta, dict) else "1.0.0"
             try:

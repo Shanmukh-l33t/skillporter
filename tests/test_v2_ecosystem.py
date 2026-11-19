@@ -472,13 +472,14 @@ def test_cli_init_sync_lock_and_doctor_workflow(tmp_path, capsys):
     assert manifest is not None
     assert any(s.name == "team-skill" for s in manifest.skills)
 
-    # Doctor before sync should report findings (codex cannot see .claude/skills)
-    assert main(["doctor", str(tmp_path)]) == 1
+    # Init has evidence for Claude Code, not for Codex or Cursor.
+    assert manifest.harnesses == ["claude-code"]
+    assert main(["doctor", str(tmp_path)]) == 0
     capsys.readouterr()
 
-    # Doctor --fix repairs missing harnesses
+    assert main(["sync", str(tmp_path)]) == 0
     assert main(["doctor", str(tmp_path), "--fix"]) == 0
-    assert (tmp_path / ".agents" / "skills" / "team-skill" / "SKILL.md").is_file()
+    assert not (tmp_path / ".agents" / "skills" / "team-skill" / "SKILL.md").exists()
 
     # Write lockfile and verify deterministic hash
     assert main(["lock", str(tmp_path)]) == 0
