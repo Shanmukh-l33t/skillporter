@@ -42,7 +42,7 @@ Not verified: whether each harness discovers or loads the skill (no runtime chec
 
 An unversioned, single-copy skill is reported `untracked`, not `1.0.0`, and it is not called
 damaged for lacking copies in harnesses nobody asked for. After a shared `.agents/skills`
-directory exists, the same skill is again listed as "not visible to" the nine harnesses that
+directory exists, the same skill is again listed as "missing from expected paths for" the nine harnesses that
 read that directory (see Limits). `doctor` prints the same evidence scope, labels its table
 "HARNESSES (ON DISK)" and ends with `HEALTHY (no issues found by filesystem checks)`.
 
@@ -112,7 +112,7 @@ traceback and empty stdout; this branch exits 2 with
 ## Known limits
 
 1. **Unsolicited-harness verdict is still noisy.** Once `.agents/skills` exists for any skill,
-   an unrelated Claude-only skill is reported "not visible to: antigravity, codex, gemini-cli,
+   an unrelated Claude-only skill is reported "missing from expected paths for: antigravity, codex, gemini-cli,
    goose, junie, openclaw, openhands, roo-code, zed" and `status` flips to NEEDS ATTENTION.
    The observation is true; whether it is damage is a product decision this branch does not make.
 2. **No live-discovery claim.** Nothing here shows a harness loading a skill at runtime. The
