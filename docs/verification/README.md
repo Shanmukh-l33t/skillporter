@@ -54,3 +54,20 @@ still reports `missing from expected paths for: codex` and exits 1.
 - Five suite tests fail on this host for reasons unrelated to this work (network git clone, registry access,
   symlink privilege); `workflows.md` names them so they are not mistaken for regressions.
 - 5,000 skills runs in ~19 s with a 5.5 MB JSON payload; usable, not instant.
+## Defects found in this pass that are still open
+
+Found by the published-artifact verification (`workflows.md`), re-checked on `product/final`:
+
+| # | Defect | Status |
+|---|---|---|
+| F1 | `add` → `init` → `sync` → `lock` left `lock --check` failing "source mismatch" while `doctor` said HEALTHY | **Fixed** in `996b25f`: `init` keeps the installed source; regression test `test_init_keeps_the_installed_source_so_the_lock_check_passes` |
+| F2 | `profile use` writes 8 directories / 15 harness entries but prints 5, and the profile header disagrees with its skill list | open (cosmetic in the profile report, not in what is written) |
+| F3 | `pack` is not byte-reproducible: gzip header mtime makes `archive_sha256` differ for identical content | open |
+| F4 | after `adopt` then `move`, `outdated` reports ERROR because the tracked source is the removed location | open |
+| F5 | `remove --dry-run` printed one line per harness, not per destination | **Fixed**: one line per destination with every reader named |
+| F6 | `init` records `claude-code, codex, cursor` even when the install targeted other harnesses | open |
+| F7 | `consolidate --rollback` snapshot fails on 260-character paths (WinError 3) | open |
+| F8 | `docs/TESTING.md` claims 198 tests / 16 modules; the checkout has 567 / 36 | open (documentation only) |
+
+F2–F8 are recorded rather than fixed: none of them blocks the first-five-minutes workflow, and each needs its own
+fixture. They are the first tickets for the next round, not a claim that this pass covered the whole product.
