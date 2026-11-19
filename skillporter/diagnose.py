@@ -237,6 +237,7 @@ def scan_location(
     *,
     recursive: bool,
     home: Path | None = None,
+    hash_skills: bool = True,
 ) -> Location:
     """Inspect one harness path and list the skills inside it."""
     resolved = resolve_path(raw_path, scope, root, home)
@@ -271,9 +272,10 @@ def scan_location(
         if (entry / _SKILL_FILE).is_file():
             loc.skill_dirs.append(entry.name)
             seen_in_loc.setdefault(entry.name, []).append(entry.name)
-            thash, _ = compute_tree_hash(entry)
-            if thash:
-                loc.skill_hashes[entry.name] = thash
+            if hash_skills:
+                thash, _ = compute_tree_hash(entry)
+                if thash:
+                    loc.skill_hashes[entry.name] = thash
             continue
         # Nested category directories (e.g. Hermes $HERMES_HOME/skills/<category>/<name>/SKILL.md)
         if entry.is_dir() and recursive:
@@ -281,11 +283,12 @@ def scan_location(
                 sname = nested.parent.name
                 rel_sub = nested.parent.relative_to(resolved).as_posix()
                 seen_in_loc.setdefault(sname, []).append(rel_sub)
-                if sname not in loc.skill_dirs:
+                if len(seen_in_loc[sname]) == 1:
                     loc.skill_dirs.append(sname)
-                thash, _ = compute_tree_hash(nested.parent)
-                if thash:
-                    loc.skill_hashes[sname] = thash
+                if hash_skills:
+                    thash, _ = compute_tree_hash(nested.parent)
+                    if thash:
+                        loc.skill_hashes[sname] = thash
 
     for sname, rel_list in seen_in_loc.items():
         if len(rel_list) > 1:
@@ -301,13 +304,15 @@ def diagnose(
     scope: str = "project",
     check_drift: bool = True,
     custom_paths: dict[str, str] | None = None,
+    inventory_only: bool = False,
 ) -> Diagnosis:
     """Diagnose skill reachability, broken links, content drift, and duplicates.
 
     ``scope="project"`` (the default) inspects only project-relative paths, so
     diagnosing a repository reflects that repository — not whatever the
     operator happens to have installed in their own home directory.
-    ``scope="user"`` inspects the user-level locations instead.
+    ``scope="user"`` inspects the user-level locations instead. ``inventory_only``
+    lists paths and names without reading package contents or evaluating health.
     """
     root = root.resolve()
     from .install import recover_interrupted_transactions
@@ -325,17 +330,16 @@ def diagnose(
         for skill_md in discover(root):
             skill_dir = skill_md.parent
             name = skill_dir.name
-            try:
-                rel_dir = skill_dir.resolve().relative_to(root).as_posix()
-            except ValueError:
-                rel_dir = str(skill_dir)
-            thash, _ = compute_tree_hash(skill_dir)
-            if thash:
-                all_copies.setdefault(name, {})[rel_dir] = thash
-
-            # Always validate every discovered copy so a corrupted secondary copy is never missed
-            copy_issues = validate(parse_skill(skill_md))
-            diag.issues[str(skill_dir)] = copy_issues
+            if not inventory_only:
+                try:
+                    rel_dir = skill_dir.resolve().relative_to(root).as_posix()
+                except ValueError:
+                    rel_dir = str(skill_dir)
+                thash, _ = compute_tree_hash(skill_dir)
+                if thash:
+                    all_copies.setdefault(name, {})[rel_dir] = thash
+                # Always validate every discovered copy so a corrupted secondary copy is never missed
+                diag.issues[str(skill_dir)] = validate(parse_skill(skill_md))
             diag.skill_copies.setdefault(name, []).append(skill_dir)
 
             if name in seen:
@@ -374,6 +378,7 @@ def diagnose(
                     root,
                     recursive=h.recursive,
                     home=home,
+                    hash_skills=not inventory_only,
                 )
                 loc_cache[cache_key] = cached
             loc = Location(
@@ -411,20 +416,23 @@ def diagnose(
             for skill_md in discover(uroot):
                 skill_dir = skill_md.parent
                 sname = skill_dir.name
-                try:
-                    rel_dir = "~/" + skill_dir.resolve().relative_to(effective_home).as_posix()
-                except ValueError:
-                    rel_dir = str(skill_dir)
-                thash, _ = compute_tree_hash(skill_dir)
-                if thash:
-                    all_copies.setdefault(sname, {})[rel_dir] = thash
-                copy_issues = validate(parse_skill(skill_md))
-                diag.issues[str(skill_dir)] = copy_issues
+                if not inventory_only:
+                    try:
+                        rel_dir = "~/" + skill_dir.resolve().relative_to(effective_home).as_posix()
+                    except ValueError:
+                        rel_dir = str(skill_dir)
+                    thash, _ = compute_tree_hash(skill_dir)
+                    if thash:
+                        all_copies.setdefault(sname, {})[rel_dir] = thash
+                    diag.issues[str(skill_dir)] = validate(parse_skill(skill_md))
                 if skill_dir not in diag.skill_copies.setdefault(sname, []):
                     diag.skill_copies[sname].append(skill_dir)
                 if sname not in seen:
                     seen.add(sname)
                     diag.skills.append(skill_md)
+
+    if inventory_only:
+        return diag
 
     # Content-drift check across copies of the same skill
     if check_drift:

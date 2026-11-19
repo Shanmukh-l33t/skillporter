@@ -29,12 +29,25 @@ def cmd_list(args: argparse.Namespace) -> int:
         return EXIT_ERROR
     query = args.search.strip().casefold()
     records = load_state(root, scope=args.scope)
-    diag = run_diagnose(root, scope=args.scope)
+    # Inventory scan: `list` reports names, paths and reachability, so it must not hash or validate
+    # thousands of packages to answer a filtered lookup.
+    diag = run_diagnose(root, scope=args.scope, inventory_only=True)
+    total = len(set(records) | set(diag.skill_names))
+
+    def wanted(name: str, managed: bool, harnesses_here: list[str]) -> bool:
+        return (
+            query in name.casefold()
+            and (target is None or target in harnesses_here)
+            and (not args.managed_only or managed)
+            and (not args.unmanaged_only or not managed)
+        )
 
     rows = []
     seen: set[str] = set()
     for sname, rec in sorted(records.items()):
         seen.add(sname)
+        if not wanted(sname, True, sorted(rec.harnesses)):
+            continue
         rows.append(
             {
                 "name": sname,
@@ -50,8 +63,10 @@ def cmd_list(args: argparse.Namespace) -> int:
         sname = skill_md.parent.name
         if sname in seen:
             continue
-        thash, _ = compute_tree_hash(skill_md.parent)
         loaded_in = sorted(h for h, r in diag.reports.items() if r.loads(sname))
+        if not wanted(sname, False, loaded_in):
+            continue
+        thash, _ = compute_tree_hash(skill_md.parent)
         rel_src = (
             skill_md.parent.relative_to(root)
             if skill_md.parent.is_relative_to(root)
@@ -69,15 +84,6 @@ def cmd_list(args: argparse.Namespace) -> int:
             }
         )
 
-    total = len(rows)
-    rows = [
-        r
-        for r in rows
-        if query in r["name"].casefold()
-        and (target is None or target in r["harnesses"])
-        and (not args.managed_only or r["managed"])
-        and (not args.unmanaged_only or not r["managed"])
-    ]
     if fmt_mode(args) == "json":
         print(json.dumps(rows, indent=2))
         return EXIT_OK
