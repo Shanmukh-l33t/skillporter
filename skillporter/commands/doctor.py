@@ -534,10 +534,15 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
         failures = []
         if not dry_run and (stale_paths or installs or dangling_roots):
-            for path in sorted(dangling_roots):
-                with contextlib.suppress(OSError):
-                    path.unlink()
             with workspace_lock(root):
+                for path in sorted(dangling_roots):
+                    try:
+                        if path.is_symlink() and not path.exists():
+                            path.unlink()
+                        else:
+                            failures.append(f"repair refused at {path}: harness root changed; rerun doctor")
+                    except OSError as exc:
+                        failures.append(f"repair failed at {path}: {exc}")
                 for path in stale_paths:
                     try:
                         if is_stale(path):

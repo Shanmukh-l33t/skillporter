@@ -149,3 +149,26 @@ def test_user_scope_repair_refuses_without_changing_either_scope(tmp_path, capsy
     assert applied["repair_plan"][0]["action"] == "refuse"
     assert applied["repair_plan"][0]["path"] == str(dest if block == "policy" else stop_path)
     assert (_files(root), _files(Path.home())) == before
+
+
+@pytest.mark.parametrize("targets", ["[claude-code, windsurf", "claude-code, windsurf"])
+@pytest.mark.parametrize("args", [
+    ("doctor", "--fix", "--dry-run"), ("doctor", "--fix"),
+    ("status",), ("diagnose",), ("list",), ("lock",), ("sync",),
+])
+def test_unfinished_target_edit_is_rejected_before_writes(tmp_path, capsys, targets, args):
+    _skill(tmp_path / ".claude" / "skills" / "helper")
+    (tmp_path / "skillporter.yaml").write_text(
+        f"schema_version: 2\nharnesses: {targets}\n", encoding="utf-8"
+    )
+    state = tmp_path / ".skillporter"
+    (state / "tmp").mkdir(parents=True)
+    (state / "lock").write_text("1234\n", encoding="utf-8")
+    before = _files(tmp_path), (state / "lock").read_bytes()
+
+    cmd, *flags = args
+    assert main([cmd, str(tmp_path), *flags, "--json"]) == 2
+    out = capsys.readouterr()
+    assert not out.out and "line 2" in out.err and "harnesses" in out.err
+    assert (_files(tmp_path), (state / "lock").read_bytes()) == before
+    assert (state / "tmp").is_dir()

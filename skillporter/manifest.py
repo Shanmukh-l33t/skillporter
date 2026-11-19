@@ -284,14 +284,10 @@ def _strip_quotes(val: str) -> str:
     return val
 
 
-def _parse_inline_list(val: str) -> list[str]:
-    val = val.strip()
-    if val.startswith("[") and val.endswith("]"):
-        inner = val[1:-1].strip()
-        if not inner:
-            return []
-        return [_strip_quotes(x) for x in inner.split(",") if x.strip()]
-    return []
+def _parse_inline_list(val: str, lineno: int, key: str) -> list[str]:
+    if not (val.startswith("[") and val.endswith("]")):
+        raise ValueError(f"line {lineno}: {key} needs a complete '[item, ...]' list")
+    return [_strip_quotes(x) for x in val[1:-1].split(",") if x.strip()]
 
 
 def _build_skill_spec(current_skill: dict[str, object]) -> ManifestSkillSpec:
@@ -385,7 +381,7 @@ def parse_manifest(text: str) -> ProjectManifest:
         current_skill = None
         in_skill_deps = False
 
-    for raw_line in text.splitlines():
+    for lineno, raw_line in enumerate(text.splitlines(), 1):
         line = raw_line.split("#", 1)[0].rstrip()
         if not line.strip():
             continue
@@ -427,8 +423,8 @@ def parse_manifest(text: str) -> ProjectManifest:
             elif k == "harness_paths":
                 section = "harness_paths"
             elif k == "harnesses":
-                if v.startswith("["):
-                    manifest.harnesses = _parse_inline_list(v)
+                if v:
+                    manifest.harnesses = _parse_inline_list(v, lineno, k)
                     section = None
                 else:
                     section = "harnesses"
@@ -504,11 +500,11 @@ def parse_manifest(text: str) -> ProjectManifest:
                     ck = ck.strip()
                     cv = cv.strip()
                     if ck == "harnesses":
-                        current_skill["harnesses"] = _parse_inline_list(cv)
+                        current_skill["harnesses"] = _parse_inline_list(cv, lineno, ck) if cv else []
                     elif ck == "dependencies":
                         if cv.startswith("["):
                             current_skill["dependencies"] = [
-                                SkillDependency.from_any(x) for x in _parse_inline_list(cv)
+                                SkillDependency.from_any(x) for x in _parse_inline_list(cv, lineno, ck)
                             ]
                         elif not cv:
                             current_skill["dependencies"] = []

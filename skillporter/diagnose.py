@@ -332,11 +332,11 @@ def diagnose(
     from .install import recover_interrupted_transactions
     from .state import state_dir
 
+    eff_custom = load_custom_harness_paths(root, scope=scope, explicit=custom_paths)
     if recover and (state_dir(root, scope=scope, home=home) / "tmp").is_dir():
         recover_interrupted_transactions(root, scope=scope, home=home)
 
     diag = Diagnosis(root=root)
-    eff_custom = load_custom_harness_paths(root, scope=scope, explicit=custom_paths)
 
     all_copies: dict[str, dict[str, str]] = {}  # skill_name -> {rel_dir: tree_hash}
     seen: set[str] = set()

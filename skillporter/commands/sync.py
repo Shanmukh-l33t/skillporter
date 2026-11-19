@@ -141,6 +141,7 @@ def cmd_lock(args: argparse.Namespace) -> int:
         print(f"{LOCKFILE_FILENAME} is up to date and verified (0 drift).")
         return EXIT_OK
 
+    load_manifest(root)  # Reject an invalid config before touching the advisory lock.
     with workspace_lock(root):
         records = load_state(root)
         manifest = load_manifest(root)
@@ -342,6 +343,7 @@ def cmd_sync(args: argparse.Namespace) -> int:
     dry_run = bool(getattr(args, "dry_run", False))
     is_json = fmt_mode(args) == "json"
 
+    load_manifest(root)  # Reject an invalid config before touching the advisory lock.
     with workspace_lock(root):
         manifest = load_manifest(root)
         try:
