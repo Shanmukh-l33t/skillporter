@@ -61,16 +61,24 @@ def cmd_init(args: argparse.Namespace) -> int:
 
     existing_skills: list[ManifestSkillSpec] = []
     seen: set[str] = set()
+    records = load_state(root)
     for skill_md in discover(root):
         sname = skill_md.parent.name
         if sname in seen:
             continue
         seen.add(sname)
-        try:
-            rel = skill_md.parent.resolve().relative_to(root).as_posix()
-        except ValueError:
-            rel = str(skill_md.parent)
-        existing_skills.append(ManifestSkillSpec(name=sname, source=f"./{rel}"))
+        # A tracked skill keeps the source it was installed from; pointing the manifest at the installed
+        # copy would throw away provenance and make `lock --check` disagree with `lock`.
+        rec = records.get(sname)
+        if rec is not None and rec.source:
+            source = rec.source
+        else:
+            try:
+                rel = skill_md.parent.resolve().relative_to(root).as_posix()
+            except ValueError:
+                rel = str(skill_md.parent)
+            source = f"./{rel}"
+        existing_skills.append(ManifestSkillSpec(name=sname, source=source))
 
     manifest = ProjectManifest(
         project=root.name or "my-project",

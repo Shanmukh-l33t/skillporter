@@ -379,3 +379,18 @@ def test_d17c_custom_path_and_exclude_errors_are_plain(ws):
     with pytest.raises(KeyError) as ei2:
         common.resolve_target_harnesses(["windsurf"], ws, exclude_harnesses=["windsurf"])
     assert str(ei2.value) == "no target harnesses remaining after applying --exclude-harness"
+
+
+# ------------------------------------------------------------------ F1 / init provenance
+
+
+def test_init_keeps_the_installed_source_so_the_lock_check_passes(tmp_path):
+    """`add` -> `init` -> `sync` -> `lock --check` must agree; init used to point the manifest at the copy."""
+    src = _skill(tmp_path / "upstream", "mys")
+    ws = tmp_path / "project"
+    ws.mkdir()
+    assert main(["add", str(src), "--path", str(ws), "--harness", "claude-code,codex,cursor"]) == 0
+    assert main(["init", str(ws)]) == 0
+    assert main(["sync", str(ws)]) == 0
+    assert main(["lock", str(ws)]) == 0
+    assert main(["lock", str(ws), "--check"]) == 0
