@@ -12,9 +12,9 @@ median of three runs (`scripts/`-style probe kept beside this repo's evidence):
 
 | | baseline `bdfb9e6` | `product/final` |
 |---|---|---|
-| `status` | exit 1, 17 lines, 6.99 s, `[NEEDS ATTENTION]` | exit 0, 12 lines, 0.76 s, `[HEALTHY]` |
+| `status` | exit 1, 17 lines, 6.99 s, `[NEEDS ATTENTION]` | exit 0, 12 lines, 0.78 s, `[HEALTHY]` |
 | `diagnose` | exit 1, 10 lines, 3.14 s, "not visible to: codex" | exit 0, 4 lines, 0.45 s |
-| 35 skills, `status` | exit 1, 76 lines, 5.59 s | exit 0, 12 lines, 0.76 s |
+| 35 skills, `status` | exit 1, 76 lines, 5.59 s | exit 0, 12 lines, 1.44 s |
 | 35 skills, `list --search …` | exit 2 (flag absent), 5.17 s | exit 0, 4 lines, 0.65 s |
 
 The false finding is gone because an unrequested harness is no longer judged; `diagnose --harness codex`
@@ -25,7 +25,7 @@ still reports `missing from expected paths for: codex` and exits 1.
 | Claim | Label | Evidence |
 |---|---|---|
 | Hermes lists a user-scope install and stops listing it after removal | Runtime verified | `field-review.md` (real `find_all_skills` in a disposable `HERMES_HOME`) |
-| Hermes project scope requires workspace trust; Skillporter said `HEALTHY` without it | Broken at baseline, prerequisite documented after | `field-review.md` |
+| Hermes project scope requires workspace trust; 3.2.0 said `HEALTHY` without it | Broken at baseline. Now `status`, `diagnose` and the docs state the prerequisite, and the verdict is qualified; the trust decision itself is still the user's | `field-review.md` |
 | Codex 0.170.0 lists project-scope installs (`skills/list`, scope `repo`); OpenCode 1.19.6 lists both scopes | Runtime verified | `receivers.md` |
 | Codex user scope at `~/.agents/skills` | Not verified — isolation limit, not a failure | `receivers.md` |
 | Claude Code listing | Not verified — no offline listing surface exists | `receivers.md` |
@@ -36,6 +36,7 @@ still reports `missing from expected paths for: codex` and exits 1.
 | Scale at 10/100/1,000/5,000 skills | Integration verified, one host | `scale.md` |
 | Skill **activation** (the agent actually uses the skill) | Not verified anywhere — would need a model run per harness | — |
 | macOS | Not verified — no Mac on this host; Windows + WSL Ubuntu only | — |
+| Timing | Timings in this file are one host's numbers, not characteristics: an independent run on the same machine measured 1.5–2.1 s at one skill and 3.4 s at 300. Treat the before/after ratio and the line counts as the result; treat absolute seconds as machine-specific. | — |
 
 ## Files
 
@@ -86,7 +87,7 @@ that clone (`docs/verification/independent-audit.md`); this is what changed in r
 | D5 | Two evidence files quoted `Installation verified.`, which this build no longer prints | Annotated as captured from published 3.2.0, with the current wording |
 | D6 | `docs/harnesses/README.md` claimed Claude Code runtime evidence that `receivers.md` could not reproduce | Annotated: a tier records the original observation, not a re-check |
 | D7 | Older audit ledgers say 1 runtime-verified harness, the registry says 8 | Left as historical records; the registry and matrix are the current source |
-| D8 | `status` printed `[HEALTHY]` for a Hermes project skill with no trust caveat | Fixed: `status` now states the prerequisite where the verdict is printed |
+| D8 | `status` printed `[HEALTHY]` for a Hermes project skill with no trust caveat | Fixed: `status` now prints the trust prerequisite beside the verdict |
 
 The auditor's own limits stand: no activation, no live harness discovery, no macOS/Linux, no published-artifact checks in
 its pass — those rows are labelled `not verified` there and in this file.
