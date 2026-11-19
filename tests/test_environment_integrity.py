@@ -200,3 +200,15 @@ def test_add_repair_and_remove_real_shared_install(tmp_path, capsys):
     _cli(capsys, 0, "remove", source.name, "--path", project, "--harness", "codex")
     assert not installed.exists() and not load_state(project)
     assert (source / "SKILL.md").read_bytes() == source_md
+
+
+def test_duplicate_copy_is_reported_by_diagnose_too(tmp_path, capsys):
+    """status called it DUPLICATE while diagnose said 'no findings'; both must agree."""
+    _skill(tmp_path / ".agents/skills")
+    _skill(tmp_path / ".cursor/skills")
+    (tmp_path / "skillporter.yaml").write_text("schema_version: 2\nharnesses: [cursor]\n", encoding="utf-8")
+    diag = _cli(capsys, 1, "diagnose", tmp_path)
+    assert any("loaded from 2 paths by cursor" in item for item in diag["findings"])
+    status = _cli(capsys, 1, "status", tmp_path)
+    assert status["skills"]["release-notes"]["status"] == "DUPLICATE"
+    assert any("loaded from 2 paths" in f for f in status["findings"])

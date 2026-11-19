@@ -488,6 +488,13 @@ def diagnose(
             f"skill {sname!r} has content drift across copies: {locs_summary}"
         )
 
+    for hname, dups in sorted(diag.duplicates.items()):
+        for sname, paths in sorted(dups.items()):
+            diag.findings.append(
+                f"skill {sname!r} is loaded from {len(paths)} paths by {hname}: {', '.join(paths)}"
+                " — remove one copy so the same instructions are not injected twice"
+            )
+
     from .manifest import load_manifest
     from .state import load_state
 
