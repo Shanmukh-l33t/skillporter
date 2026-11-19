@@ -159,3 +159,33 @@ Not covered: lockfile drift at scale (no lockfile seeded), user-scope runs, conc
 Windows NTFS runs, `--verbose` rendering of 5000-row tables, and network/registry paths. No
 application code was changed for this report; findings 2, 5, and 6 are observations for a follow-up,
 not fixes.
+
+## After the fixes (product/final, same host and script)
+
+Same fixture, same machine, one sample per cell (`--repeats 1 --timeout 240`), WSL Ubuntu, Python 3.12.3,
+CLI run from a native ext4 copy at `/tmp/sp-rc`:
+
+| skills | command | format | exit | seconds | stdout B | stdout lines |
+|---|---|---|---|---|---|---|
+| 100 | status | text | 1 | 1.456 | 716 | 14 |
+| 100 | diagnose | text | 1 | 0.9 | 889 | 9 |
+| 100 | list | text | 0 | 1.0 | 353 | 12 |
+| 1,000 | status | text | 1 | 10.662 | 1,938 | 29 |
+| 1,000 | status | json | 1 | 10.910 | 1,098,271 | 42,358 |
+| 1,000 | diagnose | text | 1 | 9.228 | 1,121 | 10 |
+| 1,000 | diagnose | json | 1 | 7.725 | 2,808,978 | 64,326 |
+| 1,000 | list | text | 0 | 4.236 | 719 | 14 |
+| 5,000 | status | text | 1 | 19.207 | 1,943 | 29 |
+| 5,000 | status | json | 1 | 16.860 | 5,478,271 | 211,558 |
+| 5,000 | diagnose | text | 1 | 14.112 | 1,123 | 10 |
+| 5,000 | diagnose | json | 1 | 13.650 | 13,970,178 | 319,126 |
+| 5,000 | list | text | 0 | 8.835 | 720 | 14 |
+
+What changed: `status` at 1,000 skills no longer times out (baseline: >60 s, diagnose alone 31.9 s) and the
+whole 5,000-skill collection completes in under 20 s instead of timing out at every command. Human output
+stays at 10–29 lines at every size because the cap and the `... and N more` hint are structural, not a
+side effect of having few problems.
+
+Still a limit: time to run `status` grows roughly linearly (≈3.4 ms/skill), so 5,000 skills is ~19 s, and
+the JSON payload at 5,000 is 5.5 MB (`status`) / 14 MB (`diagnose`). Deferring per-skill validation out of
+the summary path is the next step; it was not done here because `status` uses validity in its own verdict.
