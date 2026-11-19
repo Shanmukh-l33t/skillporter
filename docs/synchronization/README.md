@@ -94,7 +94,7 @@ Repair preview (no repairs applied):
   - Refused ~/acme-api/.agents/skills/legacy: broken link left in place; no authorized replacement was planned
 ```
 
-Repairs only happen for skills Skillporter can attribute (state record, lockfile entry or manifest entry) and only in their recorded harnesses. Conflicting unmanaged copies are never resolved by newest modification time; `doctor` refuses and points at `skillporter sync --prefer <path>`.
+Repairs only happen in the harnesses Skillporter recorded for a skill (state record, lockfile entry or manifest entry), or in the ones you name with `--harness`. A copy that is drifted but has no lockfile/state pin is refused rather than resolved by newest modification time; `doctor` points at `skillporter sync --prefer <path>`.
 
 ## Limiting the scope
 
