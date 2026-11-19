@@ -26,6 +26,11 @@ MANIFEST_SCHEMA_VERSION = 2
 class LockfileError(ValueError):
     """Raised when skillporter.lock is corrupted or uses an unsupported schema version."""
 
+
+class ManifestError(ValueError):
+    """Raised when skillporter.yaml cannot be parsed."""
+
+
 _WARNED_V1_LOCKFILES: set[str] = set()
 
 
@@ -511,7 +516,11 @@ def load_manifest(root: Path) -> ProjectManifest | None:
     p = root / MANIFEST_FILENAME
     if not p.is_file():
         return None
-    return parse_manifest(p.read_text(encoding="utf-8"))
+    try:
+        return parse_manifest(p.read_text(encoding="utf-8"))
+    except (ValueError, TypeError) as exc:
+        # A hand-edited manifest is user input: report it instead of surfacing a parser traceback.
+        raise ManifestError(f"corrupted {MANIFEST_FILENAME} at {p}: {exc}") from exc
 
 
 def save_manifest(root: Path, manifest: ProjectManifest) -> Path:

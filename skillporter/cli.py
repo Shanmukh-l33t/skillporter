@@ -33,6 +33,7 @@ from .commands.remove import cmd_rollback, cmd_uninstall
 from .commands.scan import cmd_explain, cmd_sandbox, cmd_scan, cmd_validate
 from .commands.sync import cmd_graph, cmd_init, cmd_lock, cmd_sync
 from .mcp_server import run_mcp_stdio
+from .manifest import ManifestError
 from .policy import PolicyError
 from .telemetry import record_telemetry_event
 
@@ -450,6 +451,9 @@ def main(argv: list[str] | None = None) -> int:
         rc = int(args.func(args))
     except PolicyError as exc:
         print(f"error: {exc} (fix or remove the policy file; refusing to continue without it)", file=sys.stderr)
+        return EXIT_ERROR
+    except ManifestError as exc:
+        print(f"error: {exc} (repair skillporter.yaml or delete it to start over)", file=sys.stderr)
         return EXIT_ERROR
     with contextlib.suppress(Exception):
         record_telemetry_event(Path.cwd(), str(args.command), rc)

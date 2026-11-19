@@ -268,3 +268,15 @@ def test_status_distinguishes_environment_findings_from_skill_states(tmp_path, m
     payload = json.loads(capsys.readouterr().out)
     assert payload["attention_skills"] == [] and payload["findings"] == snap.findings
     assert payload["skills"]["notes"]["version"] == "1.0.0"
+
+
+def test_corrupt_manifest_reports_a_clear_error_instead_of_a_traceback(tmp_path, capsys):
+    (tmp_path / "skillporter.yaml").write_text("{\n", encoding="utf-8")
+    for args in (["status"], ["list"], ["diagnose"], ["doctor"], ["status", "--json"]):
+        capsys.readouterr()
+        rc = main([*args, str(tmp_path)])
+        cap = capsys.readouterr()
+        assert rc == 2, (args, rc, cap.out, cap.err)
+        assert cap.out == ""
+        assert cap.err.startswith("error: corrupted skillporter.yaml"), (args, cap.err)
+        assert "Traceback" not in cap.err
