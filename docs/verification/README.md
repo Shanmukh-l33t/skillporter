@@ -131,16 +131,16 @@ own gates. Two runs were needed: the first one
 ([44501558612](https://github.com/Shanmukh-l33t/skillporter/actions/runs/44501558612)) failed a
 single assertion on every platform — it expected `doctor --fix` to delete a dangling link that
 the integrated repair engine now refuses to touch — and nothing else in it failed. The
-expectation, the `--fix` help text and the troubleshooting guide were aligned, and the later runs
-on the merged tree report:
+expectation, the `--fix` help text and the troubleshooting guide were aligned. The run for the
+final commit ([44512361927](https://github.com/Shanmukh-l33t/skillporter/actions/runs/44512361927),
+`8abbee8`) reports **11 of 11 jobs successful**:
 
 - `test` matrix (ubuntu-22.04 3.9, ubuntu 3.10–3.13, macos 3.12, windows 3.12): **all success**
   — `ruff check .`, `python -m pytest tests/ -q`, standalone zipapp `--version` on each cell.
 - `packaging, SAST & dogfood` (wheel/sdist + `twine check`, clean-venv install, standalone
   zipapp + SHA256SUMS, `npx` package, `bandit -ll`): **success**.
-- `standalone installer` (ubuntu) and `secret & supply-chain scan`: **success**. The macOS
-  installer job depends on GitHub's macOS runner queue on this account; its state is reported as
-  recorded on the run page, and a job that stays queued is never counted as a pass here.
+- `standalone installer` on ubuntu and macos (signed `SHA256SUMS.txt`, pinned digest, wrong-digest
+  failure) and `secret & supply-chain scan` (gitleaks): **success**.
 
 ## Reproduce
 
