@@ -161,17 +161,19 @@ def test_user_scope_discovery_harness_commands_and_large_list_scaling(tmp_path, 
     for idx in range(35):
         _create_skill(hermes_home / "skills" / "ops", f"user-skill-{idx:02d}", "1.0.0")
 
-    # `list --scope user` from an empty directory must discover all 35 user skills & truncate cleanly at 30
+    # `list --scope user` discovers all 35 user skills and previews the first 10.
     assert main(["list", str(empty_cwd), "--scope", "user"]) == 0
     list_txt = capsys.readouterr().out
     assert "user-skill-00" in list_txt
-    assert "... and 5 more" in list_txt
+    assert "... and 25 more" in list_txt
+    assert "HASH" not in list_txt
 
     # `--verbose` shows all 35 without truncation
     assert main(["list", str(empty_cwd), "--scope", "user", "--verbose"]) == 0
     list_verbose = capsys.readouterr().out
     assert "user-skill-34" in list_verbose
     assert "... and " not in list_verbose
+    assert "HASH" in list_verbose and "SOURCE" in list_verbose
 
     # `-q / --quiet` outputs plain skill names one per line for scripting
     assert main(["list", str(empty_cwd), "--scope", "user", "-q"]) == 0

@@ -99,6 +99,21 @@ Python 3.9 or newer is required, and the standalone installer checks for it befo
 
 ## Quick start (60 seconds)
 
+### First look at an existing project
+
+Run these from your project directory. They don't install or repair skills.
+
+```bash
+skillporter                                            # show where to start
+skillporter status                                     # check project setup and what needs attention
+skillporter list --search notes --harness claude-code    # filter by part of a skill name and by harness
+skillporter diagnose --harness claude-code --verbose     # see which skills the harness can reach
+```
+
+Add `--managed-only` or `--unmanaged-only` to `list` to filter by ownership. Use `--verbose` for all matching list rows, sources and hashes, or for the full `status` inventory and findings. `diagnose` shows a short findings preview by default; `--verbose` adds the reachability table and all findings. `--json` returns structured results without the text limits. Run `skillporter --help` for the full command reference.
+
+### Explore more workflows
+
 ```bash
 # 1. Run the zero residue interactive demo (heals broken symlinks and SHA-256 drift in a temp dir)
 skillporter demo

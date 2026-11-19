@@ -91,52 +91,58 @@ def cmd_status(args: argparse.Namespace) -> int:
     print(f"  Detected harnesses: {', '.join(snap.detected_harnesses) or '(none)'}")
     print(f"  Active targets:     {', '.join(snap.selected_harnesses) or '(none)'}")
 
-    total_skills = len(snap.skills)
+    verbose = is_verbose(args)
     synced_cnt = sum(1 for e in snap.skills.values() if e.status == "SYNCED")
     unmanaged_cnt = len(snap.unmanaged_skills)
-    attn_cnt = len(snap.attention_skills)
-    print(
-        f"  Skills summary:     {total_skills} total "
-        f"({synced_cnt} synced, {unmanaged_cnt} unmanaged, {attn_cnt} needing attention)"
-    )
+    attention = snap.attention_skills
+    summary = f"{len(snap.skills)} total ({synced_cnt} synced, {unmanaged_cnt} unmanaged"
+    if attention:
+        summary += f", {len(attention)} with state issues"
+    print(f"  Skills:             {summary})")
 
-    if snap.skills:
+    findings = [*(f"lockfile: {ld}" for ld in snap.lock_drift), *snap.findings]
+    if findings:
+        print(f"  Findings:           {len(findings)}")
+        for finding in findings if verbose else findings[:5]:
+            print(f"    ! {finding}")
+        if not verbose and len(findings) > 5:
+            print(f"    ... and {len(findings) - 5} more finding(s)")
+
+    names = sorted(snap.skills) if verbose else attention
+    if names:
         print()
         trows = []
-        for sname, entry in sorted(snap.skills.items()):
+        for sname in names:
+            entry = snap.skills[sname]
             h_list = entry.installed_harnesses
-            if len(h_list) > 4 and not is_verbose(args):
+            if len(h_list) > 4 and not verbose:
                 h_cell = ", ".join(h_list[:4]) + f" (+{len(h_list) - 4})"
             else:
                 h_cell = ", ".join(h_list) if h_list else "(none)"
             if entry.missing_harnesses:
                 h_cell += f" [missing: {', '.join(entry.missing_harnesses)}]"
+            # shortcut: the snapshot may default an untracked version to 1.0.0, revisit when it exposes provenance.
+            tracked = entry.managed or entry.in_manifest or entry.in_lockfile
             trows.append(
                 [
                     sname,
-                    entry.version,
+                    (entry.version or "unknown") if tracked else "untracked",
                     entry.status,
                     "yes" if entry.managed else "no",
                     h_cell,
                 ]
             )
-        max_r = None if is_verbose(args) else 25
         print(
             render_table(
                 ["SKILL", "VERSION", "STATE", "MANAGED", "HARNESSES"],
                 trows,
-                max_rows=max_r,
+                max_rows=None if verbose else 5,
                 indent="  ",
-                more_hint="run `skillporter status --verbose` to list all skills",
             )
         )
 
-    if snap.lock_drift or snap.findings:
-        print("\nAttention:")
-        for ld in snap.lock_drift:
-            print(f"  ! lockfile: {ld}")
-        for f in snap.findings:
-            print(f"  ! {f}")
+    if not verbose and (snap.skills or findings):
+        print("\nPass --verbose for all skills and findings; use `skillporter list` to browse skills.")
 
     if snap.remediations:
         print("\n" + render_next_steps(snap.remediations))

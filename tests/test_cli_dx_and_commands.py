@@ -6,8 +6,12 @@ import importlib
 import json
 from pathlib import Path
 
+import pytest
+
 from skillporter import __version__
 from skillporter.cli import main
+from skillporter.environment import EnvironmentSnapshot, SkillEnvironmentEntry
+from skillporter.state import ManagedSkillRecord, save_state
 
 DX_SKILL = """---
 name: dx-skill
@@ -169,8 +173,7 @@ def test_bare_invocation_on_a_pipe_starts_the_mcp_server(monkeypatch):
     assert len(started) == 1, "a piped stdin with no subcommand must start the MCP server"
 
 
-def test_bare_invocation_on_a_terminal_still_prints_help(monkeypatch, capsys):
-    """A character device on stdin, such as /dev/null, keeps the help output."""
+def test_bare_invocation_on_a_terminal_shows_short_guidance(monkeypatch, capsys):
     import os
     import sys
 
@@ -182,4 +185,86 @@ def test_bare_invocation_on_a_terminal_still_prints_help(monkeypatch, capsys):
 
     captured = capsys.readouterr()
     assert rc == 0
-    assert "usage: skillporter" in captured.out
+    assert "skillporter status" in captured.out
+    assert "skillporter --help" in captured.out
+    assert "Workflow command groups:" not in captured.out
+    assert len(captured.out.splitlines()) < 10
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["--help"])
+    assert exc.value.code == 0
+    help_text = capsys.readouterr().out
+    assert "usage: skillporter" in help_text
+    assert "Workflow command groups:" in help_text
+
+
+def test_list_filters_local_skills_in_text_quiet_and_json(tmp_path, capsys):
+    _write_skill(tmp_path / ".claude" / "skills", "ops-notes")
+    _write_skill(tmp_path / "unassigned", "design-notes")
+    rec = ManagedSkillRecord(
+        name="ops-check", source="./ops-check", harnesses=["claude-code", "codex", "cursor", "hermes", "zed"]
+    )
+    save_state(tmp_path, {rec.name: rec})
+    args = ["list", str(tmp_path)]
+
+    assert main([*args, "--json"]) == 0
+    unfiltered = {r["name"]: r for r in json.loads(capsys.readouterr().out)}
+    assert set(unfiltered) == {"ops-notes", "design-notes", "ops-check"}
+    assert main([*args, "--search", " NOTES ", "--harness", "claude", "--unmanaged-only", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out) == [unfiltered["ops-notes"]]
+    assert main([*args, "--managed-only", "-q"]) == 0
+    assert capsys.readouterr().out == "ops-check\n"
+    assert main([*args, "--harness", "zed", "--managed-only"]) == 0
+    row = capsys.readouterr().out.splitlines()[-1]
+    assert "ops-check" in row and "zed" in row and "(+1)" in row
+    assert main([*args, "--search", "missing"]) == 0
+    assert "No local skills match" in capsys.readouterr().out
+    assert main([*args, "--harness", "unknown-test-harness"]) == 2
+    assert "unknown harness" in capsys.readouterr().err
+
+
+def test_diagnose_summarizes_findings_and_verbose_restores_matrix(tmp_path, capsys):
+    for n in range(7):
+        _write_skill(tmp_path / ".claude" / "skills", f"notes-{n}")
+    args = ["diagnose", str(tmp_path), "--harness", "codex"]
+    assert main(args) == 1
+    short = capsys.readouterr().out
+    assert "7 skill(s) found · 7 finding(s)" in short
+    assert "... and 2 more" in short
+    assert "--verbose" in short and "notes-6" not in short
+
+    assert main([*args, "--verbose"]) == 1
+    detail = capsys.readouterr().out
+    assert "SKILL" in detail and "MISSING" in detail and "notes-6" in detail
+    assert "... and" not in detail
+    assert main([*args, "--json"]) == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert len(payload["skills"]) == len(payload["findings"]) == 7
+    assert list(payload["harnesses"]) == ["codex"]
+
+
+def test_status_distinguishes_environment_findings_from_skill_states(tmp_path, monkeypatch, capsys):
+    untracked = SkillEnvironmentEntry(name="notes", version="1.0.0", status="UNMANAGED", on_disk=True)
+    snap = EnvironmentSnapshot(
+        label="test",
+        root=tmp_path,
+        skills={"notes": untracked},
+        healthy=False,
+        findings=[f"diagnostic finding {i}" for i in range(7)],
+    )
+    monkeypatch.setattr("skillporter.commands.environment_cmd.capture_environment", lambda *a, **kw: snap)
+    args = ["status", str(tmp_path)]
+    assert main(args) == 1
+    short = capsys.readouterr().out
+    assert "NEEDS ATTENTION" in short and "1 unmanaged" in short and "0 needing attention" not in short
+    assert "Findings:" in short and "... and 2 more" in short
+    assert "diagnostic finding 6" not in short and "VERSION" not in short
+
+    assert main([*args, "--verbose"]) == 1
+    detail = capsys.readouterr().out
+    assert "notes" in detail and "untracked" in detail and "1.0.0" not in detail
+    assert "diagnostic finding 6" in detail and "... and" not in detail
+    assert main([*args, "--json"]) == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["attention_skills"] == [] and payload["findings"] == snap.findings
+    assert payload["skills"]["notes"]["version"] == "1.0.0"
