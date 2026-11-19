@@ -90,11 +90,9 @@ def _written_harness_dirs(ws: Path) -> set[str]:
 
 
 def _exported_pack(
-    tmp_path: Path, name: str = "alpha", targets: str = "claude-code,codex", *, init: bool = False
+    tmp_path: Path, name: str = "alpha", targets: str = "claude-code,codex"
 ) -> tuple[Path, Path]:
     ws = _git_repo(tmp_path / "src_ws")
-    if init:
-        assert main(["init", str(ws)]) == 0
     src = _skill(tmp_path / "srcs", name)
     assert main(["add", str(src), "--harness", targets, "--path", str(ws)]) == 0
     pack = tmp_path / "e.skillpack"
@@ -126,11 +124,13 @@ def test_import_default_writes_only_selected_harness_dirs(tmp_path, home, capsys
 
 
 def test_legacy_pack_with_every_reachable_harness_is_not_fanned_out(tmp_path, home, capsys):
-    _, pack = _exported_pack(tmp_path, init=True)
+    _, pack = _exported_pack(tmp_path)
     everything = sorted(harnesses.names())
 
     def legacy(doc, files):
         doc.pop("harness_selection", None)
+        # Use the manifest an older `init` would have written, not today's empty default.
+        doc["manifest"] = {"harnesses": ["claude-code", "codex", "cursor"]}
         doc["harnesses"] = everything
         doc["skills"]["alpha"]["harnesses"] = everything
 
