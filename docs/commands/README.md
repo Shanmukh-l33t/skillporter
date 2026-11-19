@@ -163,7 +163,7 @@ Print the resolved dependency graph and the topological install order. `--json` 
 
 ### `skillporter diagnose [path]`
 
-Show which harnesses can see each skill, and report broken symlinks, content drift, duplicate loading and specification errors.
+Report which documented paths hold each skill, plus broken symlinks, content drift, duplicate loading and specification errors. These are filesystem checks; runtime discovery is reported as `not_checked` in `--json` and named in the text output.
 
 ```bash
 skillporter diagnose . --harness claude-code --harness codex
@@ -173,7 +173,7 @@ Options: `--harness` (repeatable, or `all`), `--scope`.
 
 ### `skillporter doctor [path]`
 
-Run the full health check. `--fix` repairs missing or drifted installs and removes broken symlinks. `--dry-run` previews the repair.
+Run the full health check. `--fix` repairs missing or drifted installs and removes broken symlinks. `--dry-run` previews the repair. The verdict covers filesystem state only; per-harness runtime discovery is `RUNTIME_NOT_CHECKED`, and the adapter's historical verification tier is shown separately.
 
 ### `skillporter status [path]`
 

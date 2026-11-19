@@ -1,16 +1,13 @@
-"""Diagnose why a skill does or does not load in a given harness, including
-content-drift, duplicate-loading, multi-copy validation, and explicit
-verification states.
+"""Inspect skill paths, content drift, duplicate copies, and validity on disk.
 
 Explicit compatibility & verification states exposed:
   * ``FOUND``       — Skill directory with SKILL.md discovered in workspace.
   * ``VALID``       — Passes all Agent Skills specification checks (0 errors).
   * ``INVALID``     — Contains one or more specification errors.
   * ``COMPATIBLE``  — Compatible with target harness (or ``ADAPTED`` when conversion required).
-  * ``INSTALLED``   — Present at a path scanned by the harness.
-  * ``VERIFIED``    — Installed AND adapter has independent runtime verification evidence.
-  * ``UNVERIFIED``  — Installed at documented path, not runtime-probed in live agent process.
-  * ``MISSING``     — Not present in any path scanned by the harness.
+  * ``INSTALLED``   — Present on disk at an expected skill path.
+  * ``RUNTIME_NOT_CHECKED`` — Live discovery of this installation was not tested.
+  * ``MISSING``     — Not found at an expected skill path.
   * ``DRIFT``       — Copies across directories have diverging SHA-256 content hashes.
   * ``DUPLICATE``   — Present in >=2 distinct directories scanned by the same harness.
   * ``BROKEN``      — Dangling symlink in harness skill directory.
@@ -71,20 +68,21 @@ class HarnessReport:
     verification_level: str = "DOCUMENTATION_VERIFIED"
 
     def loads(self, skill: str) -> bool:
+        """Return on-disk presence at an expected path, not live discovery."""
         return skill in self.reachable_skills
 
     def cell_state(self, skill: str) -> str:
-        """Return 'DRIFT', 'DUPLICATE', 'yes', or 'MISSING' (backward-compatible table cell)."""
+        """Return 'DRIFT', 'DUPLICATE', 'on disk', or 'MISSING' for a table cell."""
         if skill not in self.reachable_skills:
             return "MISSING"
         if skill in self.drifted_skills:
             return "DRIFT"
         if skill in self.duplicate_skills:
             return "DUPLICATE"
-        return "yes"
+        return "on disk"
 
     def explicit_states(self, skill: str, *, is_valid: bool = True) -> list[str]:
-        """Return explicit states: FOUND, VALID/INVALID, COMPATIBLE, INSTALLED/MISSING, VERIFIED/UNVERIFIED."""
+        """Return current filesystem states without inferring runtime discovery from the adapter tier."""
         states = ["FOUND", "VALID" if is_valid else "INVALID"]
         if self.support_status in ("NATIVE", "COMPATIBLE"):
             states.append("COMPATIBLE")
@@ -103,10 +101,7 @@ class HarnessReport:
         if skill in self.duplicate_skills:
             states.append("DUPLICATE")
 
-        if self.verification_level == "RUNTIME_VERIFIED":
-            states.append("VERIFIED")
-        else:
-            states.append("UNVERIFIED")
+        states.append("RUNTIME_NOT_CHECKED")
         return states
 
 
@@ -536,10 +531,10 @@ def diagnose(
         missing = sorted(h for h in skill_required if h in diag.reports and not diag.reports[h].loads(skill))
         if not missing:
             continue
-        loaded = sorted(h for h in skill_required if h in diag.reports and diag.reports[h].loads(skill))
+        on_disk = sorted(h for h in skill_required if h in diag.reports and diag.reports[h].loads(skill))
         diag.findings.append(
-            f"skill {skill!r} is not visible to: {', '.join(missing)}"
-            + (f" (visible to: {', '.join(loaded)})" if loaded else " (visible to no harness)")
+            f"skill {skill!r} is missing from expected paths for: {', '.join(missing)}"
+            + (f" (found on disk for: {', '.join(on_disk)})" if on_disk else "")
         )
 
     errors = {

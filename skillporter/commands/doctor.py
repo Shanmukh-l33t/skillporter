@@ -89,6 +89,19 @@ def cmd_matrix(args: argparse.Namespace) -> int:
     return print_matrix(fmt_mode(args) == "json", getattr(args, "category", None), verbose=is_verbose(args))
 
 
+def _check_evidence(scope: str, hermes_checked: bool) -> dict[str, str]:
+    evidence = {"evidence_scope": "filesystem", "runtime_discovery": "not_checked"}
+    if scope == "project" and hermes_checked:
+        evidence["runtime_note"] = "Hermes project skill discovery requires project trust; trust was not checked."
+    return evidence
+
+
+def _print_check_evidence(evidence: Mapping[str, str]) -> None:
+    print("Filesystem checks only; runtime discovery was not checked.")
+    if "runtime_note" in evidence:
+        print(evidence["runtime_note"])
+
+
 def cmd_diagnose(args: argparse.Namespace) -> int:
     root = Path(args.path).expanduser()
     if not root.exists():
@@ -107,11 +120,16 @@ def cmd_diagnose(args: argparse.Namespace) -> int:
 
     diag = run_diagnose(root, only=selected, scope=args.scope)
     fmt = fmt_mode(args)
+    hermes = diag.reports.get("hermes")
+    evidence = _check_evidence(
+        args.scope, hermes is not None and (bool(selected) or any(loc.exists for loc in hermes.locations))
+    )
 
     if fmt == "json":
         payload = {
             "root": str(diag.root),
             "scope": args.scope,
+            **evidence,
             "skills": diag.skill_names,
             "drifted": diag.drifted,
             "duplicates": diag.duplicates,
@@ -120,6 +138,7 @@ def cmd_diagnose(args: argparse.Namespace) -> int:
                     "verified": r.verified,
                     "support_status": r.support_status,
                     "verification_level": r.verification_level,
+                    "on_disk_skills": sorted(r.reachable_skills),
                     "reachable_skills": sorted(r.reachable_skills),
                     "drifted_skills": sorted(r.drifted_skills),
                     "duplicate_skills": r.duplicate_skills,
@@ -147,6 +166,7 @@ def cmd_diagnose(args: argparse.Namespace) -> int:
 
     verbose = is_verbose(args)
     print(f"skillporter {__version__} — diagnose ({args.scope}): {diag.root}")
+    _print_check_evidence(evidence)
     if not diag.skills:
         print("No SKILL.md files found in this scope.")
     if diag.skills or diag.findings:
@@ -569,6 +589,8 @@ def cmd_doctor(args: argparse.Namespace) -> int:
                         diag.findings.append(smsg)
 
     active_names = default_targets
+    evidence = _check_evidence(args.scope, "hermes" in active_names)
+    adapter_tiers = {name: harnesses.get(name).verification_level for name in active_names}
 
     skill_summaries = []
     for skill_md in diag.skills:
@@ -577,15 +599,13 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         is_drifted_now = sname in remaining_drift
         thash, _ = diag.tree_hash(skill_md.parent)
         per_harness = {}
-        reachable_in_checked = []
+        on_disk = []
         for hname in active_names:
             if hname in diag.reports:
-                st_list = diag.reports[hname].explicit_states(sname, is_valid=valid)
-                if is_drifted_now and "HASH_VERIFIED" in st_list:
-                    st_list = ["DRIFT" if x == "HASH_VERIFIED" else x for x in st_list]
-                per_harness[hname] = st_list
-                if diag.reports[hname].loads(sname):
-                    reachable_in_checked.append(hname)
+                report = diag.reports[hname]
+                per_harness[hname] = report.explicit_states(sname, is_valid=valid)
+                if report.loads(sname):
+                    on_disk.append(hname)
         summary_state = "DRIFTED" if is_drifted_now else ("VALID" if valid else "INVALID")
         skill_summaries.append(
             {
@@ -594,7 +614,8 @@ def cmd_doctor(args: argparse.Namespace) -> int:
                 "state": summary_state,
                 "tree_hash": thash[:12] if thash else "",
                 "copies": len(diag.skill_copies.get(sname, [])),
-                "reachable_harnesses": reachable_in_checked,
+                "on_disk_harnesses": on_disk,
+                "reachable_harnesses": on_disk,
                 "harnesses": per_harness,
             }
         )
@@ -608,7 +629,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         )
     if remaining_drift:
         remediations.append("skillporter sync --prefer <path>   # choose the authoritative copy before reconciling")
-    if any("not visible to:" in f or "broken symlink" in f for f in diag.findings):
+    if any("missing from expected paths for:" in f or "broken symlink" in f for f in diag.findings):
         remediations.append("skillporter doctor --fix --dry-run   # inspect authorized repairs and blocked paths")
     if any(not diag.is_skill_valid(s) for s in diag.skill_names):
         remediations.append("skillporter validate .     # inspect and fix SKILL.md specification errors")
@@ -618,9 +639,12 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             json.dumps(
                 {
                     "root": str(root),
+                    "scope": args.scope,
+                    **evidence,
                     "dry_run": dry_run,
                     "detected_harnesses": [d.harness.name for d in detected],
                     "checked_harnesses": active_names,
+                    "adapter_verification_levels": adapter_tiers,
                     "skills": diag.skill_names,
                     "skill_states": skill_summaries,
                     "drift_before_fix": drift_before_fix,
@@ -638,7 +662,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         )
         return EXIT_PROBLEM if diag.findings else EXIT_OK
 
-    print(f"skillporter {__version__} — doctor report for {root}\n")
+    print(f"skillporter {__version__} — doctor report for {root}")
+    _print_check_evidence(evidence)
+    print()
     print(f"Detected harnesses: {', '.join(d.harness.name for d in detected) or '(none)'}")
     print(f"Checked harnesses:  {', '.join(active_names)}")
     print(f"Discovered skills:  {len(diag.skill_names)}")
@@ -674,24 +700,18 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     if skill_summaries:
         print()
         if is_verbose(args):
-            print("Skill Status Matrix (on-disk integrity + adapter verification tier):")
+            print("Skill Status Matrix (on-disk states; historical adapter tier shown separately):")
             for s in skill_summaries:
-                integrity_tag = "DRIFTED" if s["state"] == "DRIFTED" else "HASH_VERIFIED"
                 print(
-                    f"  {s['name']} [{s['state']} · {integrity_tag}] "
+                    f"  {s['name']} [{s['state']}] "
                     f"(hash: {s['tree_hash']}, copies: {s['copies']})"
                 )
                 for hname, st_list in s["harnesses"].items():
-                    tier = harnesses.get(hname).verification_level
-                    display_chain = [
-                        f"ADAPTER:{tier}" if tok in ("VERIFIED", "UNVERIFIED") else tok
-                        for tok in st_list
-                    ]
-                    print(f"    - {hname:16} {' -> '.join(display_chain)}")
+                    print(f"    - {hname:16} {' -> '.join(st_list)} (adapter: {adapter_tiers[hname]})")
         else:
             trows = []
             for s in skill_summaries:
-                rh = s["reachable_harnesses"]
+                rh = s["on_disk_harnesses"]
                 h_cell = (
                     ", ".join(rh[:4]) + f" (+{len(rh) - 4})"
                     if len(rh) > 4
@@ -700,11 +720,11 @@ def cmd_doctor(args: argparse.Namespace) -> int:
                 trows.append([str(s["name"]), str(s["state"]), str(s["tree_hash"]), str(s["copies"]), h_cell])
             print(
                 render_table(
-                    ["SKILL", "STATE", "SHA-256", "COPIES", "REACHABLE HARNESSES"],
+                    ["SKILL", "STATE", "SHA-256", "COPIES", "HARNESSES (ON DISK)"],
                     trows,
                     max_rows=25,
                     indent="  ",
-                    more_hint="pass --verbose for full list and per-harness verification states",
+                    more_hint="pass --verbose for full list and per-harness states",
                 )
             )
 
@@ -718,7 +738,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
                 print(f"  $ {cmd}")
         print(f"\nStatus: {badge('UNHEALTHY')} ({len(diag.findings)} issue(s) found).")
         return EXIT_PROBLEM
-    print(f"\nStatus: {badge('HEALTHY')} (all checked skills reachable, valid, and hash-verified).")
+    print(f"\nStatus: {badge('HEALTHY')} (no issues found by filesystem checks).")
     return EXIT_OK
 
 

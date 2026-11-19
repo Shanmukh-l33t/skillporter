@@ -24,6 +24,8 @@ Eight adapters are `RUNTIME_VERIFIED`: Claude Code, OpenAI Codex, GitHub Copilot
 
 No model was called, because no credentials were available. This shows that the harness discovered the skill, not that a model used it well. Captured output is in the [evidence folder](https://github.com/Shanmukh-l33t/skillporter/tree/main/docs/audits/harness-runtime-evidence-2026-11-14).
 
+Hermes evidence covers user scope (`$HERMES_HOME/skills`) only. Its catalog lists nothing for a project until that project's skills are trusted, so that observation says nothing about `.hermes/skills` in an untrusted checkout. A tier here describes how an adapter was tested once; it never proves that the skill installed on your machine today was seen by a live harness. `diagnose` and `doctor` therefore report filesystem presence and state plain `RUNTIME_NOT_CHECKED` for the running harness.
+
 Cursor stays `FIXTURE_TESTED`: its CLI cannot list skills, so no live load was seen. Windsurf is documentation and fixture only, because the IDE was not installed. Aider is listed for AiderDesk skill folders. Core aider has no skills concept and does not load `CONVENTIONS.md` without `--read`.
 
 ## Support types
@@ -78,6 +80,8 @@ This table is generated from `skillporter/harnesses.py`, the same registry the C
 19 adapters: 8 `RUNTIME_VERIFIED`, 11 `FIXTURE_TESTED`.
 
 <!-- END GENERATED: harness-matrix -->
+
+Hermes project scope is the one qualified case: installed paths are verified, live project discovery requires a trust decision Skillporter does not make. See the [field review](../verification/field-review.md).
 
 Print the same matrix locally:
 

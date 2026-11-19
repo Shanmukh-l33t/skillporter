@@ -587,7 +587,7 @@ def explain_finding(query: str) -> Explanation:
             return EXPLANATIONS["DRIFT"]
         if "broken symlink" in lower or "dangling" in lower:
             return EXPLANATIONS["BROKEN"]
-        if "not visible to" in lower:
+        if "not visible to" in lower or "missing from expected paths" in lower:
             return EXPLANATIONS["MISSING"]
         if "duplicate" in lower:
             return EXPLANATIONS["DUPLICATE"]
