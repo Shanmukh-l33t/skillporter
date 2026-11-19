@@ -1,0 +1,76 @@
+case,skills,command,format,run,result,exit,seconds,stdout_bytes,stdout_lines,peak_rss_kib,stderr_bytes,stderr_last_line
+mixed,10,status,text,1,exit,1,3.712,4178,43,29400,0,
+mixed,10,status,json,1,exit,1,3.491,14271,481,29600,0,
+mixed,10,diagnose,text,1,exit,1,3.225,5923,34,29640,0,
+mixed,10,diagnose,json,1,exit,1,5.302,42479,1085,29724,0,
+mixed,10,list,text,1,exit,0,2.404,919,12,29608,0,
+mixed,10,list,json,1,exit,0,2.857,3535,184,29416,0,
+mixed,10,status,text,2,exit,1,3.326,4178,43,29516,0,
+mixed,10,status,json,2,exit,1,2.793,14271,481,29724,0,
+mixed,10,diagnose,text,2,exit,1,2.585,5923,34,29512,0,
+mixed,10,diagnose,json,2,exit,1,3.208,42479,1085,29508,0,
+mixed,10,list,text,2,exit,0,2.607,919,12,29656,0,
+mixed,10,list,json,2,exit,0,4.717,3535,184,29520,0,
+mixed,10,status,text,3,exit,1,3.377,4178,43,29516,0,
+mixed,10,status,json,3,exit,1,4.522,14271,481,29724,0,
+mixed,10,diagnose,text,3,exit,1,2.848,5923,34,29644,0,
+mixed,10,diagnose,json,3,exit,1,2.138,42479,1085,29724,0,
+mixed,10,list,text,3,exit,0,2.341,919,12,29528,0,
+mixed,10,list,json,3,exit,0,1.914,3535,184,29528,0,
+invalid-project-manifest,10,status,json,1,exit,1,1.703,0,0,29728,1785,json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+invalid-project-manifest,10,diagnose,json,1,exit,1,4.247,0,0,29408,2038,json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+invalid-project-manifest,10,list,json,1,exit,1,3.334,0,0,29652,2005,json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+mixed,100,status,text,1,exit,1,10.098,8345,86,29512,0,
+mixed,100,status,json,1,exit,1,7.068,113271,4288,29592,0,
+mixed,100,diagnose,text,1,exit,1,9.622,33283,142,29516,0,
+mixed,100,diagnose,json,1,exit,1,4.650,262934,5540,29596,0,
+mixed,100,list,text,1,exit,0,7.319,2077,33,29528,0,
+mixed,100,list,json,1,exit,0,8.108,35323,1822,29524,0,
+mixed,100,status,text,2,exit,1,4.947,8345,86,29644,0,
+mixed,100,status,json,2,exit,1,4.867,113271,4288,29600,0,
+mixed,100,diagnose,text,2,exit,1,8.992,33283,142,29516,0,
+mixed,100,diagnose,json,2,exit,1,4.178,262934,5540,29592,0,
+mixed,100,list,text,2,exit,0,9.105,2077,33,29532,0,
+mixed,100,list,json,2,exit,0,4.359,35323,1822,29524,0,
+mixed,100,status,text,3,exit,1,9.506,8345,86,29516,0,
+mixed,100,status,json,3,exit,1,5.007,113271,4288,29604,0,
+mixed,100,diagnose,text,3,exit,1,6.664,33283,142,29512,0,
+mixed,100,diagnose,json,3,exit,1,4.825,262934,5540,29596,0,
+mixed,100,list,text,3,exit,0,9.447,2077,33,29596,0,
+mixed,100,list,json,3,exit,0,5.127,35323,1822,29780,0,
+mixed,1000,status,text,1,timeout,124,20.007,0,0,,69,/usr/bin/timeout: sending signal TERM to command ‘/usr/bin/time’
+mixed,1000,status,json,1,timeout,124,20.005,0,0,,69,/usr/bin/timeout: sending signal TERM to command ‘/usr/bin/time’
+mixed,1000,diagnose,text,1,timeout,124,20.008,0,0,,69,/usr/bin/timeout: sending signal TERM to command ‘/usr/bin/time’
+mixed,1000,diagnose,json,1,timeout,124,20.005,0,0,,69,/usr/bin/timeout: sending signal TERM to command ‘/usr/bin/time’
+mixed,1000,list,text,1,timeout,124,20.005,0,0,,69,/usr/bin/timeout: sending signal TERM to command ‘/usr/bin/time’
+mixed,1000,list,json,1,timeout,124,20.011,0,0,,69,/usr/bin/timeout: sending signal TERM to command ‘/usr/bin/time’
+mixed,1000,status,text,2,timeout,124,20.004,0,0,,69,/usr/bin/timeout: sending signal TERM to command ‘/usr/bin/time’
+mixed,1000,status,json,2,timeout,124,20.010,0,0,,69,/usr/bin/timeout: sending signal TERM to command ‘/usr/bin/time’
+mixed,1000,diagnose,text,2,exit,1,18.436,306883,1222,32616,0,
+mixed,1000,diagnose,json,2,exit,1,10.938,2467484,50090,40088,0,
+mixed,1000,list,text,2,exit,0,13.622,2078,33,33112,0,
+mixed,1000,list,json,2,exit,0,15.958,353203,18202,34260,0,
+mixed,1000,status,text,3,timeout,124,20.005,0,0,,69,/usr/bin/timeout: sending signal TERM to command ‘/usr/bin/time’
+mixed,1000,status,json,3,timeout,124,20.042,0,0,,69,/usr/bin/timeout: sending signal TERM to command ‘/usr/bin/time’
+mixed,1000,diagnose,text,3,timeout,124,20.021,0,0,,69,/usr/bin/timeout: sending signal TERM to command ‘/usr/bin/time’
+mixed,1000,diagnose,json,3,timeout,124,20.007,0,0,,69,/usr/bin/timeout: sending signal TERM to command ‘/usr/bin/time’
+mixed,1000,list,text,3,timeout,124,20.004,0,0,,69,/usr/bin/timeout: sending signal TERM to command ‘/usr/bin/time’
+mixed,1000,list,json,3,timeout,124,20.005,0,0,,69,/usr/bin/timeout: sending signal TERM to command ‘/usr/bin/time’
+mixed,5000,status,text,1,timeout,124,20.005,0,0,,69,/usr/bin/timeout: sending signal TERM to command ‘/usr/bin/time’
+mixed,5000,status,json,1,timeout,124,20.005,0,0,,69,/usr/bin/timeout: sending signal TERM to command ‘/usr/bin/time’
+mixed,5000,diagnose,text,1,timeout,124,20.005,0,0,,69,/usr/bin/timeout: sending signal TERM to command ‘/usr/bin/time’
+mixed,5000,diagnose,json,1,timeout,124,20.004,0,0,,69,/usr/bin/timeout: sending signal TERM to command ‘/usr/bin/time’
+mixed,5000,list,text,1,timeout,124,20.004,0,0,,69,/usr/bin/timeout: sending signal TERM to command ‘/usr/bin/time’
+mixed,5000,list,json,1,timeout,124,20.004,0,0,,69,/usr/bin/timeout: sending signal TERM to command ‘/usr/bin/time’
+mixed,5000,status,text,2,timeout,124,20.004,0,0,,69,/usr/bin/timeout: sending signal TERM to command ‘/usr/bin/time’
+mixed,5000,status,json,2,timeout,124,20.003,0,0,,69,/usr/bin/timeout: sending signal TERM to command ‘/usr/bin/time’
+mixed,5000,diagnose,text,2,timeout,124,20.004,0,0,,69,/usr/bin/timeout: sending signal TERM to command ‘/usr/bin/time’
+mixed,5000,diagnose,json,2,timeout,124,20.004,0,0,,69,/usr/bin/timeout: sending signal TERM to command ‘/usr/bin/time’
+mixed,5000,list,text,2,timeout,124,20.004,0,0,,69,/usr/bin/timeout: sending signal TERM to command ‘/usr/bin/time’
+mixed,5000,list,json,2,timeout,124,20.004,0,0,,69,/usr/bin/timeout: sending signal TERM to command ‘/usr/bin/time’
+mixed,5000,status,text,3,timeout,124,20.006,0,0,,69,/usr/bin/timeout: sending signal TERM to command ‘/usr/bin/time’
+mixed,5000,status,json,3,timeout,124,20.007,0,0,,69,/usr/bin/timeout: sending signal TERM to command ‘/usr/bin/time’
+mixed,5000,diagnose,text,3,timeout,124,20.006,0,0,,69,/usr/bin/timeout: sending signal TERM to command ‘/usr/bin/time’
+mixed,5000,diagnose,json,3,timeout,124,20.009,0,0,,69,/usr/bin/timeout: sending signal TERM to command ‘/usr/bin/time’
+mixed,5000,list,text,3,timeout,124,20.006,0,0,,69,/usr/bin/timeout: sending signal TERM to command ‘/usr/bin/time’
+mixed,5000,list,json,3,timeout,124,20.009,0,0,,69,/usr/bin/timeout: sending signal TERM to command ‘/usr/bin/time’

@@ -1,0 +1,8 @@
+full reachable : ['deploy', 'dup', 'flat']
+inv  reachable : ['deploy', 'dup', 'flat']
+nested dirs    : ['skills\\work\\deploy']
+duplicate      : {'dup': ['C:\\Users\\ImMandatory\\AppData\\Local\\Temp\\tmp240lbx7c\\home\\hermes\\skills/other/dup/dup', 'C:\\Users\\ImMandatory\\AppData\\Local\\Temp\\tmp240lbx7c\\home\\hermes\\skills/work/dup/dup']}
+hashes full/inv: True False
+findings(full) : none
+shared loaders : ['antigravity', 'cline', 'codex', 'cursor', 'gemini-cli', 'github-copilot', 'goose', 'junie', 'openclaw', 'opencode', 'openhands', 'replit', 'roo-code', 'zed']
+shared copies  : ['.agents\\skills\\shared-one']

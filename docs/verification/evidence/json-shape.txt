@@ -1,0 +1,5 @@
+SAME status --json rc 1->1
+SAME diagnose --json rc 1->1
+SAME list --json rc 0->0
+SAME doctor --json rc 1->1
+SAME status --json --scope user rc 0->0

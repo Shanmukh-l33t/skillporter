@@ -1,0 +1,13 @@
+# filtered lookup, 5000-skill fixture, WSL2 ext4 Python 3.12.3
+# final tree: python3 -B -S -m skillporter list --search <q> . --no-color --json
+# baseline (bdfb9e6) has no --search:
+$ list --search scale-004321  ->  exit 2 (0.71 s) 'error: unrecognized arguments: --search'
+# final (integrated tree):
+== base
+query=scale-004321 skills=5000 exit=2 seconds=0.71 rows=0 stdout_bytes=0 peak_rss_kib=Command exited with non-zero status 2
+29716
+query=nomatch-xyz skills=5000 exit=2 seconds=0.71 rows=0 stdout_bytes=0 peak_rss_kib=Command exited with non-zero status 2
+29688
+== final2
+query=scale-004321 skills=5000 exit=0 seconds=1.85 rows=1 stdout_bytes=460 peak_rss_kib=56080
+query=nomatch-xyz skills=5000 exit=0 seconds=1.61 rows=0 stdout_bytes=3 peak_rss_kib=55944

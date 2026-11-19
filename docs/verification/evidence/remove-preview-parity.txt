@@ -1,0 +1,10 @@
+C:\Users\ImMandatory\AppData\Local\hermes\cache\scratch\sp\probe_preview.py:29: SyntaxWarning: "\/" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\/"? A raw string is also an option.
+  print("preview paths in output:", [ln.split()[-1].replace(str(proj), "").lstrip("\/") for ln in out.stdout.splitlines() if ln.startswith("would-remove")])
+Traceback (most recent call last):
+  File "C:\Users\ImMandatory\AppData\Local\hermes\cache\scratch\sp\probe_preview.py", line 10, in <module>
+    src.mkdir(parents=True)
+    ~~~~~~~~~^^^^^^^^^^^^^^
+  File "C:\Users\ImMandatory\AppData\Local\hermes\tools\python-3.14.9+20261021-win32-x64\Lib\pathlib\__init__.py", line 1011, in mkdir
+    os.mkdir(self, mode)
+    ~~~~~~~~^^^^^^^^^^^^
+FileExistsError: [WinError 183] Cannot create a file when that file already exists: 'C:\\Users\\ImMandatory\\AppData\\Local\\hermes\\cache\\scratch\\sp\\prev-src\\shared-demo'

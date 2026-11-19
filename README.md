@@ -112,6 +112,8 @@ skillporter diagnose --harness claude-code --verbose     # see which skills the 
 
 Add `--managed-only` or `--unmanaged-only` to `list` to filter by ownership. Use `--verbose` for all matching list rows, sources and hashes, or for the full `status` inventory and findings. `diagnose` shows a short findings preview by default; `--verbose` adds the reachability table and all findings. `--json` returns structured results without the text limits. Run `skillporter --help` for the full command reference.
 
+Nothing is written until you say so: `doctor --fix --dry-run` prints every step it would take (`create`, `replace`, `refuse`) and `remove <skill> --dry-run` lists every destination it would delete; `--fix` and `remove` then apply that same plan. Installs report bytes verified on disk, not that a harness has loaded the skill.
+
 ### Explore more workflows
 
 ```bash
@@ -125,26 +127,26 @@ skillporter suggest
 # 3. Install a skill conservatively into detected/configured harnesses (pass --harness all for all 19)
 skillporter add anthropics/skills --skill pdf --harness detected
 
-# 3. Inspect and security scan skills (text, JSON, or SARIF 2.1.0 for GitHub Code Scanning)
+# 4. Inspect and security scan skills (text, JSON, or SARIF 2.1.0 for GitHub Code Scanning)
 skillporter scan .
 skillporter scan . --format sarif > skillporter.sarif
 
-# 4. Initialize manifest, synchronize transitive dependencies, and verify the reproducible lockfile in CI
+# 5. Initialize manifest, synchronize transitive dependencies, and verify the reproducible lockfile in CI
 skillporter init
 skillporter sync
 skillporter lock --check
 
-# 5. Diagnose reachability, audit provenance and override logs, or roll back to a verified snapshot
+# 6. Diagnose reachability, audit provenance and override logs, or roll back to a verified snapshot
 skillporter status
 skillporter audit .
 skillporter rollback pdf
 
-# 6. Export, compare, and restore your entire skill environment across machines (works offline)
+# 7. Export, compare, and restore your entire skill environment across machines (works offline)
 skillporter export my-environment.skillpack
 skillporter diff my-environment.skillpack
 skillporter import my-environment.skillpack --dry-run
 
-# 7. Give your AI coding agents native control over Skillporter
+# 8. Give your AI coding agents native control over Skillporter
 skillporter self-skill install --harness detected
 ```
 
@@ -174,7 +176,7 @@ Rollback is transactional rather than a re-download. Replacements are staged in 
 
 ## Harness support matrix (19 harnesses)
 
-Skillporter distinguishes **support status** (`NATIVE`, `COMPATIBLE`, `ADAPTED`) from **verification evidence** (`RUNTIME_VERIFIED`, `INTEGRATION_TESTED`, `FIXTURE_TESTED`, `DOCUMENTATION_VERIFIED`). An adapter is never marked `RUNTIME_VERIFIED` unless it has been tested against a live harness runtime.
+Skillporter distinguishes **support status** (`NATIVE`, `COMPATIBLE`, `ADAPTED`) from **verification evidence** (`RUNTIME_VERIFIED`, `INTEGRATION_TESTED`, `FIXTURE_TESTED`, `DOCUMENTATION_VERIFIED`). An adapter is never marked `RUNTIME_VERIFIED` unless it has been tested against a live harness runtime. A verified adapter still obeys that harness's own gates: Hermes loads project-scope skills only after you run `hermes skills trust` for that project, and Skillporter neither grants that trust nor reports it — `diagnose`/`doctor` there describe the files on disk, not a loaded skill.
 
 | Harness | Project Path | User / Global Path | Support | Verification Evidence |
 |---|---|---|---|---|
