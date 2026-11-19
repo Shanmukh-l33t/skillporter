@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from skillporter.cli import build_parser, main
-from skillporter.manifest import load_lockfile, load_manifest
+from skillporter.manifest import load_lockfile, load_manifest, save_manifest
 from skillporter.state import load_state
 
 
@@ -42,6 +42,8 @@ def _isolated_home(tmp_path, monkeypatch):
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.setenv("HERMES_HOME", str(home / ".hermes"))
+    monkeypatch.delenv("SKILLPORTER_HARNESS_PATHS", raising=False)
 
 
 def _ws_with_skill(tmp_path: Path, name: str = "rm-skill", harness: str = "claude-code,windsurf") -> tuple[Path, Path]:
@@ -151,7 +153,121 @@ def test_remove_dry_run_never_prompts_and_never_deletes(tmp_path, monkeypatch, c
     assert (ws / ".claude" / "skills" / "rm-skill" / "SKILL.md").is_file()
 
 
+@pytest.mark.parametrize(
+    ("layout", "other", "survivor_base", "removed_base"),
+    [
+        ("shared", "codex", ".agents/skills", None),
+        ("isolated", "codex", ".agents/skills", ".cursor/skills"),
+        ("custom", "codex", ".agents/skills", "custom/skills"),
+        ("custom-shared", "claude-code", "custom/skills", None),
+    ],
+)
+def test_remove_preview_matches_action_and_next_sync(tmp_path, capsys, layout, other, survivor_base, removed_base):
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    src = _skill(tmp_path / "upstream", "rm-skill")
+    unrelated = _skill(tmp_path / "upstream", "unrelated", body="Unrelated marker.\n")
+    args = ["--path", str(ws), "--json"]
+    assert main(["init", str(ws)]) == 0
+    manifest = load_manifest(ws)
+    if layout.startswith("custom"):
+        manifest.harness_paths["cursor"] = "custom/skills"
+    if layout == "custom-shared":
+        manifest.harness_paths[other] = "custom/skills"
+    save_manifest(ws, manifest)
+    assert main(["add", str(src), "--harness", other, *args]) == 0
+    flags = ["--isolated"] if layout == "isolated" else []
+    assert main(["add", str(src), "--harness", "cursor", "--force", *flags, *args]) == 0
+    assert main(["add", str(unrelated), "--harness", other, *args]) == 0
+    manifest = load_manifest(ws)
+    manifest.harnesses = [other, "cursor"]
+    # Exercise inherited targets too; sync must not restore a removed owner from the defaults.
+    manifest.skills[0].harnesses = [] if layout == "shared" else [other, "cursor"]
+    save_manifest(ws, manifest)
+    assert main(["lock", str(ws), "--json"]) == 0
+    capsys.readouterr()
+
+    survivor = ws / survivor_base / "rm-skill"
+    removed = ws / removed_base / "rm-skill" if removed_base else None
+    marker = ws / survivor_base / "unrelated" / "SKILL.md"
+    marker_before = (marker.read_bytes(), marker.stat().st_mtime_ns)
+    survivor_before = (survivor / "SKILL.md").read_bytes()
+    metadata = [ws / path for path in (".skillporter/state.json", "skillporter.yaml", "skillporter.lock")]
+    before = [path.read_bytes() for path in metadata]
+    cmd = ["remove", "rm-skill", "--harness", "cursor", *args]
+    assert main([*cmd, "--dry-run"]) == 0
+    preview = json.loads(capsys.readouterr().out)["results"]
+    assert [path.read_bytes() for path in metadata] == before
+    assert removed is None or removed.is_dir()
+    assert (survivor / "SKILL.md").read_bytes() == survivor_before
+    assert main(cmd) == 0
+    actual = json.loads(capsys.readouterr().out)["results"]
+    expected = {str(survivor): "preserved-shared"}
+    if removed:
+        expected[str(removed)] = "removed"
+    assert {row["dest"]: row["action"] for row in actual if row["action"] != "skipped"} == expected
+    labels = {"removed": "would-remove", "skipped": "not-installed"}
+    assert preview == [dict(row, action=labels.get(row["action"], row["action"])) for row in actual]
+
+    for sync in (False, True):
+        if sync:
+            assert main(["sync", str(ws), "--json"]) == 0
+            capsys.readouterr()
+        rec = load_state(ws)["rm-skill"]
+        assert rec.harnesses == [other]
+        assert rec.destinations == [str(survivor.resolve())]
+        assert load_manifest(ws).skills[0].harnesses == [other]
+        pin = load_lockfile(ws).skills["rm-skill"]
+        assert pin.installed_targets == [other]
+        assert pin.tree_hash == rec.tree_hash
+        assert removed is None or not removed.exists()
+        assert (survivor / "SKILL.md").read_bytes() == survivor_before
+        assert (src / "SKILL.md").read_bytes() == survivor_before
+        assert (marker.read_bytes(), marker.stat().st_mtime_ns) == marker_before
+
+    assert main(["uninstall", "rm-skill", "-y", *args]) == 0
+    assert not survivor.exists()
+    assert main(["sync", str(ws), "--json"]) == 0
+    assert "rm-skill" not in load_state(ws)
+    assert "rm-skill" not in load_lockfile(ws).skills
+    assert [s.name for s in load_manifest(ws).skills] == ["unrelated"]
+    assert not survivor.exists()
+    assert (marker.read_bytes(), marker.stat().st_mtime_ns) == marker_before
+
+
 # ---------------------------------------------------------------- D4
+
+
+def test_remove_ignores_custom_override_that_was_not_used_for_install(tmp_path, capsys):
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    src = _skill(tmp_path / "upstream", "rm-skill")
+    unrelated = _skill(tmp_path / "upstream", "unrelated")
+    args = ["--path", str(ws), "--json"]
+    assert main(["init", str(ws)]) == 0
+    assert main(["add", str(src), "--harness", "cursor", *args]) == 0
+    # Override added later: nothing of rm-skill lives there, and its unrelated sibling must never be touched.
+    manifest = load_manifest(ws)
+    manifest.harness_paths["cursor"] = "custom/skills"
+    save_manifest(ws, manifest)
+    assert main(["add", str(unrelated), "--harness", "codex", *args]) == 0
+    custom_sibling = ws / "custom" / "skills" / "unrelated"
+    shutil.copytree(unrelated, custom_sibling)
+    capsys.readouterr()
+
+    cmd = ["remove", "rm-skill", "--harness", "cursor", *args]
+    assert main([*cmd, "--dry-run"]) == 0
+    preview = json.loads(capsys.readouterr().out)["results"]
+    assert main(cmd) == 0
+    actual = json.loads(capsys.readouterr().out)["results"]
+    installed = ws / ".agents" / "skills" / "rm-skill"
+    assert [(row["dest"], row["action"]) for row in actual] == [(str(installed), "removed")]
+    assert [dict(row, action="would-remove") for row in actual] == preview
+    assert not installed.exists()
+    assert (custom_sibling / "SKILL.md").is_file()
+    assert not (ws / "custom" / "skills" / "rm-skill").exists()
+
+
 
 
 def _ws_with_manifest_and_lock(tmp_path: Path, harness: str = "claude-code,windsurf") -> Path:
