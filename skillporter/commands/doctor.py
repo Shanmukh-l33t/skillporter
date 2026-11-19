@@ -392,6 +392,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
         installs: list[tuple[str, Path, str, list[str], dict[Path, bool]]] = []
         replacement_paths: set[Path] = set()
+        dangling_roots: set[Path] = set()
         for sname in sorted(set(diag.skill_copies) | set(records) | set(lock.skills)):
             copies = diag.skill_copies.get(sname, [])
             try:
@@ -517,13 +518,24 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             if writes and source is not None:
                 installs.append((sname, source, source_hash, list(dict.fromkeys(repair_targets)), writes))
 
+        harness_roots = {loc.resolved for r in diag.reports.values() for loc in r.locations}
         broken_links = {Path(p) for r in diag.reports.values() for loc in r.locations for p in loc.broken_links}
         for path in sorted(broken_links - replacement_paths):
-            if not any(item["path"] == str(path) for item in repair_plan):
+            if any(item["path"] == str(path) for item in repair_plan):
+                continue
+            if path in harness_roots:
+                # A dangling harness root is the install path itself: removing the link is what lets a
+                # later install recreate the directory. Links nested inside a working directory are not ours.
+                step("remove", path, "dangling harness root; the directory it points to is gone")
+                dangling_roots.add(path)
+            else:
                 step("refuse", path, "broken link left in place; no authorized replacement was planned")
 
         failures = []
-        if not dry_run and (stale_paths or installs):
+        if not dry_run and (stale_paths or installs or dangling_roots):
+            for path in sorted(dangling_roots):
+                with contextlib.suppress(OSError):
+                    path.unlink()
             with workspace_lock(root):
                 for path in stale_paths:
                     try:

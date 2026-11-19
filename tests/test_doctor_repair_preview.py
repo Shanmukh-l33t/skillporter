@@ -120,9 +120,9 @@ def test_unscoped_copy_and_unrelated_broken_link_are_left_alone(tmp_path, capsys
     _, preview = _doctor(tmp_path, capsys, "--dry-run")
     rc, applied = _doctor(tmp_path, capsys)
     if broken_link:
-        # A dangling link the user never asked us to manage is reported, never deleted.
+        # A link nested inside a working directory is the user's, not ours: reported, never deleted.
         assert rc == 1 and applied["repair_plan"] == preview["repair_plan"]
-        assert {p["path"] for p in applied["repair_plan"]} == {str(src), str(link)}
+        assert {p["path"] for p in applied["repair_plan"]} == {str(link)}
         assert all(p["action"] == "refuse" for p in applied["repair_plan"])
     else:
         # An unmanaged Claude-only skill is informational: nothing was requested, nothing to repair.
