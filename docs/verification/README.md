@@ -7,6 +7,8 @@ input, real code), **Code reviewed**, **Not verified**, **Broken**.
 
 ## The complaint this round started from
 
+For the follow-up candidate, see [Release-readiness verification](release-readiness.md).
+
 One unversioned skill in `.claude/skills/hello`, no manifest, no state, isolated HOME, Windows 11,
 median of three runs (`scripts/`-style probe kept beside this repo's evidence):
 
