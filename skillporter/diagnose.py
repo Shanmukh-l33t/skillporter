@@ -120,6 +120,7 @@ class Diagnosis:
     findings: list[str] = field(default_factory=list)
     drifted: dict[str, dict[str, str]] = field(default_factory=dict)
     duplicates: dict[str, dict[str, list[str]]] = field(default_factory=dict)
+    _invalid: set[str] | None = field(default=None, repr=False, compare=False)
 
     @property
     def skill_names(self) -> list[str]:
@@ -129,14 +130,14 @@ class Diagnosis:
         return [h for h, r in self.reports.items() if not r.loads(skill)]
 
     def is_skill_valid(self, skill: str) -> bool:
-        for copy_path in self.skill_copies.get(skill, []):
-            errs = [i for i in self.issues.get(str(copy_path), []) if i.level == "error"]
-            if errs:
-                return False
-        for path_str, iss_list in self.issues.items():
-            if Path(path_str).name == skill and any(i.level == "error" for i in iss_list):
-                return False
-        return True
+        # Index the error paths once: scanning every issue per skill made `status` quadratic on big workspaces.
+        if self._invalid is None:
+            self._invalid = {
+                Path(path_str).name
+                for path_str, iss_list in self.issues.items()
+                if any(i.level == "error" for i in iss_list)
+            }
+        return skill not in self._invalid
 
 
 def load_custom_harness_paths(
