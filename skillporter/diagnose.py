@@ -318,6 +318,7 @@ def diagnose(
     check_drift: bool = True,
     custom_paths: dict[str, str] | None = None,
     inventory_only: bool = False,
+    recover: bool = True,
 ) -> Diagnosis:
     """Diagnose skill reachability, broken links, content drift, and duplicates.
 
@@ -331,7 +332,7 @@ def diagnose(
     from .install import recover_interrupted_transactions
     from .state import state_dir
 
-    if (state_dir(root, scope=scope, home=home) / "tmp").is_dir():
+    if recover and (state_dir(root, scope=scope, home=home) / "tmp").is_dir():
         recover_interrupted_transactions(root, scope=scope, home=home)
 
     diag = Diagnosis(root=root)

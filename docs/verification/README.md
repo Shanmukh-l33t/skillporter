@@ -71,3 +71,22 @@ Found by the published-artifact verification (`workflows.md`), re-checked on `pr
 
 F2–F8 are recorded rather than fixed: none of them blocks the first-five-minutes workflow, and each needs its own
 fixture. They are the first tickets for the next round, not a claim that this pass covered the whole product.
+
+## Independent audit (separate session, clone of `996b25f`)
+
+An Astra auditor that wrote none of this code reproduced the checks above and found eight issues. Its report lives in
+that clone (`docs/verification/independent-audit.md`); this is what changed in response:
+
+| # | Finding | Resolution |
+|---|---|---|
+| D1 | A duplicate-only workspace showed `[NEEDS ATTENTION]`, exit 1, and **zero findings**; `diagnose` said clean | Fixed: duplicates are a finding naming each path and the reason (`6a5e919`) |
+| D2 | `status` text counted lock drift + findings while `--json` kept them apart | Fixed: separate `Lock drift:` and `Findings:` counts, matching the JSON keys |
+| D3 | `doctor --fix --dry-run` rewrote `.skillporter/lock` and cleared `.skillporter/tmp` via crash recovery | Fixed: a preview no longer runs recovery; verified byte-identical tree before/after |
+| D4 | A corrupted `skillporter.yaml` was silently ignored (exit 0) and `sync` then wrote files | Fixed: unrecognisable lines are a config error, exit 2, nothing written |
+| D5 | Two evidence files quoted `Installation verified.`, which this build no longer prints | Annotated as captured from published 3.2.0, with the current wording |
+| D6 | `docs/harnesses/README.md` claimed Claude Code runtime evidence that `receivers.md` could not reproduce | Annotated: a tier records the original observation, not a re-check |
+| D7 | Older audit ledgers say 1 runtime-verified harness, the registry says 8 | Left as historical records; the registry and matrix are the current source |
+| D8 | `status` printed `[HEALTHY]` for a Hermes project skill with no trust caveat | Fixed: `status` now states the prerequisite where the verdict is printed |
+
+The auditor's own limits stand: no activation, no live harness discovery, no macOS/Linux, no published-artifact checks in
+its pass — those rows are labelled `not verified` there and in this file.

@@ -1,5 +1,9 @@
 # Receiver validation: Codex, OpenCode, Claude Code (2026-11-19)
 
+> Captured against **published 3.2.0** from PyPI/npm/GitHub. On the branch under test, `add` reports
+> `Verified N destination(s) on disk …` and `Not verified: whether each harness discovers or loads the skill`;
+> every quoted `Installation verified.` line below belongs to 3.2.0.
+
 Independent check of what the receiving harness lists, using each harness's own discovery API. Candidate `69bdc31e59e5fae0a30e94df710a3cf96059c784` (Skillporter 3.2.0). Windows 11 26300, git-bash, Python 3.14.9, npm 12.2.2. **Verdict: Codex project, OpenCode project and OpenCode user scope list the exact installed name and description, before/after/remove. Codex user scope was not observable under isolation and stays unverified.**
 
 ## Method

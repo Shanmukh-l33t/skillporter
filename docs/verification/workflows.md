@@ -1,5 +1,9 @@
 # Skillporter feature verification — published 3.2.0
 
+> Captured against **published 3.2.0** from PyPI/npm/GitHub. On the branch under test, `add` reports
+> `Verified N destination(s) on disk …` and `Not verified: whether each harness discovers or loads the skill`;
+> every quoted `Installation verified.` line below belongs to 3.2.0.
+
 Independent product verification of Skillporter as a user receives it, written from source claims, published package
 artifacts, the developer test suite, real CLI runs in disposable homes, and a live Hermes runtime. No application code
 was edited. Nothing was published, pushed, or installed into a real home directory.

@@ -100,13 +100,20 @@ def cmd_status(args: argparse.Namespace) -> int:
         summary += f", {len(attention)} with state issues"
     print(f"  Skills:             {summary})")
 
-    findings = [*(f"lockfile: {ld}" for ld in snap.lock_drift), *snap.findings]
-    if findings:
-        print(f"  Findings:           {len(findings)}")
-        for finding in findings if verbose else findings[:5]:
+    # Count what this header actually lists: `--json` reports lock_drift as its own key, so folding it into
+    # the human "Findings" number made a script and a person disagree about the same workspace.
+    if snap.lock_drift:
+        print(f"  Lock drift:         {len(snap.lock_drift)}")
+        for ld in snap.lock_drift if verbose else snap.lock_drift[:5]:
+            print(f"    ! lockfile: {ld}")
+        if not verbose and len(snap.lock_drift) > 5:
+            print(f"    ... and {len(snap.lock_drift) - 5} more lock drift item(s)")
+    if snap.findings:
+        print(f"  Findings:           {len(snap.findings)}")
+        for finding in snap.findings if verbose else snap.findings[:5]:
             print(f"    ! {finding}")
-        if not verbose and len(findings) > 5:
-            print(f"    ... and {len(findings) - 5} more finding(s)")
+        if not verbose and len(snap.findings) > 5:
+            print(f"    ... and {len(snap.findings) - 5} more finding(s)")
 
     names = sorted(snap.skills) if verbose else attention
     if names:
@@ -121,7 +128,6 @@ def cmd_status(args: argparse.Namespace) -> int:
                 h_cell = ", ".join(h_list) if h_list else "(none)"
             if entry.missing_harnesses:
                 h_cell += f" [missing: {', '.join(entry.missing_harnesses)}]"
-            # shortcut: the snapshot may default an untracked version to 1.0.0, revisit when it exposes provenance.
             tracked = entry.managed or entry.in_manifest or entry.in_lockfile
             trows.append(
                 [
@@ -141,7 +147,14 @@ def cmd_status(args: argparse.Namespace) -> int:
             )
         )
 
-    if not verbose and (snap.skills or findings):
+    if scope == "project" and any("hermes" in e.installed_harnesses for e in snap.skills.values()):
+        # The one prerequisite a filesystem check cannot see; say it where the HEALTHY verdict is printed.
+        print(
+            "\nNote: Hermes only lists a project skill after you trust this project; "
+            "that decision was not checked (`skillporter diagnose` repeats this)."
+        )
+
+    if not verbose and (snap.skills or snap.findings):
         print("\nPass --verbose for all skills and findings; use `skillporter list` to browse skills.")
 
     if snap.remediations:

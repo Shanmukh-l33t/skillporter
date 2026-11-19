@@ -9,6 +9,10 @@ Two questions are kept separate on purpose:
 
 A harness can support skills natively and still only be fixture tested. Skillporter never marks an adapter as runtime verified because a directory was created.
 
+An offline listing surface does not exist for every adapter (Claude Code has none), so a tier records the
+observation that was made when the adapter was added, not something this pass re-checked. See
+`docs/verification/receivers.md` for what was reproduced on 2026-11-19.
+
 ## What runtime verified means here
 
 Eight adapters are `RUNTIME_VERIFIED`: Claude Code, OpenAI Codex, GitHub Copilot, Gemini CLI, OpenCode, Cline, Continue and Hermes Agent. For all but Hermes, an installed skill was observed in the harness's own output on 2026-11-14, in both project and user scope, using the real binary:

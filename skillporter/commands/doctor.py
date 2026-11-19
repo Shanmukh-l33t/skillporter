@@ -344,7 +344,8 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     if blocked and (args.fix or dry_run):
         diag = Diagnosis(root=root)
     else:
-        diag = run_diagnose(root, only=args.harness or None, scope=scope)
+        # A preview must not mutate: crash recovery takes the workspace lock and clears .skillporter/tmp.
+        diag = run_diagnose(root, only=args.harness or None, scope=scope, recover=not dry_run)
     detected = [d for d in harnesses.detect_harnesses(root) if d.installed]
     for path, reason in blocked:
         diag.findings.append(f"{path}: {reason}")

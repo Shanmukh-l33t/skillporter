@@ -350,6 +350,19 @@ def parse_manifest(text: str) -> ProjectManifest:
             skills=skills,
         )
 
+    # A hand-edited manifest that no longer looks like key/value lines is a config error to report,
+    # not an empty project to act on: silence here used to let `sync` rewrite the lock from a typo.
+    for lineno, raw_line in enumerate(text.splitlines(), 1):
+        bare = raw_line.split("#", 1)[0].strip()
+        if not bare or bare in ("---", "..."):
+            continue
+        if bare.startswith("- ") and ":" not in bare:
+            continue  # a scalar list item, e.g. `  - claude-code`
+        token = bare[2:].lstrip() if bare.startswith("- ") else bare
+        key = token.split(":", 1)[0].strip()
+        if ":" not in token or not key or not all(ch.isalnum() or ch in "_-." for ch in key):
+            raise ValueError(f"line {lineno} is not a 'key: value' entry: {bare[:40]!r}")
+
     manifest = ProjectManifest(harnesses=[], skills=[])
     section: str | None = None
     current_skill: dict[str, object] | None = None
