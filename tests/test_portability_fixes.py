@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import gzip
+import hashlib
 import io
 import json
+import os
 import shutil
+import subprocess
+import sys
 import tarfile
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -14,6 +20,7 @@ import pytest
 from skillporter import harnesses
 from skillporter.cli import main
 from skillporter.security import compute_tree_hash
+from skillporter.sources import safe_extract_tar
 
 _SKILL = (
     "---\nname: {name}\ndescription: Execute {name} workflow reliably. Use when running {name}.\n"
@@ -347,6 +354,46 @@ def test_import_pack_with_unfetchable_source_is_a_clean_error(tmp_path, home, ca
     rc = main(["import", str(pack), "--path", str(dest)])
     _assert_clean_error(capsys, rc)
     assert _written_harness_dirs(dest) == set()
+
+
+def test_pack_cli_is_byte_reproducible(tmp_path, home):
+    src = _skill(tmp_path, "notes", files={"references/example.md": "Example.\n"})
+    tree_hash, file_hashes = compute_tree_hash(src)
+    archives = []
+    timestamps = []
+    for i in range(2):
+        out = tmp_path / f"pack-{i}"
+        result = subprocess.run(
+            [sys.executable, "-m", "skillporter", "pack", str(src), "--out", str(out), *(["--json"] if i == 0 else [])],
+            cwd=tmp_path, env={**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[1])},
+            capture_output=True, text=True, check=True,
+        )
+        archive = out / "notes-1.0.0.tar.gz"
+        provenance = out / "notes-1.0.0.provenance.json"
+        blob = archive.read_bytes()
+        digest = hashlib.sha256(blob).hexdigest()
+        prov = json.loads(provenance.read_bytes())
+        assert prov["archive_sha256"] == digest
+        assert (prov["tree_hash"], prov["file_hashes"]) == (tree_hash, file_hashes)
+        if i == 0:
+            assert json.loads(result.stdout) == {
+                "skill": "notes", "version": "1.0.0", "archive": str(archive),
+                "provenance": str(provenance), "archive_sha256": digest, "tree_hash": prov["tree_hash"],
+            }
+            time.sleep(1.1)
+        else:
+            assert "packed notes@1.0.0:" in result.stdout and digest[:16] in result.stdout
+            assert str(archive) in result.stdout and str(provenance) in result.stdout
+        archives.append(blob)
+        timestamps.append(prov["generated_at"])
+
+    assert timestamps[0] != timestamps[1]
+    assert gzip.decompress(archives[0]) == gzip.decompress(archives[1])
+    assert archives[0] == archives[1]
+    extracted = tmp_path / "extracted"
+    extracted.mkdir()
+    safe_extract_tar(archive, extracted)
+    assert compute_tree_hash(extracted / "notes") == compute_tree_hash(src)
 
 
 def test_pack_skill_with_traversal_frontmatter_name_is_a_clean_error(tmp_path, home, capsys):

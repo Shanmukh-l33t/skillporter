@@ -245,6 +245,35 @@ def test_clean_rollback_still_snapshots_current_files_first(tmp_path, capsys):
     assert (Path(payload["pre_rollback_snapshot"]) / "CLAUDE.md").read_text(encoding="utf-8") == generated
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Windows MAX_PATH boundary")
+@pytest.mark.parametrize("length", [260, 273, 320])
+def test_rollback_snapshots_long_paths(tmp_path, capsys, length):
+    root = tmp_path.resolve()
+    originals = _seed_project(root)
+    folder = Path(".github/instructions")
+    example = root / BACKUPS / "20000101T000000Z-pre-rollback-01234567" / folder / "a.instructions.md"
+    rel = folder / ("a" * (length - len(str(example)) + 1) + ".instructions.md")
+    scoped = _write(root / rel, '---\napplyTo: "src/**"\n---\n- Keep examples current.\n')
+    original = scoped.read_text(encoding="utf-8")
+    assert _apply(root) == 0
+    capsys.readouterr()
+    scoped.write_text(original + "- Keep references current.\n", encoding="utf-8")
+    current = scoped.read_bytes()
+    mtime = scoped.stat().st_mtime_ns
+
+    assert main(["consolidate", str(root), "--rollback", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    saved = Path(payload["pre_rollback_snapshot"]) / rel
+    assert len(str(saved)) == length
+    prefix = "\\\\?\\UNC\\" if str(saved).startswith("\\\\") else "\\\\?\\"
+    saved = Path(prefix + (str(saved)[2:] if str(saved).startswith("\\\\") else str(saved)))
+    assert saved.read_bytes() == current
+    assert saved.stat().st_mtime_ns == mtime
+    assert rel.as_posix() in payload["restored_files"]
+    assert scoped.read_text(encoding="utf-8") == original
+    assert (root / "CLAUDE.md").read_text(encoding="utf-8") == originals["CLAUDE.md"]
+
+
 # --------------------------------------------------------------------------- B10: symlinked destinations
 
 

@@ -340,7 +340,7 @@ def _guard_destination(root: Path, dest: Path) -> None:
 
 def _safe_write(root: Path, dest: Path, content: str) -> None:
     _guard_destination(root, dest)
-    atomic_write_text(dest, content)
+    atomic_write_text(_instruction_io_path(dest), content)
 
 
 def discover_instruction_files(root: Path) -> list[DiscoveredInstructionFile]:
@@ -544,6 +544,23 @@ def _load_instructions_state(root: Path) -> dict[str, object]:
 
 def _backups_root(root: Path) -> Path:
     return state_dir(root.resolve()) / "backups" / "instructions"
+
+
+def _instruction_io_path(path: Path) -> Path:
+    # Backup nesting and atomic temp names can hit MAX_PATH even when the workspace file fits.
+    raw = str(path)
+    if os.name != "nt" or raw.startswith("\\\\?\\"):
+        return path
+    if raw.startswith("\\\\"):
+        return Path("\\\\?\\UNC\\" + raw[2:])
+    return Path("\\\\?\\" + raw)
+
+
+def _copy_instruction_backup(root: Path, src: Path, dest: Path) -> None:
+    _guard_destination(root, dest)
+    dest = _instruction_io_path(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src, dest)
 
 
 def _rel_to_root(root: Path, path: Path) -> str:
@@ -1009,9 +1026,7 @@ def apply_consolidation(
         backup_root = _backups_root(root) / f"{ts}-{uuid.uuid4().hex[:8]}"
         backed_up: list[str] = []
         for f in files:
-            bdest = backup_root / f.rel_path
-            bdest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(f.abs_path, bdest)
+            _copy_instruction_backup(root, f.abs_path, backup_root / f.rel_path)
             backed_up.append(f.rel_path)
 
         try:
@@ -1061,6 +1076,7 @@ def _harness_activation_warnings(written_files: list[str]) -> list[str]:
 
 def _plan_restore(root: Path, bdir: Path) -> tuple[list[tuple[str, Path]], list[str]]:
     """Walk a backup dir without following symlinks; keep only known instruction-file paths."""
+    bdir = _instruction_io_path(bdir)
     plan: list[tuple[str, Path]] = []
     skipped: list[str] = []
     for dirpath, dirnames, filenames in os.walk(bdir, followlinks=False):
@@ -1105,11 +1121,10 @@ def rollback_consolidation(root: Path, *, force: bool = False) -> dict[str, obje
 
         ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         snapshot = _backups_root(root) / f"{ts}-pre-rollback-{uuid.uuid4().hex[:8]}"
-        snapshot.mkdir(parents=True, exist_ok=True)
+        _guard_destination(root, snapshot)
+        _instruction_io_path(snapshot).mkdir(parents=True, exist_ok=True)
         for f in discover_instruction_files(root):
-            sdest = snapshot / f.rel_path
-            sdest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(f.abs_path, sdest)
+            _copy_instruction_backup(root, f.abs_path, snapshot / f.rel_path)
 
         restored: list[str] = []
         for rel_p, src in plan:

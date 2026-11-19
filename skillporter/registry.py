@@ -12,6 +12,7 @@ Implements the Phase 1 Community Skill Registry Client Contract (v1.0):
 
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 import os
@@ -396,7 +397,7 @@ def pack_skill(skill_dir: Path, out_dir: Path) -> PackedRelease:
         ti.mtime = 0
         return ti
 
-    with tarfile.open(archive_path, "w:gz") as tf:
+    with gzip.GzipFile(archive_path, "wb", mtime=0) as gz, tarfile.open(fileobj=gz, mode="w") as tf:
         for dirpath, dirnames, filenames in os.walk(skill_dir, followlinks=False):
             dirnames[:] = sorted(d for d in dirnames if d not in {".git", "__pycache__", ".DS_Store"})
             cdir = Path(dirpath)
