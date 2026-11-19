@@ -19,7 +19,6 @@ from pathlib import Path
 
 from . import harnesses
 from .diagnose import diagnose
-from .frontmatter import parse_skill
 from .manifest import (
     LOCKFILE_FILENAME,
     MANIFEST_FILENAME,
@@ -29,8 +28,9 @@ from .manifest import (
     load_lockfile,
     load_manifest,
 )
-from .security import compute_tree_hash
 from .state import load_state
+
+_HEALTHY_SKILL_STATUSES = {"SYNCED", "UNMANAGED"}
 
 
 @dataclass
@@ -38,7 +38,7 @@ class SkillEnvironmentEntry:
     """Reconciled status of one skill in an environment."""
 
     name: str
-    version: str = "1.0.0"
+    version: str = ""
     tree_hash: str = ""
     file_hashes: dict[str, str] = field(default_factory=dict)
     source: str = ""
@@ -118,11 +118,7 @@ class EnvironmentSnapshot:
 
     @property
     def attention_skills(self) -> list[str]:
-        return sorted(
-            k
-            for k, v in self.skills.items()
-            if v.status in ("DRIFTED", "OUT_OF_SYNC", "ORPHANED", "DUPLICATE", "INVALID")
-        )
+        return sorted(k for k, v in self.skills.items() if v.status not in _HEALTHY_SKILL_STATUSES)
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -189,9 +185,10 @@ def capture_environment(
     else:
         lock = Lockfile()
 
-    records = load_state(root, scope=scope, home=home)
     diag = diagnose(root, only=only_harnesses, scope=scope, home=home)
-    detected = [d.harness.name for d in harnesses.detect_harnesses(root, home=home) if d.installed]
+    records = load_state(root, scope=scope, home=home)
+    detection = harnesses.detect_harnesses(root, home=home, check_skill_paths=False)
+    detected = [d.harness.name for d in detection if d.installed]
     active_profile = _read_active_profile_name(root, scope=scope, home=home)
 
     if only_harnesses:
@@ -204,43 +201,36 @@ def capture_environment(
                 if cname not in selected_harnesses:
                     selected_harnesses.append(cname)
     elif scope == "user":
-        selected_harnesses = sorted(
-            {
-                hname
-                for hname, rep in diag.reports.items()
-                if rep.reachable_skills or any(loc.exists for loc in rep.locations)
-            }
-            | {h for r in records.values() for h in r.harnesses}
-        )
+        selected_harnesses = sorted(diag.default_harnesses | {h for r in records.values() for h in r.harnesses})
     else:
         selected_harnesses = sorted(
-            set(harnesses.CORE_HARNESS_NAMES)
-            | {d.harness.name for d in harnesses.detect_harnesses(root, home=home) if d.project_active}
+            diag.default_harnesses | {d.harness.name for d in detection if d.project_active}
         )
 
     manifest_map = {s.name: s for s in manifest.skills} if (manifest and manifest.skills) else {}
 
+    hash_drift: set[str] = set()
     for sname, locked in sorted(lock.skills.items()):
         copies = diag.skill_copies.get(sname, [])
         if not copies:
             lock_drift.append(f"{sname}: locked at {locked.tree_hash[:12]} but missing on disk")
             continue
         for cdir in copies:
-            actual_hash, _ = compute_tree_hash(cdir)
-            if locked.tree_hash and actual_hash != locked.tree_hash:
+            actual_hash, _ = diag.tree_hash(cdir)
+            if locked.tree_hash and actual_hash and actual_hash != locked.tree_hash:
+                hash_drift.add(sname)
                 rel_p = cdir.relative_to(root) if cdir.is_relative_to(root) else cdir
                 lock_drift.append(
                     f"{sname} ({rel_p}): locked {locked.tree_hash[:12]} != disk {actual_hash[:12]}"
                 )
 
-    state_drift: set[str] = set()
     for sname, rec in sorted(records.items()):
-        if not rec.tree_hash or sname in lock.skills:
+        if not rec.tree_hash or (sname in lock.skills and lock.skills[sname].tree_hash):
             continue
         for cdir in diag.skill_copies.get(sname, []):
-            actual_hash, _ = compute_tree_hash(cdir)
+            actual_hash, _ = diag.tree_hash(cdir)
             if actual_hash and actual_hash != rec.tree_hash:
-                state_drift.add(sname)
+                hash_drift.add(sname)
                 rel_p = cdir.relative_to(root) if cdir.is_relative_to(root) else cdir
                 lock_drift.append(
                     f"{sname} ({rel_p}): recorded {rec.tree_hash[:12]} != disk {actual_hash[:12]}"
@@ -263,19 +253,19 @@ def capture_environment(
 
         thash = ""
         fhashes: dict[str, str] = {}
-        ver = "1.0.0"
+        # On-disk frontmatter is the only real version; state/lock are fallbacks for absent skills.
+        ver = ""
         if on_disk:
-            thash, fhashes = compute_tree_hash(copies[0])
-            doc = parse_skill(copies[0] / "SKILL.md")
-            meta = doc.frontmatter.get("metadata")
-            if isinstance(meta, dict) and meta.get("version"):
-                ver = str(meta["version"])
-        if rec and rec.version and ver == "1.0.0":
-            ver = rec.version
-        if lentry and lentry.version and ver == "1.0.0":
-            ver = lentry.version
-        if mspec and mspec.version and ver == "1.0.0":
-            ver = mspec.version
+            thash, fhashes = diag.tree_hash(copies[0])
+            declared = diag.skill_versions(sname)
+            if len(declared) > 1:
+                lock_drift.append(f"{sname}: copies declare different versions ({', '.join(declared)})")
+            elif declared:
+                ver = declared[0]
+        else:
+            ver = (rec.version if rec else "") or (lentry.version if lentry else "") or (
+                mspec.version if mspec else ""
+            )
         if not thash:
             thash = (rec.tree_hash if rec else "") or (lentry.tree_hash if lentry else "")
         if not fhashes and lentry and lentry.file_hashes:
@@ -320,7 +310,7 @@ def capture_environment(
         missing = sorted(h for h in desired if h not in installed_in)
         is_valid = diag.is_skill_valid(sname) if on_disk else True
         is_drifted = sname in diag.drifted
-        is_lock_drifted = any(ld.startswith(f"{sname}:") or ld.startswith(f"{sname} ") for ld in lock_drift)
+        is_lock_drifted = sname in hash_drift
         is_managed = rec is not None
 
         if not on_disk and (is_managed or lentry is not None) and mspec is None:
@@ -386,14 +376,7 @@ def capture_environment(
     if not manifest_present and scope == "project" and skills_map:
         remediations.append("skillporter init                  # create skillporter.yaml for reproducible team sync")
 
-    healthy = (
-        len(findings) == 0
-        and len(lock_drift) == 0
-        and not any(
-            e.status in ("DRIFTED", "OUT_OF_SYNC", "ORPHANED", "INVALID")
-            for e in skills_map.values()
-        )
-    )
+    healthy = not (findings or lock_drift or any(e.status not in _HEALTHY_SKILL_STATUSES for e in skills_map.values()))
 
     all_drifted_names = sorted(
         set(diag.drifted) | {k for k, v in skills_map.items() if v.drifted or v.lock_drifted}
