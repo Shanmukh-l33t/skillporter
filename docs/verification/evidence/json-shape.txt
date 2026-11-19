@@ -1,5 +1,45 @@
 SAME status --json rc 1->1
-SAME diagnose --json rc 1->1
+DIFF diagnose --json rc 1->1
+--- baseline
++++ current
+@@ -1,5 +1,6 @@
+ {"drifted": {}
+  "duplicates": {}
++ "evidence_scope": "str"
+  "findings": ["str"]
+  "harnesses": {"aider": {"drifted_skills": []
+  "duplicate_skills": {}
+@@ -8,6 +9,7 @@
+  "skill_hashes": {}
+  "skills": []
+  "status": "str"}]
++ "on_disk_skills": []
+  "reachable_skills": []
+  "support_status": "str"
+  "verification_level": "str"
+@@ -19,6 +21,7 @@
+  "skill_hashes": {"beta": "str"}
+  "skills": ["str"]
 SAME list --json rc 0->0
-SAME doctor --json rc 1->1
+DIFF doctor --json rc 1->1
+--- baseline
++++ current
+@@ -1,19 +1,26 @@
+-{"checked_harnesses": ["str"]
++{"adapter_verification_levels": {"claude-code": "str"
++ "codex": "str"
++ "cursor": "str"}
++ "checked_harnesses": ["str"]
+  "detected_harnesses": ["str"]
+  "drift_before_fix": {}
+  "drifted": {}
+  "dry_run": "bool"
+  "duplicates": {}
++ "evidence_scope": "str"
+  "findings": ["str"]
+  "healthy": "bool"
+  "remediations": ["str"]
+  "repaired": []
+  "root": "str"
++ "runtime_discovery": "str"
 SAME status --json --scope user rc 0->0

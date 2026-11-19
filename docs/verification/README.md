@@ -87,9 +87,12 @@ traceback and empty stdout; this branch exits 2 with
 
 ## Compatibility and scope of the change
 
-- **JSON contracts unchanged.** `status`, `diagnose`, `list`, `doctor` (text + `--json`,
-  project and user scope) produce the same key/type shape on `bdfb9e6` and on this branch; only
-  values and documented labels changed ([raw](evidence/json-shape.txt)).
+- **JSON contracts are additive.** `status`, `diagnose`, `list` and `doctor` (project and user
+  scope) keep every key they had on `bdfb9e6`, with the same type and meaning; `diagnose` and
+  `doctor` add `evidence_scope`, `runtime_discovery`, `on_disk_skills`/`on_disk_harnesses` and
+  `adapter_verification_levels`, and nothing was removed or renamed
+  ([raw](evidence/json-shape.txt)). Hook scripts that read the old keys keep working; anything
+  that compares whole documents sees the new keys.
 - **Config and fixture sources untouched.** No diff against `bdfb9e6` in `pyproject.toml`,
   `package.json`, `Dockerfile`, `install.sh`; test fixtures and `skillporter.yaml` handling are
   the same files apart from `manifest.py` error wrapping.
