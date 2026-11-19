@@ -32,7 +32,8 @@ $ skillporter list
 hello  untracked  no       claude-code, cline, cursor, github-copilot (+2)   # 4 lines, 223 B
 
 $ skillporter diagnose
-1 skill(s) found · no findings                                 # 3 lines, 238 B, exit 0
+Filesystem checks only; runtime discovery was not checked.
+1 skill(s) found · no findings                                 # 5 lines, 300 B, exit 0
 
 $ skillporter add <src> --harness claude-code --harness codex --offline
 Verified 2 destination(s) on disk: byte-identical to the source (sha256), source left intact.
@@ -42,7 +43,8 @@ Not verified: whether each harness discovers or loads the skill (no runtime chec
 An unversioned, single-copy skill is reported `untracked`, not `1.0.0`, and it is not called
 damaged for lacking copies in harnesses nobody asked for. After a shared `.agents/skills`
 directory exists, the same skill is again listed as "not visible to" the nine harnesses that
-read that directory (see Limits).
+read that directory (see Limits). `doctor` prints the same evidence scope, labels its table
+"HARNESSES (ON DISK)" and ends with `HEALTHY (no issues found by filesystem checks)`.
 
 ## Measurements
 

@@ -29,25 +29,28 @@ SKILL  VERSION    MANAGED  HARNESSES
 hello  untracked  no       claude-code, cline, cursor, github-copilot (+2)
 
 $ skillporter diagnose
-exit=0 stdout_bytes=238 stdout_lines=3
+exit=0 stdout_bytes=300 stdout_lines=5
 skillporter 3.2.0 — diagnose (project): C:\Users\ImMandatory\AppData\Local\hermes\cache\scratch\sp\s2
+Filesystem checks only; runtime discovery was not checked.
+
 1 skill(s) found · no findings
 Pass --verbose for the reachability table and all findings; use --harness <id> to focus the check.
 
 $ skillporter doctor
-exit=0 stdout_bytes=598 stdout_lines=12
+exit=0 stdout_bytes=640 stdout_lines=13
 skillporter 3.2.0 — doctor report for C:\Users\ImMandatory\AppData\Local\hermes\cache\scratch\sp\s2
+Filesystem checks only; runtime discovery was not checked.
 
 Detected harnesses: github-copilot, hermes
 Checked harnesses:  claude-code, cline, cursor, github-copilot, opencode, replit
 Discovered skills:  1
 Content drift:      0 skill(s)
 
-  SKILL  STATE  SHA-256       COPIES  REACHABLE HARNESSES
+  SKILL  STATE  SHA-256       COPIES  HARNESSES (ON DISK)
   -----  -----  ------------  ------  -----------------------------------------------
   hello  VALID  692a3d664e8e  1       claude-code, cline, cursor, github-copilot (+2)
 
-Status: HEALTHY (all checked skills reachable, valid, and hash-verified).
+Status: HEALTHY (no issues found by filesystem checks).
 
 $ skillporter add C:\Users\ImMandatory\AppData\Local\hermes\cache\scratch\sp\s2-src\release-notes --harness claude-code --harness codex --offline
 exit=0 stdout_bytes=501 stdout_lines=8
@@ -61,7 +64,7 @@ Next steps:
   skillporter status                # inspect installed state across harnesses
 
 $ skillporter status
-exit=1 stdout_bytes=1021 stdout_lines=14
+exit=1 stdout_bytes=1045 stdout_lines=14
 skillporter 3.2.0 · environment status (project)  [NEEDS ATTENTION]
   Location:           C:\Users\ImMandatory\AppData\Local\hermes\cache\scratch\sp\s2
   Config:             skillporter.yaml (not initialized) · skillporter.lock (not generated)
@@ -69,7 +72,7 @@ skillporter 3.2.0 · environment status (project)  [NEEDS ATTENTION]
   Active targets:     antigravity, claude-code, cline, codex, cursor, gemini-cli, github-copilot, goose, junie, openclaw, opencode, openhands, replit, roo-code, zed
   Skills:             2 total (1 synced, 1 unmanaged)
   Findings:           1
-    ! skill 'hello' is not visible to: antigravity, codex, gemini-cli, goose, junie, openclaw, openhands, roo-code, zed (visible to: claude-code, cline, cursor, github-copilot, opencode, replit)
+    ! skill 'hello' is missing from expected paths for: antigravity, codex, gemini-cli, goose, junie, openclaw, openhands, roo-code, zed (found on disk for: claude-code, cline, cursor, github-copilot, opencode, replit)
 
 Pass --verbose for all skills and findings; use `skillporter list` to browse skills.
 
