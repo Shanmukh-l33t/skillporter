@@ -32,8 +32,8 @@ from .commands.registry import cmd_info, cmd_inspect, cmd_list, cmd_pack, cmd_pu
 from .commands.remove import cmd_rollback, cmd_uninstall
 from .commands.scan import cmd_explain, cmd_sandbox, cmd_scan, cmd_validate
 from .commands.sync import cmd_graph, cmd_init, cmd_lock, cmd_sync
-from .mcp_server import run_mcp_stdio
 from .manifest import ManifestError
+from .mcp_server import run_mcp_stdio
 from .policy import PolicyError
 from .telemetry import record_telemetry_event
 
