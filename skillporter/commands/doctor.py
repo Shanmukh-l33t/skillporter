@@ -236,7 +236,7 @@ def _collect_unified_drift(
         if not expected_hash:
             continue
         for cdir in copies:
-            chash, _ = compute_tree_hash(cdir)
+            chash, _ = diag.tree_hash(cdir)
             if chash and chash != expected_hash:
                 rel_c = cdir.relative_to(root).as_posix() if cdir.is_relative_to(root) else str(cdir)
                 entry_map = drift_map.setdefault(sname, {})
@@ -320,10 +320,8 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     elif manifest and manifest.harnesses:
         default_targets = [get_harness(h).name for h in manifest.harnesses]
     else:
-        # No manifest scope: mirror exactly what diagnose() requires of an unscoped skill (harnesses with a
-        # directory on disk), so `--fix` never installs into a harness that plain `diagnose` did not ask for.
-        existing = {n for n, rep in diag.reports.items() if any(loc.exists for loc in rep.locations)}
-        default_targets = sorted({"claude-code", "codex", "cursor"} | existing)
+        # Same source of truth as diagnose(): the harness set it judged the skills against.
+        default_targets = sorted(diag.default_harnesses)
 
     drift_before_fix = _collect_unified_drift(diag, lock, records, root)
     repaired: list[str] = []
@@ -449,7 +447,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
                 if msg not in diag.findings:
                     diag.findings.append(msg)
             if locked_entry and locked_entry.tree_hash:
-                chash, _ = compute_tree_hash(cdir)
+                chash, _ = diag.tree_hash(cdir)
                 if chash != locked_entry.tree_hash:
                     lmsg = (
                         f"lockfile drift: {sname!r} at {rel_c} ({chash[:8]}) "
@@ -458,7 +456,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
                     if lmsg not in diag.findings:
                         diag.findings.append(lmsg)
             elif rec and rec.tree_hash:
-                chash, _ = compute_tree_hash(cdir)
+                chash, _ = diag.tree_hash(cdir)
                 if chash != rec.tree_hash:
                     smsg = (
                         f"state drift: {sname!r} at {rel_c} ({chash[:8]}) "
@@ -474,7 +472,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         sname = skill_md.parent.name
         valid = diag.is_skill_valid(sname)
         is_drifted_now = sname in remaining_drift
-        thash, _ = compute_tree_hash(skill_md.parent)
+        thash, _ = diag.tree_hash(skill_md.parent)
         per_harness = {}
         reachable_in_checked = []
         for hname in active_names:

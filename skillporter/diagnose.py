@@ -20,7 +20,9 @@ from __future__ import annotations
 
 import contextlib
 import os
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
+from functools import cache
 from pathlib import Path
 
 from . import harnesses
@@ -47,10 +49,10 @@ class Location:
 
     @property
     def status(self) -> str:
-        if not self.exists:
-            return "missing"
         if self.broken_links:
             return "broken"
+        if not self.exists:
+            return "missing"
         return "ok" if self.skill_dirs else "empty"
 
 
@@ -121,6 +123,22 @@ class Diagnosis:
     drifted: dict[str, dict[str, str]] = field(default_factory=dict)
     duplicates: dict[str, dict[str, list[str]]] = field(default_factory=dict)
     _invalid: set[str] | None = field(default=None, repr=False, compare=False)
+    default_harnesses: set[str] = field(default_factory=set)
+    tree_hashes: dict[Path, tuple[str, dict[str, str]]] = field(default_factory=dict, repr=False)
+
+    def tree_hash(self, path: Path) -> tuple[str, dict[str, str]]:
+        key = path.resolve()
+        if key not in self.tree_hashes:
+            self.tree_hashes[key] = compute_tree_hash(key)
+        return self.tree_hashes[key]
+
+    def skill_versions(self, skill: str) -> list[str]:
+        """Distinct declared versions for *skill*; an empty entry means no version was declared."""
+        found = set()
+        for copy in self.skill_copies.get(skill, []):
+            meta = parse_skill(copy / _SKILL_FILE).frontmatter.get("metadata")
+            found.add(str(meta["version"]) if isinstance(meta, dict) and meta.get("version") else "")
+        return sorted(found)
 
     @property
     def skill_names(self) -> list[str]:
@@ -239,6 +257,8 @@ def scan_location(
     recursive: bool,
     home: Path | None = None,
     hash_skills: bool = True,
+    list_entries: Callable[[Path], Iterable[Path]] = Path.iterdir,
+    hash_tree: Callable[[Path], tuple[str, dict[str, str]]] = compute_tree_hash,
 ) -> Location:
     """Inspect one harness path and list the skills inside it."""
     resolved = resolve_path(raw_path, scope, root, home)
@@ -251,15 +271,12 @@ def scan_location(
     )
 
     if not loc.exists:
-        return loc
-
-    # A path that is itself a symlink we cannot follow is a broken link.
-    if resolved.is_symlink() and not resolved.exists():
-        loc.broken_links.append(str(resolved))
+        if resolved.is_symlink():
+            loc.broken_links.append(str(resolved))
         return loc
 
     try:
-        entries = sorted(resolved.iterdir())
+        entries = sorted(list_entries(resolved))
     except (PermissionError, OSError):
         return loc
 
@@ -274,7 +291,7 @@ def scan_location(
             loc.skill_dirs.append(entry.name)
             seen_in_loc.setdefault(entry.name, []).append(entry.name)
             if hash_skills:
-                thash, _ = compute_tree_hash(entry)
+                thash, _ = hash_tree(entry)
                 if thash:
                     loc.skill_hashes[entry.name] = thash
             continue
@@ -287,7 +304,7 @@ def scan_location(
                 if len(seen_in_loc[sname]) == 1:
                     loc.skill_dirs.append(sname)
                 if hash_skills:
-                    thash, _ = compute_tree_hash(nested.parent)
+                    thash, _ = hash_tree(nested.parent)
                     if thash:
                         loc.skill_hashes[sname] = thash
 
@@ -332,13 +349,14 @@ def diagnose(
             skill_dir = skill_md.parent
             name = skill_dir.name
             if not inventory_only:
-                try:
-                    rel_dir = skill_dir.resolve().relative_to(root).as_posix()
-                except ValueError:
-                    rel_dir = str(skill_dir)
-                thash, _ = compute_tree_hash(skill_dir)
-                if thash:
-                    all_copies.setdefault(name, {})[rel_dir] = thash
+                if check_drift:
+                    try:
+                        rel_dir = skill_dir.resolve().relative_to(root).as_posix()
+                    except ValueError:
+                        rel_dir = str(skill_dir)
+                    thash, _ = diag.tree_hash(skill_dir)
+                    if thash:
+                        all_copies.setdefault(name, {})[rel_dir] = thash
                 # Always validate every discovered copy so a corrupted secondary copy is never missed
                 diag.issues[str(skill_dir)] = validate(parse_skill(skill_md))
             diag.skill_copies.setdefault(name, []).append(skill_dir)
@@ -351,6 +369,14 @@ def diagnose(
     selected = only or list(harnesses.HARNESSES)
     loc_cache: dict[tuple[Path, bool], Location] = {}
     scanned_user_roots: set[Path] = set()
+
+    # Flat and recursive adapters share the directory listing, not reachability rules.
+    @cache
+    def list_entries(path: Path) -> list[Path]:
+        try:
+            return list(path.iterdir())
+        except OSError:
+            return []
 
     for name in selected:
         h = harnesses.get(name)
@@ -380,6 +406,8 @@ def diagnose(
                     recursive=h.recursive,
                     home=home,
                     hash_skills=not inventory_only,
+                    list_entries=list_entries,
+                    hash_tree=diag.tree_hash,
                 )
                 loc_cache[cache_key] = cached
             loc = Location(
@@ -418,19 +446,24 @@ def diagnose(
                 skill_dir = skill_md.parent
                 sname = skill_dir.name
                 if not inventory_only:
-                    try:
-                        rel_dir = "~/" + skill_dir.resolve().relative_to(effective_home).as_posix()
-                    except ValueError:
-                        rel_dir = str(skill_dir)
-                    thash, _ = compute_tree_hash(skill_dir)
-                    if thash:
-                        all_copies.setdefault(sname, {})[rel_dir] = thash
+                    if check_drift:
+                        try:
+                            rel_dir = "~/" + skill_dir.resolve().relative_to(effective_home).as_posix()
+                        except ValueError:
+                            rel_dir = str(skill_dir)
+                        thash, _ = diag.tree_hash(skill_dir)
+                        if thash:
+                            all_copies.setdefault(sname, {})[rel_dir] = thash
                     diag.issues[str(skill_dir)] = validate(parse_skill(skill_md))
                 if skill_dir not in diag.skill_copies.setdefault(sname, []):
                     diag.skill_copies[sname].append(skill_dir)
                 if sname not in seen:
                     seen.add(sname)
                     diag.skills.append(skill_md)
+
+    # One skill name reaching the same skill directory via two scanned paths is still one copy.
+    for sname, copies in diag.skill_copies.items():
+        diag.skill_copies[sname] = list(dict.fromkeys(c.resolve() for c in copies))
 
     if inventory_only:
         return diag
@@ -468,21 +501,16 @@ def diagnose(
     state_records = load_state(root, scope=scope, home=home)
 
     explicit_only_set = {harnesses.get(h).name for h in only} if only is not None else None
-    default_project_set = {"claude-code", "codex", "cursor"}
-    if scope == "project":
-        manifest_set: set[str] = set()
-        if manifest and manifest.harnesses:
-            for mh in manifest.harnesses:
-                with contextlib.suppress(KeyError):
-                    manifest_set.add(harnesses.get(mh).name)
-        if manifest_set:
-            # The manifest is the user's explicit harness selection: an unscoped skill is judged against it
-            # alone, never against claude-code/codex/cursor or whatever directories happen to exist.
-            default_project_set = manifest_set
-        else:
-            for hname, rep in diag.reports.items():
-                if any(loc.exists for loc in rep.locations):
-                    default_project_set.add(hname)
+    if explicit_only_set is not None:
+        diag.default_harnesses = explicit_only_set
+    elif manifest and manifest.harnesses:
+        for mh in manifest.harnesses:
+            with contextlib.suppress(KeyError):
+                diag.default_harnesses.add(harnesses.get(mh).name)
+    else:
+        diag.default_harnesses = {
+            hname for hname, rep in diag.reports.items() if any(loc.exists for loc in rep.locations)
+        }
 
     for skill_md in diag.skills:
         skill = skill_md.parent.name
@@ -501,7 +529,7 @@ def diagnose(
         elif scope == "user":
             skill_required = set()
         else:
-            skill_required = default_project_set
+            skill_required = diag.default_harnesses
 
         if not skill_required:
             continue

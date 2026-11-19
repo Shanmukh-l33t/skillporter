@@ -157,7 +157,7 @@ def test_diagnose_flags_skill_invisible_to_codex(tmp_path):
     skill_dir.mkdir(parents=True)
     (skill_dir / "SKILL.md").write_text(GOOD_SKILL, encoding="utf-8")
 
-    diag = diagnose(tmp_path)
+    diag = diagnose(tmp_path, only=["claude-code", "codex"])
     assert "pdf-tools" in diag.reports["claude-code"].reachable_skills
     assert "pdf-tools" not in diag.reports["codex"].reachable_skills
     assert any("codex" in f for f in diag.findings)
@@ -281,8 +281,9 @@ def test_cli_validate_fails_on_error(tmp_path):
 
 def test_cli_diagnose_exit_codes(tmp_path):
     make_skill(tmp_path)
-    # .agents/skills only: Claude Code cannot see it -> exit 1
-    assert main(["diagnose", str(tmp_path)]) == 1
+    assert main(["diagnose", str(tmp_path)]) == 0
+    # .agents/skills only: explicitly checking Claude Code still fails.
+    assert main(["diagnose", str(tmp_path), "--harness", "claude-code"]) == 1
 
 
 def test_cli_diagnose_json_is_valid(tmp_path, capsys):

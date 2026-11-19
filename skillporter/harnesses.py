@@ -957,6 +957,7 @@ def detect_harnesses(
     home: Path | None = None,
     *,
     probe_versions: bool = False,
+    check_skill_paths: bool = True,
 ) -> list[DetectedHarness]:
     """Detect which AI agent harnesses are genuinely installed or active (independent of SkillPorter dirs)."""
     root = (root or Path.cwd()).resolve()
@@ -1012,11 +1013,9 @@ def detect_harnesses(
                 project_active = True
                 reasons.append(f"project:{marker}")
 
-        for sp in h.project_paths:
-            if _has_installed_skills(root / sp.path, recursive=h.recursive):
-                skills_present = True
-                break
-        if not skills_present:
+        if check_skill_paths:
+            skills_present = any(_has_installed_skills(root / sp.path, recursive=h.recursive) for sp in h.project_paths)
+        if check_skill_paths and not skills_present:
             for sp in h.user_paths:
                 if sp.path.startswith("$HERMES_HOME"):
                     hbase = Path(os.environ.get("HERMES_HOME") or (home / ".hermes"))
