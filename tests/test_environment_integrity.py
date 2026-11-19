@@ -130,7 +130,7 @@ def test_shared_location_lists_and_hashes_once_per_status(tmp_path, capsys, monk
     assert hashes[installed] == 2
 
 
-def test_dangling_harness_root_is_broken_not_content_drift(tmp_path, capsys):
+def test_dangling_harness_root_is_broken_not_content_drift(tmp_path, capsys, monkeypatch):
     project = tmp_path / "project"
     (project / ".claude").mkdir(parents=True)
     _skill(project / ".agents/skills")
@@ -144,6 +144,16 @@ def test_dangling_harness_root_is_broken_not_content_drift(tmp_path, capsys):
     assert diag["drifted"] == {}
     before = _cli(capsys, 1, "doctor", project, "--fix", "--dry-run")
     assert before["drifted"] == {} and link.is_symlink()
+    lock_path = project / ".skillporter/lock"
+    assert not lock_path.exists()
+    unlink = Path.unlink
+
+    def check_lock(path, *args, **kwargs):
+        if path == link:
+            assert lock_path.is_file()
+        return unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", check_lock)
     after = _cli(capsys, 0, "doctor", project, "--fix")
     assert after["drifted"] == {} and not link.is_symlink() and not target.exists()
 
@@ -208,7 +218,7 @@ def test_duplicate_copy_is_reported_by_diagnose_too(tmp_path, capsys):
     _skill(tmp_path / ".cursor/skills")
     (tmp_path / "skillporter.yaml").write_text("schema_version: 2\nharnesses: [cursor]\n", encoding="utf-8")
     diag = _cli(capsys, 1, "diagnose", tmp_path)
-    assert any("loaded from 2 paths by cursor" in item for item in diag["findings"])
+    assert any("2 copies on disk for cursor" in item for item in diag["findings"])
     status = _cli(capsys, 1, "status", tmp_path)
     assert status["skills"]["release-notes"]["status"] == "DUPLICATE"
-    assert any("loaded from 2 paths" in f for f in status["findings"])
+    assert any("runtime precedence was not checked" in f for f in status["findings"])

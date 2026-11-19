@@ -492,8 +492,8 @@ def diagnose(
     for hname, dups in sorted(diag.duplicates.items()):
         for sname, paths in sorted(dups.items()):
             diag.findings.append(
-                f"skill {sname!r} is loaded from {len(paths)} paths by {hname}: {', '.join(paths)}"
-                " — remove one copy so the same instructions are not injected twice"
+                f"skill {sname!r} has {len(paths)} copies on disk for {hname}: {', '.join(paths)}"
+                " — compare the copies before removing one; runtime precedence was not checked"
             )
 
     from .manifest import load_manifest
