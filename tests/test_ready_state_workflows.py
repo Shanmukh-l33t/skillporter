@@ -43,6 +43,26 @@ def skill(base, name="notes", body="Keep useful project notes."):
     return md
 
 
+@pytest.mark.parametrize("prefer", [False, True])
+def test_sync_excludes_targets_in_preview_and_apply(cli, prefer):
+    ws, run = cli
+    src = skill(ws / "upstream").parent
+    (ws / "skillporter.yaml").write_text(
+        "harnesses: [claude-code, hermes]\nskills:\n"
+        "  - name: notes\n    source: ./upstream/notes\n    harnesses: [claude-code, hermes]\n",
+        encoding="utf-8",
+    )
+    flags = ["--prefer", str(src)] if prefer else []
+    args = ("sync", "--exclude-harness", "hermes", "--json", *flags)
+    preview = json.loads(run(*args, "--dry-run"))
+    expected = ws / ".claude/skills/notes"
+    assert preview["destinations"] == [str(expected)]
+    assert not expected.exists()
+    run(*args)
+    assert (expected / "SKILL.md").is_file()
+    assert not (ws / ".hermes/skills/notes").exists()
+
+
 def test_profile_round_trip_counts_actual_targets_and_writes(cli, tmp_path):
     ws, run = cli
     src = skill(tmp_path / "src")

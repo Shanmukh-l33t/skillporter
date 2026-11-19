@@ -46,6 +46,7 @@ from .common import (
     EXIT_ERROR,
     EXIT_OK,
     EXIT_PROBLEM,
+    _expand_harness_tokens,
     fmt_mode,
     is_quiet,
     is_verbose,
@@ -376,7 +377,7 @@ def cmd_sync(args: argparse.Namespace) -> int:
     is_json = fmt_mode(args) == "json"
 
     load_manifest(root)  # Reject an invalid config before touching the advisory lock.
-    with workspace_lock(root):
+    with contextlib.nullcontext() if dry_run else workspace_lock(root):
         manifest = load_manifest(root)
         try:
             lock = load_lockfile(root)
@@ -385,6 +386,8 @@ def cmd_sync(args: argparse.Namespace) -> int:
             return EXIT_PROBLEM
         has_existing_lock = (root / LOCKFILE_FILENAME).is_file()
         try:
+            exclusions = getattr(args, "exclude_harness", None) or []
+            excluded = set(_expand_harness_tokens(exclusions, root, scope=args.scope))
             targets = []
             if not manifest or manifest.harnesses or args.harness:
                 targets = resolve_target_harnesses(
@@ -392,11 +395,16 @@ def cmd_sync(args: argparse.Namespace) -> int:
                     root,
                     scope=args.scope,
                     default_detected=True,
-                    exclude_harnesses=getattr(args, "exclude_harness", None),
+                    exclude_harnesses=exclusions,
                 )
         except KeyError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return EXIT_ERROR
+        def eligible(candidates: list[str]) -> list[str]:
+            if args.harness:
+                return targets
+            return [name for name in (harnesses.get(h).name for h in candidates) if name not in excluded]
+
         force_flag = getattr(args, "force", False)
         prefer_path = getattr(args, "prefer", None)
         allow_risky = getattr(args, "allow_risky", False)
@@ -404,7 +412,7 @@ def cmd_sync(args: argparse.Namespace) -> int:
         if max_risk_score is None and manifest is not None:
             max_risk_score = manifest.max_risk_score
 
-        diag = run_diagnose(root, scope=args.scope)
+        diag = run_diagnose(root, scope=args.scope, recover=not dry_run)
 
         policy = load_policy(root)
         for sname, copies in sorted(diag.skill_copies.items()):
@@ -503,7 +511,7 @@ def cmd_sync(args: argparse.Namespace) -> int:
                     planned_targets: set[str] = set()
                     for s in graph.install_order:
                         s_dir = graph.nodes[s].skill_dir
-                        skill_targets = skill_targets_by_name.get(s, default_targets)
+                        skill_targets = eligible(skill_targets_by_name.get(s, default_targets))
                         if s_dir is not None and skill_targets:
                             plan = plan_install(
                                 root, [s_dir], skill_targets, strategy=args.strategy, scope=args.scope, force=True,
@@ -529,7 +537,7 @@ def cmd_sync(args: argparse.Namespace) -> int:
                 for sname in graph.install_order:
                     node = graph.nodes[sname]
                     spec = spec_by_name.get(sname)
-                    skill_targets = skill_targets_by_name.get(sname, default_targets)
+                    skill_targets = eligible(skill_targets_by_name.get(sname, default_targets))
                     if not skill_targets:
                         continue
                     strategy = (spec.strategy if spec and spec.strategy else None) or manifest.strategy or args.strategy
@@ -703,33 +711,10 @@ def cmd_sync(args: argparse.Namespace) -> int:
                     )
                     return EXIT_PROBLEM
 
-            if dry_run:
-                plan = plan_install(
-                    root,
-                    list(canonical_by_name.values()),
-                    targets,
-                    strategy=args.strategy,
-                    scope=args.scope,
-                    force=True,
-                )
-                if is_json:
-                    print(
-                        json.dumps(
-                            {
-                                "dry_run": True,
-                                "skills": sorted(canonical_by_name),
-                                "harnesses": targets,
-                                "destinations": [str(d.resolved_dest) for d in plan.destinations],
-                            },
-                            indent=2,
-                        )
-                    )
-                else:
-                    print(f"dry-run: would synchronize {len(canonical_by_name)} skill(s) across {targets}")
-                return EXIT_OK
-
             spec_by_name_fallback = {s.name: s for s in manifest.skills} if (manifest and manifest.skills) else {}
             records_fallback = load_state(root, scope=args.scope)
+            planned = []
+            planned_targets: set[str] = set()
             for sname_fb, sdir in sorted(canonical_by_name.items()):
                 if args.harness:
                     eff_targets = targets
@@ -753,7 +738,13 @@ def cmd_sync(args: argparse.Namespace) -> int:
                             seen_prim_paths.add(prim.path)
                             on_disk_primary.append(hname)
                     eff_targets = on_disk_primary if on_disk_primary else targets
+                eff_targets = eligible(eff_targets)
                 if not eff_targets:
+                    continue
+                if dry_run:
+                    plan = plan_install(root, [sdir], eff_targets, strategy=args.strategy, scope=args.scope, force=True)
+                    planned.extend(str(d.resolved_dest) for d in plan.destinations)
+                    planned_targets.update(eff_targets)
                     continue
                 res = run_install(
                     root,
@@ -766,6 +757,16 @@ def cmd_sync(args: argparse.Namespace) -> int:
                     record_state=True,
                 )
                 synced_results.extend(res)
+
+            if dry_run:
+                if is_json:
+                    print(json.dumps({
+                        "dry_run": True, "skills": sorted(canonical_by_name),
+                        "harnesses": sorted(planned_targets), "destinations": planned,
+                    }, indent=2))
+                else:
+                    print(f"dry-run: would synchronize across {sorted(planned_targets)}")
+                return EXIT_OK
 
         if has_existing_lock or manifest is not None:
             cmd_lock(argparse.Namespace(path=str(root), quiet=is_json))

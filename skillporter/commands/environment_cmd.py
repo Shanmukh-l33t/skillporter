@@ -536,6 +536,7 @@ def cmd_profile(args: argparse.Namespace) -> int:
             prune = bool(getattr(args, "prune", False))
             prof = load_profile(root, pname, scope=scope)
             cur_snap = capture_environment(root, scope=scope)
+            assignments = [(s, prof.harnesses if s.harnesses is None else s.harnesses) for s in prof.skills]
             prof_skill_names = {s.name for s in prof.skills}
             to_prune = sorted(s for s in cur_snap.managed_skills if s not in prof_skill_names) if prune else []
 
@@ -544,7 +545,7 @@ def cmd_profile(args: argparse.Namespace) -> int:
                     "dry_run": True,
                     "profile": prof.profile,
                     "harnesses": prof.harnesses,
-                    "skills_to_sync": [s.name for s in prof.skills],
+                    "skills_to_sync": [s.name for s, targets in assignments if targets],
                     "skills_to_prune": to_prune,
                 }
                 if fmt_mode(args) == "json":
@@ -552,7 +553,8 @@ def cmd_profile(args: argparse.Namespace) -> int:
                 else:
                     print(f"Preview switching to profile {style(prof.profile, BOLD)}:")
                     print(f"  Harnesses: {', '.join(prof.harnesses)}")
-                    print(f"  Skills:    {', '.join(s.name for s in prof.skills) or '(none)'}")
+                    names = ", ".join(s.name for s, targets in assignments if targets)
+                    print(f"  Skills:    {names or '(none)'}")
                     if to_prune:
                         print(f"  Prune:     {', '.join(to_prune)}")
                 return EXIT_OK
@@ -588,8 +590,7 @@ def cmd_profile(args: argparse.Namespace) -> int:
 
             activate_profile_manifest(root, pname, scope=scope)
             synced = []
-            for spec in prof.skills:
-                targets = prof.harnesses if spec.harnesses is None else spec.harnesses
+            for spec, targets in assignments:
                 if not targets:
                     continue
                 resolved = resolve_source(spec.source, base_dir=root, ref_override=spec.ref)

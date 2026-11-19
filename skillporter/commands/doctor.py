@@ -404,6 +404,8 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             locked_entry = lock.skills.get(sname)
             rec = records.get(sname)
             spec = manifest_skill_map.get(sname)
+            if not args.harness and spec and spec.harnesses == []:
+                continue
             raw_targets = (args.harness or (spec and spec.harnesses) or (rec and rec.harnesses)
                            or (locked_entry and locked_entry.installed_targets) or manifest_targets)
             targets = []

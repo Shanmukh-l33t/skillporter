@@ -105,7 +105,7 @@ def _update_manifest_and_lock(
             else:
                 gone = {harnesses.get(t).name for t in targets}
                 for spec in manifest.skills:
-                    if spec.name == skill_name:
+                    if spec.name == skill_name and spec.harnesses != []:
                         effective = spec.harnesses or manifest.harnesses
                         left = [h for h in effective if harnesses.get(h).name not in gone] or remaining
                         if left != spec.harnesses:

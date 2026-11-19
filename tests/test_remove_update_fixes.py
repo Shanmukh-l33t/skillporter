@@ -182,7 +182,7 @@ def test_remove_preview_matches_action_and_next_sync(tmp_path, capsys, layout, o
     manifest = load_manifest(ws)
     manifest.harnesses = [other, "cursor"]
     # Exercise inherited targets too; sync must not restore a removed owner from the defaults.
-    manifest.skills[0].harnesses = [] if layout == "shared" else [other, "cursor"]
+    manifest.skills[0].harnesses = None if layout == "shared" else [other, "cursor"]
     save_manifest(ws, manifest)
     assert main(["lock", str(ws), "--json"]) == 0
     capsys.readouterr()

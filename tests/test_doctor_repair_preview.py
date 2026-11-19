@@ -172,3 +172,17 @@ def test_unfinished_target_edit_is_rejected_before_writes(tmp_path, capsys, targ
     assert not out.out and "line 2" in out.err and "harnesses" in out.err
     assert (_files(tmp_path), (state / "lock").read_bytes()) == before
     assert (state / "tmp").is_dir()
+
+
+def test_doctor_does_not_repair_a_skill_with_no_assigned_targets(tmp_path, capsys):
+    _skill(tmp_path / ".claude" / "skills" / "helper")
+    (tmp_path / "skillporter.yaml").write_text(
+        "schema_version: 2\nharnesses: [windsurf]\nskills:\n"
+        "  - name: helper\n    source: ./.claude/skills/helper\n    harnesses: []\n",
+        encoding="utf-8",
+    )
+    rc, preview = _doctor(tmp_path, capsys, "--dry-run")
+    assert rc == 0 and preview["repair_plan"] == []
+    rc, applied = _doctor(tmp_path, capsys)
+    assert rc == 0 and applied["repair_plan"] == []
+    assert not (tmp_path / ".windsurf").exists()

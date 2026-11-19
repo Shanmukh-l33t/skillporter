@@ -506,7 +506,7 @@ def diagnose(
     explicit_only_set = {harnesses.get(h).name for h in only} if only is not None else None
     if explicit_only_set is not None:
         diag.default_harnesses = explicit_only_set
-    elif manifest and manifest.harnesses:
+    elif manifest:
         for mh in manifest.harnesses:
             with contextlib.suppress(KeyError):
                 diag.default_harnesses.add(harnesses.get(mh).name)
@@ -519,9 +519,9 @@ def diagnose(
         skill = skill_md.parent.name
         if explicit_only_set is not None:
             skill_required = explicit_only_set
-        elif skill in manifest_skill_map and manifest_skill_map[skill].harnesses:
+        elif skill in manifest_skill_map and manifest_skill_map[skill].harnesses is not None:
             skill_required = set()
-            for mh in manifest_skill_map[skill].harnesses:
+            for mh in manifest_skill_map[skill].harnesses or []:
                 with contextlib.suppress(KeyError):
                     skill_required.add(harnesses.get(mh).name)
         elif skill in state_records and state_records[skill].harnesses:
