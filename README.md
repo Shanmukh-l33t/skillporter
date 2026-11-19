@@ -185,6 +185,8 @@ Skillporter distinguishes **support status** (`NATIVE`, `COMPATIBLE`, `ADAPTED`)
 
 Each harness record ships its detection rules, path precedence, and vendor documentation reference. `skillporter matrix` prints the same matrix from the installed CLI, and `skillporter detect` reports which harnesses exist on the current machine.
 
+`RUNTIME_VERIFIED` describes the adapter's captured evidence, not a live check of your installation. `diagnose` and `doctor` inspect documented paths on disk and report runtime discovery as not checked. Hermes project-scope skills are only discovered after the project is trusted, so `.hermes/skills/` support is filesystem-verified until that trust decision exists; see [docs/verification/field-review.md](docs/verification/field-review.md).
+
 ## MCP server
 
 `skillporter mcp` runs a hardened JSON-RPC 2.0 Model Context Protocol server so an agent can query a workspace instead of shelling out. It exposes 18 tools (`diagnose`, `detect`, `scan`, `inspect`, `matrix`, `status`, `diff`, `consolidate_preview`, `suggest`, `insights`, `context`, `preview`, `add`, `install`, `sync`, `remove`, `export`, `import`), is read-only by default, refuses paths outside the workspace root, and requires an explicit opt-in before any write tool becomes available:

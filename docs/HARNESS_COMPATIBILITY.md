@@ -14,6 +14,8 @@ Skillporter enforces a strict separation between **filesystem presence**, **spec
 | `INSTALLED` / `MISSING` | Whether the skill is present in at least one directory scanned by the harness at the requested scope. |
 | `DRIFT` | Multiple copies of the skill exist in the workspace with different SHA-256 tree hashes. |
 | `DUPLICATE` | The skill exists in two or more distinct directories scanned simultaneously by the same harness (e.g., `.agents/skills` and `.cursor/skills` in Cursor). |
-| `VERIFIED` / `UNVERIFIED` | `VERIFIED` is reported **only** when the harness adapter has `verification_level == "RUNTIME_VERIFIED"` (live runtime ingestion confirmed). Document-verified and unit/integration-tested adapters report `UNVERIFIED` at runtime until probed against a live agent process. |
+| `RUNTIME_NOT_CHECKED` | Skillporter inspects documented paths on disk. It does not start the harness, so it cannot observe live discovery. Every state above this row is a filesystem result. |
+
+The adapter's `verification_level` (for example `RUNTIME_VERIFIED`) is historical evidence about the adapter and is printed separately in `doctor --verbose`. It is not a statement about the installation being checked: a `RUNTIME_VERIFIED` adapter can still have its skill missing from the current catalog (Hermes project scope requires the project to be trusted first). See [the field review](verification/field-review.md).
 
 See [docs/harnesses/README.md](harnesses/README.md) and [HARNESS_COMPATIBILITY_AUDIT.md](audits/HARNESS_COMPATIBILITY_AUDIT.md) for the complete 19-harness table and upstream documentation URLs.
