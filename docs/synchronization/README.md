@@ -83,7 +83,18 @@ skillporter doctor .
 skillporter doctor --fix
 ```
 
-`doctor` reports each skill's state per harness. `--fix` removes broken symlinks and synchronizes missing or drifted installs. `--dry-run` shows what it would change.
+`doctor` reports each skill's state per harness. `--fix` reinstalls missing or drifted copies from a copy that matches the lockfile/state hash and passes the security scan and policy. `--dry-run` runs the same plan and prints it without writing.
+
+The plan lists every action with its path and impact, including refused ones:
+
+```text
+$ skillporter doctor . --fix --dry-run
+Repair preview (no repairs applied):
+  - Would replace ~/acme-api/.claude/skills/pdf from ~/acme-api/.skillporter/store/pdf/6b86f0c7/pdf [claude-code]: copy sha256:6b86f0c7; back up current content under ~/acme-api/.skillporter/backups/pdf
+  - Refused ~/acme-api/.agents/skills/legacy: broken link left in place; no authorized replacement was planned
+```
+
+Repairs only happen for skills Skillporter can attribute (state record, lockfile entry or manifest entry) and only in their recorded harnesses. Conflicting unmanaged copies are never resolved by newest modification time; `doctor` refuses and points at `skillporter sync --prefer <path>`.
 
 ## Limiting the scope
 
