@@ -10,11 +10,11 @@ from pathlib import Path
 from .. import harnesses
 from ..audit import record_audit_event
 from ..frontmatter import parse_skill, validate
-from ..install import InstallError, install_many, plan_install
+from ..install import InstallError, InstallResult, install_many, plan_install
 from ..install import install as run_install
 from ..manifest import ManifestSkillSpec, load_manifest, save_manifest
 from ..policy import evaluate_policy, load_policy
-from ..security import scan_skill
+from ..security import compute_tree_hash, scan_skill
 from ..sources import SourceError, resolve_source
 from ..state import load_state
 from ..ui import BOLD, CYAN, action_symbol, badge, render_next_steps, style
@@ -30,6 +30,23 @@ from .common import (
     resolve_target_harnesses,
     shared_path_exclusion_notes,
 )
+
+
+def _disk_verification(
+    all_results: list[InstallResult], skill_dirs: list[Path], sec_reports: dict
+) -> tuple[int, list[str], bool]:
+    """Re-hash what landed on disk: destinations match the source, and the source is untouched."""
+    post = {d.name: compute_tree_hash(d)[0] for d in skill_dirs}
+    source_intact = all(
+        post[name] == (sec_reports[name].tree_hash or post[name]) for name in post if name in sec_reports
+    )
+    checked, mismatched = 0, []
+    for r in all_results:
+        if r.action in ("created", "updated", "unchanged"):
+            checked += 1
+            if compute_tree_hash(r.dest)[0] != post.get(r.skill):
+                mismatched.append(str(r.dest))
+    return checked, mismatched, source_intact
 
 
 def cmd_add(args: argparse.Namespace) -> int:
@@ -410,7 +427,22 @@ def cmd_add(args: argparse.Namespace) -> int:
                 custom_paths=custom_paths,
             ):
                 print(f"  Note: {note}")
-            print("\nInstallation verified.")
+            verified_cnt, mismatched, source_intact = _disk_verification(all_results, skill_dirs, sec_reports)
+            if mismatched or not source_intact:
+                for path in mismatched:
+                    print(f"warning: {path} is not byte-identical to the source", file=sys.stderr)
+                if not source_intact:
+                    print("warning: the source skill changed during install", file=sys.stderr)
+            else:
+                print()
+                if verified_cnt:
+                    print(
+                        f"Verified {verified_cnt} destination(s) on disk: byte-identical to the source "
+                        "(sha256), source left intact."
+                    )
+                if skipped_cnt:
+                    print(f"{skipped_cnt} skipped destination(s) were not checked.")
+            print("Not verified: whether each harness discovers or loads the skill (no runtime check).")
             print(
                 render_next_steps(
                     [

@@ -14,6 +14,7 @@ $ skillporter add anthropics/skills --skill pdf --harness all
   + Roo Code             created    (copy via .roo/skills)
   + Windsurf             created    (copy via .windsurf/skills)
 
-Installation verified.
+Verified 19 destination(s) on disk: byte-identical to the source (sha256), source left intact.
+Not verified: whether each harness discovers or loads the skill (no runtime check).
 Next steps:
   skillporter status                # inspect installed state across harnesses
