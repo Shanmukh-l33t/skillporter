@@ -179,8 +179,9 @@ def cmd_uninstall(args: argparse.Namespace) -> int:
             if is_json:
                 print(json.dumps({"dry_run": True, "results": planned}, indent=2))
             else:
-                for row in planned:
-                    print(f"{row['action']:14} {row['harness']:14} {row['dest']}")
+                # One line per destination: the harnesses after the first read the same directory.
+                for row in _distinct_by_destination(planned):
+                    print(f"{row['action']:14} {row['harness']:40} {row['dest']}")
             return EXIT_OK
 
         if not args.harness:
