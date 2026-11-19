@@ -312,7 +312,11 @@ def build_parser() -> argparse.ArgumentParser:
     doc.add_argument("path", nargs="?", default=".")
     doc.add_argument("--harness", action="append")
     doc.add_argument("--scope", choices=["project", "user"], default="project")
-    doc.add_argument("--fix", action="store_true", help="auto-repair missing/drifted installs and broken symlinks")
+    doc.add_argument(
+        "--fix",
+        action="store_true",
+        help="preview and apply repairs for recorded skills (dangling links are reported, not deleted)",
+    )
     doc.add_argument("--dry-run", action="store_true", help="preview doctor check without applying --fix writes")
     doc.add_argument("--format", choices=["text", "json"], default="")
     doc.add_argument("--json", action="store_true")

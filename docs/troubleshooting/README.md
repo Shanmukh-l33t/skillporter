@@ -56,7 +56,8 @@ skillporter doctor --fix
 harnesses it covers and the impact (a backup under `.skillporter/backups/`, a state update, or the reason the repair
 is refused). `--dry-run` writes nothing. Repairs are limited to skills Skillporter manages (a state record, lockfile
 entry or manifest entry) and to their recorded harnesses; a conflicting unmanaged copy, a blocked policy harness or a
-broken link with no planned replacement is refused, not overwritten or deleted.
+broken link with no planned replacement is refused, not overwritten or deleted. A refused dangling link stays; delete
+it yourself (`rm .claude/skills/<name>`) once you have decided its target is really gone.
 
 Prefer `--strategy copy`, the default, in environments that do not preserve symlinks.
 

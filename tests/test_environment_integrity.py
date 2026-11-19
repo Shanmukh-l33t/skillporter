@@ -144,8 +144,10 @@ def test_dangling_harness_root_is_broken_not_content_drift(tmp_path, capsys):
     assert diag["drifted"] == {}
     before = _cli(capsys, 1, "doctor", project, "--fix", "--dry-run")
     assert before["drifted"] == {} and link.is_symlink()
-    after = _cli(capsys, 0, "doctor", project, "--fix")
-    assert after["drifted"] == {} and not link.is_symlink() and not target.exists()
+    after = _cli(capsys, 1, "doctor", project, "--fix")
+    # The repair engine deletes only what an authorized replacement covers: a dangling link stays and is reported.
+    assert after["drifted"] == {} and link.is_symlink() and not target.exists()
+    assert any(item["action"] == "refuse" and item["path"] == str(link) for item in after["repair_plan"])
 
 
 def test_missing_locked_copy_is_not_a_content_mismatch(tmp_path, capsys):
