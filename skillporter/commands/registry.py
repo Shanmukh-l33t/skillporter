@@ -17,11 +17,17 @@ from ..security import compute_tree_hash, scan_skill, to_sarif
 from ..sources import SourceError, resolve_source
 from ..state import load_state
 from ..ui import BOLD, badge, render_table, style
-from .common import EXIT_ERROR, EXIT_OK, EXIT_PROBLEM, fmt_mode, is_quiet, is_verbose
+from .common import EXIT_ERROR, EXIT_OK, EXIT_PROBLEM, fmt_mode, get_harness, is_quiet, is_verbose
 
 
 def cmd_list(args: argparse.Namespace) -> int:
     root = Path(args.path).expanduser().resolve()
+    try:
+        target = get_harness(args.harness).name if args.harness is not None else None
+    except KeyError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+    query = args.search.strip().casefold()
     records = load_state(root, scope=args.scope)
     diag = run_diagnose(root, scope=args.scope)
 
@@ -63,6 +69,15 @@ def cmd_list(args: argparse.Namespace) -> int:
             }
         )
 
+    total = len(rows)
+    rows = [
+        r
+        for r in rows
+        if query in r["name"].casefold()
+        and (target is None or target in r["harnesses"])
+        and (not args.managed_only or r["managed"])
+        and (not args.unmanaged_only or not r["managed"])
+    ]
     if fmt_mode(args) == "json":
         print(json.dumps(rows, indent=2))
         return EXIT_OK
@@ -73,30 +88,35 @@ def cmd_list(args: argparse.Namespace) -> int:
         return EXIT_OK
 
     if not rows:
-        print(f"no skills installed or discovered under {root} (scope: {args.scope})")
+        if query or target or args.managed_only or args.unmanaged_only:
+            print(f"No local skills match the filters ({total} skill(s) in {args.scope} scope).")
+        else:
+            print(f"No skills installed or discovered under {root} (scope: {args.scope}).")
         return EXIT_OK
 
-    trows = [
-        [
-            str(r["name"]),
-            str(r["version"]),
-            "yes" if r["managed"] else "no",
-            str(r["tree_hash"]),
-            (
-                ", ".join(r["harnesses"][:4]) + f" (+{len(r['harnesses']) - 4})"
-                if len(r["harnesses"]) > 4 and not is_verbose(args)
-                else (", ".join(r["harnesses"]) if r["harnesses"] else "(none)")
-            ),
-        ]
-        for r in rows
-    ]
-    max_r = None if is_verbose(args) else 30
+    verbose = is_verbose(args)
+    headers = ["SKILL", "VERSION", "MANAGED", "HARNESSES"]
+    if verbose:
+        headers += ["HASH", "SOURCE"]
+    trows = []
+    for r in rows:
+        targets = r["harnesses"]
+        h_cell = ", ".join(targets) or "(none)"
+        if len(targets) > 4 and not verbose:
+            if target is not None:
+                targets = [target, *(h for h in targets if h != target)]
+            h_cell = ", ".join(targets[:4]) + f" (+{len(targets) - 4})"
+        row = [r["name"], r["version"], "yes" if r["managed"] else "no", h_cell]
+        if verbose:
+            row += [r["tree_hash"], r["source"]]
+        trows.append(row)
+    print(f"{len(rows)} of {total} local skill(s) ({args.scope})")
     print(
         render_table(
-            ["SKILL", "VERSION", "MANAGED", "HASH", "HARNESSES"],
+            headers,
             trows,
-            max_rows=max_r,
-            more_hint="run `skillporter list --verbose` to list all skills",
+            max_rows=None if verbose else 10,
+            more_hint="pass --search <text> or --harness <id> to narrow, or --verbose to show all",
         )
     )
     return EXIT_OK

@@ -145,40 +145,31 @@ def cmd_diagnose(args: argparse.Namespace) -> int:
         print(json.dumps(payload, indent=2))
         return EXIT_PROBLEM if diag.findings else EXIT_OK
 
-    print(f"skillporter {__version__} — diagnosing {diag.root} (scope: {args.scope})\n")
+    verbose = is_verbose(args)
+    print(f"skillporter {__version__} — diagnose ({args.scope}): {diag.root}")
     if not diag.skills:
-        print("no SKILL.md found under this path.")
-        return EXIT_PROBLEM
+        print("No SKILL.md files found in this scope.")
+    if diag.skills or diag.findings:
+        findings_label = f"{len(diag.findings)} finding(s)" if diag.findings else "no findings"
+        print(f"{len(diag.skills)} skill(s) found · {findings_label}")
 
-    print(f"skills found: {', '.join(diag.skill_names)}\n")
-
-    if selected:
-        names = [get_harness(h).name for h in selected]
-    else:
-        active = [
-            name
-            for name, rep in diag.reports.items()
+    if verbose and diag.skills:
+        active = {
+            name for name, rep in diag.reports.items()
             if rep.reachable_skills or any(loc.exists for loc in rep.locations)
-        ]
-        names = sorted(set(harnesses.CORE_HARNESS_NAMES) | set(active))
+        }
+        names = list(diag.reports) if selected else sorted(set(harnesses.CORE_HARNESS_NAMES) | active)
+        rows = [[skill, *(diag.reports[n].cell_state(skill) for n in names)] for skill in diag.skill_names]
+        print("\n" + render_table(["SKILL", *names], rows))
 
-    width = max(max(len(s) for s in diag.skill_names), 5)
-    header = "SKILL".ljust(width) + "  " + "  ".join(n[:14].ljust(14) for n in names)
-    print(header)
-    print("-" * len(header))
-    for skill in diag.skill_names:
-        cells = [diag.reports[n].cell_state(skill).ljust(14) for n in names]
-        print(skill.ljust(width) + "  " + "  ".join(cells))
-
-    print()
-    if diag.findings:
-        print("findings:")
-        for f in diag.findings:
-            print(f"  - {f}")
-    else:
-        print("no findings — every skill is reachable and synchronized across checked harnesses.")
-
-    return EXIT_PROBLEM if diag.findings else EXIT_OK
+    findings = diag.findings if verbose else diag.findings[:5]
+    for finding in findings:
+        print(f"  - {finding}")
+    if len(findings) < len(diag.findings):
+        print(f"  ... and {len(diag.findings) - len(findings)} more finding(s)")
+    if not verbose and (diag.skills or diag.findings):
+        print("Pass --verbose for the reachability table and all findings; use --harness <id> to focus the check.")
+    return EXIT_PROBLEM if diag.findings or not diag.skills else EXIT_OK
 
 
 def cmd_detect(args: argparse.Namespace) -> int:

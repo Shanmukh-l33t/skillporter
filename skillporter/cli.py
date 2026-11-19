@@ -228,6 +228,11 @@ def build_parser() -> argparse.ArgumentParser:
     ls_p = sub.add_parser("list", parents=[shared], help="list installed and discovered skills")
     ls_p.add_argument("path", nargs="?", default=".")
     ls_p.add_argument("--scope", choices=["project", "user"], default="project")
+    ls_p.add_argument("--search", default="", metavar="TEXT", help="filter local skill names (case-insensitive)")
+    ls_p.add_argument("--harness", metavar="ID", help="filter by harness (ID or alias)")
+    ownership = ls_p.add_mutually_exclusive_group()
+    ownership.add_argument("--managed-only", action="store_true", help="show only skills tracked by Skillporter")
+    ownership.add_argument("--unmanaged-only", action="store_true", help="show only untracked local skills")
     ls_p.add_argument("--format", choices=["text", "json"], default="")
     ls_p.add_argument("--json", action="store_true")
     ls_p.set_defaults(func=cmd_list)
@@ -413,17 +418,13 @@ def main(argv: list[str] | None = None) -> int:
     args_list = list(sys.argv[1:] if argv is None else argv)
     parser = build_parser()
 
-    if not args_list:
-        if _stdin_is_pipe():
-            print(
-                "skillporter: no subcommand and a piped stdin, starting the MCP server "
-                "(use `skillporter mcp` to start it explicitly)",
-                file=sys.stderr,
-            )
-            args_list = ["mcp"]
-        else:
-            parser.print_help()
-            return EXIT_OK
+    if not args_list and _stdin_is_pipe():
+        print(
+            "skillporter: no subcommand and a piped stdin, starting the MCP server "
+            "(use `skillporter mcp` to start it explicitly)",
+            file=sys.stderr,
+        )
+        args_list = ["mcp"]
 
     non_flag = [tok for tok in args_list if not tok.startswith("-")]
     if non_flag and args_list[0] == non_flag[0] and non_flag[0] not in KNOWN_COMMANDS:
@@ -436,7 +437,14 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(args_list)
     apply_ui_flags(args)
     if not getattr(args, "command", None):
-        parser.print_help()
+        print(
+            "Manage AI agent skills across harnesses. Start in your project directory:\n"
+            "  skillporter status     Summarize your skill environment\n"
+            "  skillporter list       Find installed and discovered skills\n"
+            "  skillporter diagnose   Check reachability and drift\n"
+            "  skillporter demo       Try the workflow in a temporary project\n"
+            "Run `skillporter --help` for all commands."
+        )
         return EXIT_OK
     try:
         rc = int(args.func(args))
