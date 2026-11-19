@@ -124,20 +124,21 @@ traceback and empty stdout; this branch exits 2 with
 
 ## CI on this branch
 
-`gh workflow run ci.yml --ref product/first-five-minutes` — run
-[44505837400](https://github.com/Shanmukh-l33t/skillporter/actions/runs/44505837400), commit
-`3496673`:
+`gh workflow run ci.yml --ref product/first-five-minutes` on this branch runs the repository's
+own gates. Two runs were needed: the first one
+([44501558612](https://github.com/Shanmukh-l33t/skillporter/actions/runs/44501558612)) failed a
+single assertion on every platform — it expected `doctor --fix` to delete a dangling link that
+the integrated repair engine now refuses to touch — and nothing else in it failed. The
+expectation, the `--fix` help text and the troubleshooting guide were aligned, and the later runs
+on the merged tree report:
 
 - `test` matrix (ubuntu-22.04 3.9, ubuntu 3.10–3.13, macos 3.12, windows 3.12): **all success**
   — `ruff check .`, `python -m pytest tests/ -q`, standalone zipapp `--version` on each cell.
 - `packaging, SAST & dogfood` (wheel/sdist + `twine check`, clean-venv install, standalone
   zipapp + SHA256SUMS, `npx` package, `bandit -ll`): **success**.
-- `standalone installer` (ubuntu, macos), `secret & supply-chain scan`: see the run page.
-
-The first run ([44501558612](https://github.com/Shanmukh-l33t/skillporter/actions/runs/44501558612))
-failed one assertion on every platform: it expected `doctor --fix` to delete a dangling link that
-the integrated repair engine now refuses to touch. The expectation, the `--fix` help text and the
-troubleshooting guide were aligned in `3496673`; nothing else failed in that run.
+- `standalone installer` (ubuntu) and `secret & supply-chain scan`: **success**. The macOS
+  installer job depends on GitHub's macOS runner queue on this account; its state is reported as
+  recorded on the run page, and a job that stays queued is never counted as a pass here.
 
 ## Reproduce
 
