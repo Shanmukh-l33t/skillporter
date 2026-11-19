@@ -49,10 +49,20 @@ ruff check skillporter tests
 python3 -m pytest tests/test_environment_integrity.py
 ```
 
-Result: whole suite green on Windows (1 pre-existing test requiring symlink privilege deselected; it
-fails on any unprivileged Windows account, unrelated to this change) and
-`tests/test_environment_integrity.py tests/test_regressions.py` = **11 passed on Linux**, including the
-dangling-symlink case.
+Results:
+
+- Windows: every test module was run (the full single run was split per module because one pre-existing
+  test blocks on network git). All new and neighbouring suites pass. The only failures are environmental
+  and reproduce on the untouched baseline commit `bdfb9e6` in a separate worktree:
+  `tests/test_instructions_hardening.py` (5) + `tests/test_portability_fixes.py`
+  (`test_fetched_source_structural_escape_is_never_overridable`) + `tests/test_skillporter.py`
+  (`test_diagnose_detects_broken_symlink`) all fail at `symlink_to` with `WinError 1314` on an
+  unprivileged Windows account; `tests/test_redteam_audit_fixes.py::test_large_instruction_analysis_completes_under_300ms`
+  is a wall-clock assertion (`0.356s` vs `0.35s`) on an untouched module;
+  `tests/test_second_pass_security_review.py::test_lock_check_detects_manifest_source_repointing_to_untrusted_repo`
+  hangs cloning `https://github.com/...` on the baseline too.
+- Linux (WSL, ext4, real symlinks): `tests/test_environment_integrity.py tests/test_regressions.py`
+  = **11 passed**, including the dangling-symlink case Windows cannot create.
 
 ## Real CLI evidence (disposable project)
 

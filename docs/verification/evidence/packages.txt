@@ -1,0 +1,25 @@
+$ python -m pip install --no-index --no-deps <verified PyPI wheel>
+PyPI version: 3.2.0
+skillporter-3.2.0-py3-none-any.whl fa17945fdcfb914df961a43ced9474e870ab1c27a04ea9779113789c933effeb 271434
+skillporter-3.2.0.tar.gz ac4f1300d21707fdddbe0bf2315a9b9b13e0229ea8d998d77476413e7e8d2786 352882
+requires_dist: ['pytest>=7; extra == "dev"', 'ruff>=0.6; extra == "dev"']
+requires_python: >=3.9
+
+$ skillporter --version
+skillporter 3.2.0
+$ python -c import metadata
+C:\Users\ImMandatory\AppData\Local\hermes\cache\scratch\sp-product-20261119\release\Lib\site-packages\skillporter\__init__.py
+3.14.9
+['pytest>=7; extra == "dev"', 'ruff>=0.6; extra == "dev"']
+$ npm registry metadata
+3.2.0 sha512-GXVfZ5/5ogsOW+FQzn+yC0cN97+ttnVoDliGhWHym4mqxFfRWGAuzPuYXJz0Z26w/DhKStBP5hSeYRUhaUxUOg== {'node': '>=16.0.0'} io.github.Shanmukh-l33t/skillporter
+$ GitHub release v3.2.0 assets
+v3.2.0 2026-11-15T00:22:09Z
+install.sh sha256:a2f3fbeb636bc72ca52bdb2c680bbe13a92a8257ef02ae5aeedf8b05f1aee8c3 7614
+SHA256SUMS.txt sha256:09a68ee62a3670cfb22e20792e45dc7b793d08e4635fc7c587a06a76d4aa30e9 532
+skillporter-linux-arm64 sha256:206fa938914c91dc000c912611ec531b35f7f6063f360ed82c14a54d44362c0f 258837
+skillporter-linux-x64 sha256:206fa938914c91dc000c912611ec531b35f7f6063f360ed82c14a54d44362c0f 258837
+skillporter-macos-arm64 sha256:206fa938914c91dc000c912611ec531b35f7f6063f360ed82c14a54d44362c0f 258837
+skillporter-macos-x64 sha256:206fa938914c91dc000c912611ec531b35f7f6063f360ed82c14a54d44362c0f 258837
+skillporter-windows-x64.cmd sha256:e29c1ea82646e0a88c2bbd184b117c38ab3c9e69b296c624c32972a9ce3bf032 250
+skillporter.pyz sha256:206fa938914c91dc000c912611ec531b35f7f6063f360ed82c14a54d44362c0f 258837

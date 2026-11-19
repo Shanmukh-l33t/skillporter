@@ -1,0 +1,93 @@
+F........FF..FFFFs...................F.............................F.... [ 84%]
+.s...........                                                            [100%]
+================================== FAILURES ===================================
+_ test_consolidation_preserves_unclassified_prose_short_lines_nested_lists_tables_and_tildes _
+tests\test_consolidation_stress.py:145: in test_consolidation_preserves_unclassified_prose_short_lines_nested_lists_tables_and_tildes
+    assert main(["consolidate", str(tmp_path), "--rollback", "--force", "--json"]) == 0
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+skillporter\cli.py:442: in main
+    rc = int(args.func(args))
+             ^^^^^^^^^^^^^^^
+skillporter\commands\instructions_cmd.py:47: in cmd_consolidate
+    res_rb = rollback_consolidation(root, force=force)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+skillporter\instructions.py:1112: in rollback_consolidation
+    shutil.copy2(f.abs_path, sdest)
+..\AppData\Local\hermes\tools\python-3.14.9+20261021-win32-x64\Lib\shutil.py:514: in copy2
+    _winapi.CopyFile2(src_, dst_, flags)
+E   FileNotFoundError: [WinError 3] The system cannot find the path specified
+_____ test_rollback_only_restores_instruction_patterns_and_skips_symlinks _____
+tests\test_instructions_hardening.py:175: in test_rollback_only_restores_instruction_patterns_and_skips_symlinks
+    (bdir / ".windsurfrules").symlink_to(secret)
+..\AppData\Local\hermes\tools\python-3.14.9+20261021-win32-x64\Lib\pathlib\__init__.py:1213: in symlink_to
+    os.symlink(target, self, target_is_directory)
+E   OSError: [WinError 1314] A required privilege is not held by the client: 'C:\\Users\\ImMandatory\\AppData\\Local\\hermes\\cache\\scratch\\sp-product-dev-20261119\\tmp\\pytest-of-ImMandatory\\pytest-38\\test_rollback_only_restores_in0\\outside_secret.txt' -> 'C:\\Users\\ImMandatory\\AppData\\Local\\hermes\\cache\\scratch\\sp-product-dev-20261119\\tmp\\pytest-of-ImMandatory\\pytest-38\\test_rollback_only_restores_in0\\proj\\.skillporter\\backups\\instructions\\20261119T090609Z-f961cebd\\.windsurfrules'
+____________ test_rollback_refuses_symlinked_destination_directory ____________
+tests\test_instructions_hardening.py:203: in test_rollback_refuses_symlinked_destination_directory
+    (root / ".github").symlink_to(victim, target_is_directory=True)
+..\AppData\Local\hermes\tools\python-3.14.9+20261021-win32-x64\Lib\pathlib\__init__.py:1213: in symlink_to
+    os.symlink(target, self, target_is_directory)
+E   OSError: [WinError 1314] A required privilege is not held by the client: 'C:\\Users\\ImMandatory\\AppData\\Local\\hermes\\cache\\scratch\\sp-product-dev-20261119\\tmp\\pytest-of-ImMandatory\\pytest-38\\test_rollback_refuses_symlinke0\\victim' -> 'C:\\Users\\ImMandatory\\AppData\\Local\\hermes\\cache\\scratch\\sp-product-dev-20261119\\tmp\\pytest-of-ImMandatory\\pytest-38\\test_rollback_refuses_symlinke0\\proj\\.github'
+___________ test_apply_refuses_to_write_through_symlinked_directory ___________
+tests\test_instructions_hardening.py:257: in test_apply_refuses_to_write_through_symlinked_directory
+    (root / ".cursor" / "rules").symlink_to(victim, target_is_directory=True)
+..\AppData\Local\hermes\tools\python-3.14.9+20261021-win32-x64\Lib\pathlib\__init__.py:1213: in symlink_to
+    os.symlink(target, self, target_is_directory)
+E   OSError: [WinError 1314] A required privilege is not held by the client: 'C:\\Users\\ImMandatory\\AppData\\Local\\hermes\\cache\\scratch\\sp-product-dev-20261119\\tmp\\pytest-of-ImMandatory\\pytest-38\\test_apply_refuses_to_write_th0\\victim' -> 'C:\\Users\\ImMandatory\\AppData\\Local\\hermes\\cache\\scratch\\sp-product-dev-20261119\\tmp\\pytest-of-ImMandatory\\pytest-38\\test_apply_refuses_to_write_th0\\proj\\.cursor\\rules'
+___________ test_apply_refuses_destination_symlink_pointing_outside ___________
+tests\test_instructions_hardening.py:273: in test_apply_refuses_destination_symlink_pointing_outside
+    (root / ".cursor" / "rules" / "project-instructions.mdc").symlink_to(outside)
+..\AppData\Local\hermes\tools\python-3.14.9+20261021-win32-x64\Lib\pathlib\__init__.py:1213: in symlink_to
+    os.symlink(target, self, target_is_directory)
+E   OSError: [WinError 1314] A required privilege is not held by the client: 'C:\\Users\\ImMandatory\\AppData\\Local\\hermes\\cache\\scratch\\sp-product-dev-20261119\\tmp\\pytest-of-ImMandatory\\pytest-38\\test_apply_refuses_destination0\\victim\\target.mdc' -> 'C:\\Users\\ImMandatory\\AppData\\Local\\hermes\\cache\\scratch\\sp-product-dev-20261119\\tmp\\pytest-of-ImMandatory\\pytest-38\\test_apply_refuses_destination0\\proj\\.cursor\\rules\\project-instructions.mdc'
+_______ test_apply_still_replaces_symlinked_file_that_stays_inside_root _______
+tests\test_instructions_hardening.py:284: in test_apply_still_replaces_symlinked_file_that_stays_inside_root
+    (root / "AGENTS.md").symlink_to(real)
+..\AppData\Local\hermes\tools\python-3.14.9+20261021-win32-x64\Lib\pathlib\__init__.py:1213: in symlink_to
+    os.symlink(target, self, target_is_directory)
+E   OSError: [WinError 1314] A required privilege is not held by the client: 'C:\\Users\\ImMandatory\\AppData\\Local\\hermes\\cache\\scratch\\sp-product-dev-20261119\\tmp\\pytest-of-ImMandatory\\pytest-38\\test_apply_still_replaces_syml0\\proj\\docs\\agents-real.md' -> 'C:\\Users\\ImMandatory\\AppData\\Local\\hermes\\cache\\scratch\\sp-product-dev-20261119\\tmp\\pytest-of-ImMandatory\\pytest-38\\test_apply_still_replaces_syml0\\proj\\AGENTS.md'
+_________ test_discovery_ignores_rule_dir_symlinked_outside_workspace _________
+tests\test_instructions_hardening.py:300: in test_discovery_ignores_rule_dir_symlinked_outside_workspace
+    (root / ".cursor" / "rules").symlink_to(victim, target_is_directory=True)
+..\AppData\Local\hermes\tools\python-3.14.9+20261021-win32-x64\Lib\pathlib\__init__.py:1213: in symlink_to
+    os.symlink(target, self, target_is_directory)
+E   OSError: [WinError 1314] A required privilege is not held by the client: 'C:\\Users\\ImMandatory\\AppData\\Local\\hermes\\cache\\scratch\\sp-product-dev-20261119\\tmp\\pytest-of-ImMandatory\\pytest-38\\test_discovery_ignores_rule_di0\\victim' -> 'C:\\Users\\ImMandatory\\AppData\\Local\\hermes\\cache\\scratch\\sp-product-dev-20261119\\tmp\\pytest-of-ImMandatory\\pytest-38\\test_discovery_ignores_rule_di0\\proj\\.cursor\\rules'
+_________ test_fetched_source_structural_escape_is_never_overridable __________
+tests\test_portability_fixes.py:281: in test_fetched_source_structural_escape_is_never_overridable
+    (source / "escape").symlink_to("/etc")
+..\AppData\Local\hermes\tools\python-3.14.9+20261021-win32-x64\Lib\pathlib\__init__.py:1213: in symlink_to
+    os.symlink(target, self, target_is_directory)
+E   OSError: [WinError 1314] A required privilege is not held by the client: '/etc' -> 'C:\\Users\\ImMandatory\\AppData\\Local\\hermes\\cache\\scratch\\sp-product-dev-20261119\\tmp\\pytest-of-ImMandatory\\pytest-38\\test_fetched_source_structural0\\upstream\\alpha\\escape'
+---------------------------- Captured stdout call -----------------------------
++ Installed alpha across 1 harness(es) (+1 created, ~0 updated, =0 deduplicated/unchanged)
+  + Claude Code          created    (copy via .claude/skills)
+
+Installation verified.
+Next steps:
+  skillporter status                # inspect installed state across harnesses
++ Exported e.skillpack (695 B, self-contained offline hybrid)
+  Path:      C:\Users\ImMandatory\AppData\Local\hermes\cache\scratch\sp-product-dev-20261119\tmp\pytest-of-ImMandatory\pytest-38\test_fetched_source_structural0\e.skillpack
+  SHA-256:   acafc1990bef2739...
+  Skills:    1 (alpha)
+  Harnesses: claude-code
+
+Next steps:
+  skillporter diff e.skillpack             # compare any workspace with this package
+  skillporter import e.skillpack --dry-run # preview restore on another machine
+____________________ test_diagnose_detects_broken_symlink _____________________
+tests\test_skillporter.py:179: in test_diagnose_detects_broken_symlink
+    (skills / "ghost-skill").symlink_to(tmp_path / "does-not-exist")
+..\AppData\Local\hermes\tools\python-3.14.9+20261021-win32-x64\Lib\pathlib\__init__.py:1213: in symlink_to
+    os.symlink(target, self, target_is_directory)
+E   OSError: [WinError 1314] A required privilege is not held by the client: 'C:\\Users\\ImMandatory\\AppData\\Local\\hermes\\cache\\scratch\\sp-product-dev-20261119\\tmp\\pytest-of-ImMandatory\\pytest-38\\test_diagnose_detects_broken_s0\\does-not-exist' -> 'C:\\Users\\ImMandatory\\AppData\\Local\\hermes\\cache\\scratch\\sp-product-dev-20261119\\tmp\\pytest-of-ImMandatory\\pytest-38\\test_diagnose_detects_broken_s0\\.claude\\skills\\ghost-skill'
+=========================== short test summary info ===========================
+FAILED tests/test_consolidation_stress.py::test_consolidation_preserves_unclassified_prose_short_lines_nested_lists_tables_and_tildes
+FAILED tests/test_instructions_hardening.py::test_rollback_only_restores_instruction_patterns_and_skips_symlinks
+FAILED tests/test_instructions_hardening.py::test_rollback_refuses_symlinked_destination_directory
+FAILED tests/test_instructions_hardening.py::test_apply_refuses_to_write_through_symlinked_directory
+FAILED tests/test_instructions_hardening.py::test_apply_refuses_destination_symlink_pointing_outside
+FAILED tests/test_instructions_hardening.py::test_apply_still_replaces_symlinked_file_that_stays_inside_root
+FAILED tests/test_instructions_hardening.py::test_discovery_ignores_rule_dir_symlinked_outside_workspace
+FAILED tests/test_portability_fixes.py::test_fetched_source_structural_escape_is_never_overridable
+FAILED tests/test_skillporter.py::test_diagnose_detects_broken_symlink - OSEr...
+9 failed, 74 passed, 2 skipped in 66.76s (0:01:06)
