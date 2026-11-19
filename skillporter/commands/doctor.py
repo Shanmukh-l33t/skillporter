@@ -320,11 +320,10 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     elif manifest and manifest.harnesses:
         default_targets = [get_harness(h).name for h in manifest.harnesses]
     else:
-        # No manifest scope: mirror exactly what diagnose() requires of an unscoped skill, so that
-        # `doctor` and `doctor --fix` judge against the same harness set.
-        active_proj = {d.harness.name for d in detected if d.project_active}
+        # No manifest scope: mirror exactly what diagnose() requires of an unscoped skill (harnesses with a
+        # directory on disk), so `--fix` never installs into a harness that plain `diagnose` did not ask for.
         existing = {n for n, rep in diag.reports.items() if any(loc.exists for loc in rep.locations)}
-        default_targets = sorted({"claude-code", "codex", "cursor"} | active_proj | existing)
+        default_targets = sorted({"claude-code", "codex", "cursor"} | existing)
 
     drift_before_fix = _collect_unified_drift(diag, lock, records, root)
     repaired: list[str] = []
@@ -362,6 +361,15 @@ def cmd_doctor(args: argparse.Namespace) -> int:
                         skill_targets.append(harnesses.get(rh).name)
                 if not skill_targets:
                     skill_targets = default_targets
+            elif args.scope == "user":
+                # diagnose() never requires a user-scope copy of an unscoped skill, so refresh only harnesses
+                # whose primary user directory already holds it (a shared compat path must not spread it).
+                held = {c.parent.resolve() for c in copies}
+                skill_targets = sorted(
+                    hname
+                    for hname, rep in diag.reports.items()
+                    if rep.locations and rep.locations[0].resolved in held
+                )
             else:
                 skill_targets = default_targets
 
