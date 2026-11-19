@@ -451,7 +451,9 @@ def test_cli_add_from_local_git_repository_with_commit_tracking(tmp_path, capsys
     )
     assert rc == 0
     out = capsys.readouterr().out
-    assert "Installation verified." in out
+    assert "Verified 2 destination(s) on disk: byte-identical to the source" in out
+    assert "Not verified: whether each harness discovers or loads the skill (no runtime check)." in out
+    assert "Installation verified" not in out
     assert (workspace / ".claude" / "skills" / "git-fetched-skill" / "SKILL.md").is_file()
     assert (workspace / ".agents" / "skills" / "git-fetched-skill" / "SKILL.md").is_file()
 

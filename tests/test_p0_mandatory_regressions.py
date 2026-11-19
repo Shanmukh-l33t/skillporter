@@ -305,6 +305,29 @@ def test_7_8_blocked_installation_output_ordering_in_real_subprocess(tmp_path):
     assert "Installation verified" not in combined
 
 
+def test_add_reports_disk_verification_without_runtime_evidence(tmp_path, capsys, monkeypatch):
+    # PATH is empty, so no receiving agent can be queried: the report must not imply one was.
+    monkeypatch.setenv("PATH", "")
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    src = _make_skill(tmp_path / "src", "honest-add")
+    ws = tmp_path / "ws"
+    ws.mkdir()
+
+    rc = main(["add", str(src), "--harness", "codex,opencode", "--path", str(ws)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Installation verified" not in out
+    assert "Verified 2 destination(s) on disk: byte-identical to the source" in out
+    assert "Not verified: whether each harness discovers or loads the skill (no runtime check)." in out
+
+    for rel in (".agents", ".opencode"):
+        dest = ws / rel / "skills" / "honest-add" / "SKILL.md"
+        assert dest.read_bytes() == (src / "SKILL.md").read_bytes()
+
+
 def test_publish_without_registry_target_fails_honestly(tmp_path, capsys, monkeypatch):
     monkeypatch.delenv("SKILLPORTER_REGISTRY_URL", raising=False)
     clean = _make_skill(tmp_path, "pub-honest")
