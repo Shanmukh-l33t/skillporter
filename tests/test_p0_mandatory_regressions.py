@@ -167,10 +167,10 @@ def test_7_1_doctor_and_status_drift_consistency_and_repair_reporting(tmp_path, 
     assert len(doc_after["repaired"]) >= 1
     assert "Accidental local edit." not in installed_md.read_text(encoding="utf-8")
 
-    # Verbose state labels should not say bare "UNVERIFIED" for a hash-verified skill
+    # Verbose state labels must not derive runtime discovery from the adapter's historical tier
     assert main(["doctor", str(ws), "--harness", "codex", "--verbose"]) == 0
     verbose_txt = capsys.readouterr().out
-    assert "HASH_VERIFIED" in verbose_txt
+    assert "RUNTIME_NOT_CHECKED" in verbose_txt and "UNVERIFIED" not in verbose_txt
 
 
 def test_7_4_remove_and_uninstall_without_harness_arg(tmp_path, capsys):

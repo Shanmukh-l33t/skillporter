@@ -53,7 +53,7 @@ def test_claude_copy_does_not_require_absent_default_targets(tmp_path, capsys):
     assert "codex" not in status["selected_harnesses"]
     assert status["skills"]["release-notes"]["status"] == "UNMANAGED"
     explicit = _cli(capsys, 1, "diagnose", tmp_path, "--harness", "codex")
-    assert any("not visible to: codex" in item for item in explicit["findings"])
+    assert any("missing from expected paths for: codex" in item for item in explicit["findings"])
     doctor = _cli(capsys, 0, "doctor", tmp_path, "--fix")
     assert not doctor["repaired"]
     assert not (tmp_path / ".agents").exists()

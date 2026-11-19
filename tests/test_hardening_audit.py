@@ -10,7 +10,7 @@ Covers:
   * [BUG-PY-10 / DX-02]  Drift protection during `skillporter sync` without --force
   * [SEC-04]             Custom adapter path traversal rejection in load_adapter_file()
   * [SEC-05]             Base64 pipe-to-shell and HTTP POST file exfiltration detection
-  * [COMPAT-01 / DX-01]  Explicit lifecycle states (FOUND, VALID, COMPATIBLE, INSTALLED, VERIFIED/UNVERIFIED)
+  * [COMPAT-01 / DX-01]  Explicit filesystem states (FOUND, VALID, COMPATIBLE, INSTALLED, RUNTIME_NOT_CHECKED)
 """
 
 from __future__ import annotations
@@ -335,8 +335,46 @@ def test_doctor_explicit_lifecycle_states_and_remediations(tmp_path, capsys):
     sstate = payload["skill_states"][0]
     assert sstate["name"] == "doc-skill"
     assert sstate["state"] == "VALID"
-    assert sstate["harnesses"]["claude-code"] == ["FOUND", "VALID", "COMPATIBLE", "INSTALLED", "VERIFIED"]
+    assert sstate["harnesses"]["claude-code"] == ["FOUND", "VALID", "COMPATIBLE", "INSTALLED", "RUNTIME_NOT_CHECKED"]
     assert sstate["harnesses"]["codex"] == ["FOUND", "VALID", "COMPATIBLE", "MISSING"]
+
+
+def test_doctor_and_diagnose_do_not_claim_runtime_discovery_for_hermes(tmp_path, capsys):
+    # The adapter's historical tier says how the adapter was tested, not what this install does.
+    _write_skill(tmp_path / ".hermes" / "skills" / "field-project", "field-project")
+    assert main(["doctor", str(tmp_path), "--harness", "hermes", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["evidence_scope"] == "filesystem"
+    assert payload["runtime_discovery"] == "not_checked"
+    assert "trust was not checked" in payload["runtime_note"]
+    assert payload["adapter_verification_levels"] == {"hermes": "RUNTIME_VERIFIED"}
+    assert payload["skill_states"][0]["harnesses"]["hermes"][-1] == "RUNTIME_NOT_CHECKED"
+
+    assert main(["doctor", str(tmp_path), "--harness", "hermes"]) == 0
+    text = capsys.readouterr().out
+    assert "Filesystem checks only; runtime discovery was not checked." in text
+    assert "trust was not checked" in text
+    assert "reachable" not in text and "hash-verified" not in text
+
+    assert main(["diagnose", str(tmp_path), "--harness", "hermes"]) == 0
+    diag_text = capsys.readouterr().out
+    assert "Filesystem checks only; runtime discovery was not checked." in diag_text
+    assert "reachable" not in diag_text
+    assert main(["diagnose", str(tmp_path), "--harness", "hermes", "--json"]) == 0
+    diag_payload = json.loads(capsys.readouterr().out)
+    assert diag_payload["runtime_discovery"] == "not_checked"
+    assert diag_payload["harnesses"]["hermes"]["on_disk_skills"] == ["field-project"]
+
+
+def test_missing_finding_names_paths_not_visibility(tmp_path, capsys):
+    _write_skill(tmp_path / ".claude" / "skills", "only-claude")
+    # A copy is only "missing" where the project asked for it: declare codex as a target.
+    (tmp_path / "skillporter.yaml").write_text("schema_version: 2\nharnesses: [claude-code, codex]\n", encoding="utf-8")
+    assert main(["diagnose", str(tmp_path)]) == 1
+    text = capsys.readouterr().out
+    assert "missing from expected paths for: codex" in text
+    assert "on disk" in text and "yes" not in text
+    assert "not visible to" not in text
 
 
 # ---------------------------------------------------------------------------
